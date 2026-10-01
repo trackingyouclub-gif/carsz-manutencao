@@ -218,7 +218,7 @@ const mkAssets=()=>({
   async list(){ const {data,error}=await sb.storage.from(BUCKET).list('',{limit:1000}); if(error) throw error; return {assets:(data||[]).map(f=>({id:f.name,url:sb.storage.from(BUCKET).getPublicUrl(f.name).data.publicUrl,sizeBytes:(f.metadata&&f.metadata.size)||0,contentType:'image/jpeg',createdAt:f.created_at})),usage:{}}; }
 });
 
-const S = { veic:[], os:[], sin:[], pecas:[], cfg:null, view:'painel', db:null, assets:null, sample:null, canOcr:false, filtro:'', mec:false, osAtual:null, mecNome:'', mecs:[], mecsOk:false, sess:null, user:null, perfil:null, relPeriodo:12, relOrdem:'paradas', custoPeriodo:'mes' };
+const S = { veic:[], os:[], sin:[], pecas:[], cfg:null, view:'painel', db:null, assets:null, sample:null, canOcr:false, filtro:'', mec:false, osAtual:null, mecNome:'', mecs:[], mecsOk:false, sess:null, user:null, perfil:null, relPeriodo:12, relOrdem:'paradas', custoPeriodo:'mes', frotaFiltro:'todos' };
 const DEF_CFG = { avisoKm:500, avisoDias:15 };
 // catálogo inicial de peças/serviços (intervalos em km e dias; 0 = não avisa)
 const DEF_PECAS = [
@@ -270,6 +270,10 @@ const podeFinalizarOs = () => !!(S.perfil&&(S.perfil.papel==='gestor'||S.perfil.
 // excluir OS é uma ação exclusiva do mecânico chefe (nem gestor, nem ajudante)
 const ehChefe = () => !!(S.perfil&&(S.perfil.papel==='chefe'||S.perfil.papel==='mecanico'));
 const ehGestor = () => !!(S.perfil&&S.perfil.papel==='gestor');
+// frota própria (nossos carros, entram nos relatórios/painel) vs. cliente particular do mecânico
+// (carro de fora da locadora que ele também atende por aqui — fica fora dos relatórios e do painel,
+// mas continua com OS, histórico e alertas normalmente, no mesmo sistema)
+const isFrota = v => v.frotaPropria!==false;
 
 // catálogo = padrão + banco (banco sobrescreve)
 function catalogo(){
@@ -548,7 +552,10 @@ async function criarOs(){
   let v=S.veic.find(x=>x.placa===placa);
   if(v&&km<kmMinimo(v)&&!ehGestor()){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
   if(osAbertaDe(v)){ toast('Veículo com OS aberta — finalize a mão de obra antes'); render(); return; }
-  if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'Carsz Rent LTDA',km,status:'Em manutenção',criadoPor:S.mecNome,pendente:true}); v={id:ref.id,placa,km}; }
+  // placa nova aberta pelo mecânico: por padrão é cliente particular dele (fora da frota Carsz e fora
+  // dos relatórios/painel) — a gestão reclassifica como frota própria em Frota > Completar cadastro
+  // se for, de fato, um carro da locadora
+  if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'',frotaPropria:false,km,status:'Em manutenção',criadoPor:S.mecNome,pendente:true}); v={id:ref.id,placa,km}; }
   else if(km>(+v.km||0)) await S.db.doc('veiculos/'+v.id).update({km});
   const dataOs=(ehGestor()&&nova.data)?new Date(nova.data+'T12:00:00').toISOString():agoraIso();
   const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:S.mecNome,status:'Aberta',fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:'AMF',relato:''};
@@ -831,10 +838,14 @@ function metricasVeic(v,osList){
 }
 function relView(m){
   const periodo=S.relPeriodo||12, ordem=S.relOrdem||'paradas';
-  const osConcluidas=S.os.filter(o=>o.status==='Concluída');
+  // relatórios são só da frota própria (nossos carros) — carros de clientes particulares do
+  // mecânico (fora da frota) não entram nessas contas, embora continuem com OS/histórico normais
+  const veicFrota=S.veic.filter(isFrota);
+  const frotaIds=new Set(veicFrota.map(v=>v.id));
+  const osConcluidas=S.os.filter(o=>o.status==='Concluída'&&frotaIds.has(o.veiculoId));
   const lim=periodo==='tudo'?null:new Date(Date.now()-periodo*30*864e5);
   const osPeriodo=osConcluidas.filter(o=>!lim||new Date(o.concluidaEm||o.data)>=lim);
-  const porVeic=S.veic.map(v=>metricasVeic(v,osPeriodo)).filter(x=>x.paradas>0);
+  const porVeic=veicFrota.map(v=>metricasVeic(v,osPeriodo)).filter(x=>x.paradas>0);
   const totalGasto=porVeic.reduce((s,x)=>s+x.gasto,0);
   const totalParadas=porVeic.reduce((s,x)=>s+x.paradas,0);
   const totalKm=porVeic.reduce((s,x)=>s+x.kmRodado,0);
@@ -853,7 +864,8 @@ function relView(m){
   const maxGasto=Math.max(1,...rankGasto.map(x=>x.gasto));
   const ordens={paradas:(a,b)=>b.paradas-a.paradas,gasto:(a,b)=>b.gasto-a.gasto,km:(a,b)=>b.kmRodado-a.kmRodado,custoKm:(a,b)=>(b.custoPorKm||0)-(a.custoPorKm||0),custoDia:(a,b)=>(b.custoPorDia||0)-(a.custoPorDia||0)};
   const tabela=[...porVeic].sort(ordens[ordem]||ordens.paradas);
-  let h=`<div class="bar"><h2>Relatórios</h2><span class="sp"></span><select id="rel_periodo" onchange="S.relPeriodo=this.value==='tudo'?'tudo':+this.value;render()" style="max-width:190px">${[['3','Últimos 3 meses'],['6','Últimos 6 meses'],['12','Últimos 12 meses'],['tudo','Desde o início']].map(([v,l])=>`<option value="${v}" ${String(periodo)===v?'selected':''}>${l}</option>`).join('')}</select></div>`;
+  let h=`<div class="bar"><h2>Relatórios</h2><span class="sp"></span><select id="rel_periodo" onchange="S.relPeriodo=this.value==='tudo'?'tudo':+this.value;render()" style="max-width:190px">${[['3','Últimos 3 meses'],['6','Últimos 6 meses'],['12','Últimos 12 meses'],['tudo','Desde o início']].map(([v,l])=>`<option value="${v}" ${String(periodo)===v?'selected':''}>${l}</option>`).join('')}</select></div>
+  <p class="hint" style="margin:-4px 0 10px">Somente frota Carsz. Veículos de clientes particulares do mecânico não entram nestes números.</p>`;
   h+=`<div class="cards">
     <div class="card"><div class="v" style="font-size:22px">${fmtBRL(totalGasto)}</div><div class="l">gasto no período</div></div>
     <div class="card"><div class="v">${totalParadas}</div><div class="l">paradas (OS concluídas)</div></div>
@@ -877,20 +889,24 @@ function relView(m){
   m.innerHTML=h;
 }
 function painel(m){
+  // painel é só da frota própria (nossos carros) — carros de clientes particulares do mecânico
+  // (fora da frota) continuam com OS/histórico normais, mas não entram nestas contas
+  const veicFrota=S.veic.filter(isFrota);
+  const frotaIds=new Set(veicFrota.map(v=>v.id));
   const venc=[],prox=[];
-  for(const v of S.veic) for(const a of alertasVeic(v)){ if(a.lvl==='bad')venc.push(a); else if(a.lvl==='warn')prox.push(a); }
-  const osConcluidas=S.os.filter(o=>o.status==='Concluída');
-  const porVeic=S.veic.map(v=>metricasVeic(v,osConcluidas)).filter(x=>x.paradas>0);
+  for(const v of veicFrota) for(const a of alertasVeic(v)){ if(a.lvl==='bad')venc.push(a); else if(a.lvl==='warn')prox.push(a); }
+  const osConcluidas=S.os.filter(o=>o.status==='Concluída'&&frotaIds.has(o.veiculoId));
+  const porVeic=veicFrota.map(v=>metricasVeic(v,osConcluidas)).filter(x=>x.paradas>0);
   const custoTotal=porVeic.reduce((s,x)=>s+x.gasto,0);
   const kmTotal=porVeic.reduce((s,x)=>s+x.kmRodado,0);
   const custoMedioVeic=porVeic.length?custoTotal/porVeic.length:0;
   const custoPorKmGeral=kmTotal?custoTotal/kmTotal:null;
-  const abertas=S.os.filter(x=>x.status==='Aberta').length;
-  let h=`<div class="cards">
+  const abertas=S.os.filter(x=>x.status==='Aberta'&&frotaIds.has(x.veiculoId)).length;
+  let h=`<p class="hint" style="margin:0 0 10px">Somente frota Carsz. Veículos de clientes particulares do mecânico não entram aqui — acompanhe-os normalmente em Frota, OS e Histórico.</p><div class="cards">
     <div class="card bad"><div class="v">${venc.length}</div><div class="l">manutenções vencidas</div></div>
     <div class="card warn"><div class="v">${prox.length}</div><div class="l">vencendo em breve</div></div>
     <div class="card ${abertas?'warn':''}"><div class="v">${abertas}</div><div class="l">OS abertas na oficina</div></div>
-    <div class="card"><div class="v">${S.veic.length}</div><div class="l">veículos na frota</div></div>
+    <div class="card"><div class="v">${veicFrota.length}</div><div class="l">veículos na frota</div></div>
     <div class="card"><div class="v" style="font-size:20px">${fmtBRL(custoTotal)}</div><div class="l">custo total de manutenção</div></div>
     <div class="card"><div class="v" style="font-size:20px">${fmtBRL(custoMedioVeic)}</div><div class="l">custo médio por veículo</div></div>
     <div class="card"><div class="v" style="font-size:20px">${custoPorKmGeral!=null?fmtBRL(custoPorKmGeral):'—'}</div><div class="l">custo médio por km rodado</div></div>
@@ -910,7 +926,7 @@ function painel(m){
   const tipoPer=S.custoPeriodo||'mes';
   const {inicio,fim}=periodoRange(tipoPer);
   const osPer=osConcluidas.filter(o=>{ const d=new Date(o.concluidaEm||o.data); return d>=inicio&&d<fim; });
-  const porVeicPer=S.veic.map(v=>({v,gasto:osPer.filter(o=>o.veiculoId===v.id).reduce((s,o)=>s+osTotal(o),0)})).filter(x=>x.gasto>0).sort((a,b)=>b.gasto-a.gasto);
+  const porVeicPer=veicFrota.map(v=>({v,gasto:osPer.filter(o=>o.veiculoId===v.id).reduce((s,o)=>s+osTotal(o),0)})).filter(x=>x.gasto>0).sort((a,b)=>b.gasto-a.gasto);
   const maxPer=Math.max(1,...porVeicPer.map(x=>x.gasto));
   h+=`<div class="bar" style="margin-top:6px"><h4 style="margin:0">Custo de manutenção por veículo — ${esc(periodoLabel(tipoPer))}</h4><span class="sp"></span><select onchange="S.custoPeriodo=this.value;render()" style="max-width:170px">${[['mes','Mensal'],['bimestre','Bimestral'],['trimestre','Trimestral'],['ano','Anual']].map(([v,l])=>`<option value="${v}" ${tipoPer===v?'selected':''}>${l}</option>`).join('')}</select></div>
   <p class="hint" style="margin:2px 0 8px">Gasto realizado no período atual, do pior (mais caro) para o melhor (mais barato).</p>`;
@@ -918,19 +934,26 @@ function painel(m){
   m.innerHTML=h;
 }
 function frota(m){
-  let h=`<div class="bar"><h2>Frota</h2><input style="max-width:260px" placeholder="Buscar placa, modelo" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()"><span class="sp"></span><button class="sec" onclick="formCadastroRapido()">+ Cadastro rápido</button><button class="pri" onclick="formVeic()">+ Veículo</button></div>`;
+  const ff=S.frotaFiltro||'todos';
+  let h=`<div class="bar"><h2>Frota</h2><input style="max-width:260px" placeholder="Buscar placa, modelo" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()">
+  <select onchange="S.frotaFiltro=this.value;render()" style="max-width:220px" title="A frota Carsz é o que conta nos relatórios e no painel">
+    <option value="todos" ${ff==='todos'?'selected':''}>Todos os veículos</option>
+    <option value="frota" ${ff==='frota'?'selected':''}>Só frota Carsz</option>
+    <option value="externo" ${ff==='externo'?'selected':''}>Só clientes do mecânico</option>
+  </select>
+  <span class="sp"></span><button class="sec" onclick="formCadastroRapido()">+ Cadastro rápido</button><button class="pri" onclick="formVeic()">+ Veículo</button></div>`;
   const pendentes=S.veic.filter(v=>v.pendente);
   if(pendentes.length){
     h+=`<div class="step" style="border-color:var(--warn);background:var(--soft)"><h3>⚠ Cadastros pendentes de completar (${pendentes.length})</h3>`+
-    pendentes.map(v=>`<div class="row" style="justify-content:space-between;align-items:center"><span><span class="plate">${esc(v.placa)}</span> ${esc(v.modelo||'')} <span class="muted">— criada por ${esc(v.criadoPor||'mecânico')} ao abrir OS, falta completar dados</span></span><button class="pri" onclick="formVeic('${v.id}')">Completar cadastro</button></div>`).join('')+
+    pendentes.map(v=>`<div class="row" style="justify-content:space-between;align-items:center"><span><span class="plate">${esc(v.placa)}</span> ${esc(v.modelo||'')} <span class="muted">— criada por ${esc(v.criadoPor||'mecânico')} ao abrir OS como cliente particular dele; complete os dados e, se for carro da locadora, marque "Frota Carsz" em Editar</span></span><button class="pri" onclick="formVeic('${v.id}')">Completar cadastro</button></div>`).join('')+
     '</div>';
   }
   const f=S.filtro.toLowerCase();
-  const lst=S.veic.filter(v=>!f||[v.placa,v.modelo,v.empresa].join(' ').toLowerCase().includes(f)).sort((a,b)=>(a.placa||'').localeCompare(b.placa||''));
-  if(!lst.length){ m.innerHTML=h+'<div class="empty">Nenhum veículo cadastrado.</div>'; return; }
+  const lst=S.veic.filter(v=>(ff==='todos'||(ff==='frota'&&isFrota(v))||(ff==='externo'&&!isFrota(v)))&&(!f||[v.placa,v.modelo,v.empresa].join(' ').toLowerCase().includes(f))).sort((a,b)=>(a.placa||'').localeCompare(b.placa||''));
+  if(!lst.length){ m.innerHTML=h+'<div class="empty">Nenhum veículo nessa seleção.</div>'; return; }
   h+='<div class="tbl"><table><tr><th>Placa</th><th>Veículo</th><th>Empresa</th><th class="num">Km</th><th>Situação</th><th>Manutenção</th><th></th></tr>';
   for(const v of lst){ const st=statusVeic(v), lab={ok:'Em dia',warn:'Próxima',bad:'Vencida'}[st];
-    h+=`<tr><td><span class="plate">${esc(v.placa)}</span>${v.pendente?' <span class="tag warn">pendente</span>':''}</td><td>${esc(v.modelo)} <span class="muted">${esc(v.ano)}</span></td><td class="muted">${esc(v.empresa)}</td><td class="num">${fmtKm(v.km)} <button class="ghost" onclick="formKm('${v.id}')">✎</button></td><td><span class="tag neu">${esc(v.status)}</span></td><td><span class="tag ${st}">${lab}</span></td><td class="row"><button class="ghost" onclick="detVeic('${v.id}')">Histórico</button><button class="ghost" onclick="formVeic('${v.id}')">Editar</button></td></tr>`; }
+    h+=`<tr><td><span class="plate">${esc(v.placa)}</span>${v.pendente?' <span class="tag warn">pendente</span>':''}${!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico — fora dos relatórios e do painel">cliente</span>':''}</td><td>${esc(v.modelo)} <span class="muted">${esc(v.ano)}</span></td><td class="muted">${esc(v.empresa)}</td><td class="num">${fmtKm(v.km)} <button class="ghost" onclick="formKm('${v.id}')">✎</button></td><td><span class="tag neu">${esc(v.status)}</span></td><td><span class="tag ${st}">${lab}</span></td><td class="row"><button class="ghost" onclick="detVeic('${v.id}')">Histórico</button><button class="ghost" onclick="formVeic('${v.id}')">Editar</button></td></tr>`; }
   m.innerHTML=h+'</table></div>';
 }
 function osView(m){
@@ -1057,10 +1080,15 @@ function abrir(h){ document.getElementById('md').innerHTML=h; document.getElemen
 function fechar(){ document.getElementById('ov').classList.remove('on'); }
 document.getElementById('ov').addEventListener('click',e=>{ if(e.target.id==='ov') fechar(); });
 function formVeic(id){
-  const v=id?S.veic.find(x=>x.id===id):{status:'Disponível',empresa:'Carsz Rent LTDA'};
+  const v=id?S.veic.find(x=>x.id===id):{status:'Disponível',empresa:'Carsz Rent LTDA',frotaPropria:true};
+  const frotaVal=v.frotaPropria===false?'externo':'propria';
   abrir(`<h3>${id?'Editar':'Novo'} veículo</h3><div class="grid">
   <div><label>Placa</label><input id="f_placa" value="${esc(v.placa)}" style="text-transform:uppercase"></div><div><label>Ano</label><input id="f_ano" type="number" value="${esc(v.ano)}"></div>
   <div class="full"><label>Modelo</label><input id="f_modelo" value="${esc(v.modelo)}" placeholder="Fiat Mobi Like 1.0"></div>
+  <div class="full"><label>Tipo de veículo</label><select id="f_frota">
+    <option value="propria" ${frotaVal==='propria'?'selected':''}>Frota Carsz — nosso carro (entra nos relatórios e no painel)</option>
+    <option value="externo" ${frotaVal==='externo'?'selected':''}>Cliente particular do mecânico — fora da frota (OS e histórico normais, mas fora dos relatórios/painel)</option>
+  </select></div>
   <div><label>Empresa proprietária</label><select id="f_emp">${opt(['Carsz Rent LTDA','Matesz Soluções Financeiras LTDA','MF Rastreadores'],v.empresa)}</select></div>
   <div><label>Km atual</label><input id="f_km" type="number" value="${v.km||0}"></div>
   <div><label>Situação</label><select id="f_st">${opt(['Locado','Disponível','Em manutenção','Sinistrado','Baixado'],v.status)}</select></div>
@@ -1069,7 +1097,7 @@ function formVeic(id){
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarVeic('${id||''}')">Salvar</button></div>`);
 }
 async function salvarVeic(id){
-  const d={placa:normPlaca(val('f_placa')),ano:val('f_ano'),modelo:val('f_modelo'),empresa:val('f_emp'),km:+val('f_km')||0,status:val('f_st'),renavam:val('f_ren'),rastreador:val('f_rast'),obs:val('f_obs')};
+  const d={placa:normPlaca(val('f_placa')),ano:val('f_ano'),modelo:val('f_modelo'),empresa:val('f_emp'),km:+val('f_km')||0,status:val('f_st'),renavam:val('f_ren'),rastreador:val('f_rast'),obs:val('f_obs'),frotaPropria:val('f_frota')!=='externo'};
   if(!d.placa||!d.modelo){toast('Informe placa e modelo');return;}
   if(!id && S.veic.some(v=>v.placa===d.placa)){toast('Placa já cadastrada');return;}
   if(id) await S.db.doc('veiculos/'+id).set(d); else await S.db.collection('veiculos').add(d);
@@ -1079,7 +1107,7 @@ async function salvarVeic(id){
 let cr=[{placa:'',ano:'',modelo:''}];
 function crSync(){ for(let i=0;i<cr.length;i++){ cr[i].placa=val('cr_p'+i)||''; cr[i].ano=val('cr_a'+i)||''; cr[i].modelo=val('cr_m'+i)||''; } }
 function formCadastroRapido(){
-  let h='<h3>Cadastro rápido de frota</h3><div class="hint">Preencha placa, ano e modelo de cada veículo — os outros dados (km, empresa, locação, seguro, situação) você completa depois em Editar. Placas já cadastradas são atualizadas, sem apagar o resto do cadastro.</div>';
+  let h='<h3>Cadastro rápido de frota</h3><div class="hint">Preencha placa, ano e modelo de cada veículo — os outros dados (km, empresa, tipo de veículo, situação) você completa depois em Editar. Placas já cadastradas são atualizadas, sem apagar o resto do cadastro. Veículos novos criados aqui entram como frota própria (relatórios/painel); se for carro de cliente particular do mecânico, marque isso em Editar.</div>';
   h+='<div class="tbl"><table><tr><th>Placa</th><th>Ano</th><th>Modelo / veículo</th><th></th></tr>';
   cr.forEach((r,i)=>{ h+=`<tr><td><input id="cr_p${i}" value="${esc(r.placa)}" style="text-transform:uppercase;width:100px"></td><td><input id="cr_a${i}" type="number" value="${esc(r.ano)}" style="width:80px"></td><td><input id="cr_m${i}" value="${esc(r.modelo)}" placeholder="Fiat Uno Attractive 1.0" style="width:100%"></td><td><button class="ghost danger" onclick="crRemover(${i})">✕</button></td></tr>`; });
   h+='</table></div>';
