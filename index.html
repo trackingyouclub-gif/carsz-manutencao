@@ -746,8 +746,22 @@ function mconc(m){
   m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div><input placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
    (lst.length?lst.map(o=>{
      const v=S.veic.find(x=>x.id===o.veiculoId);
-     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.concluidaEm||o.data)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button class="ghost" onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button><span class="tag ok">Abrir</span></div>`;
+     const cobranca=(v&&!isFrota(v)&&ehChefe())?`<button class="ghost" title="Enviar cobrança por WhatsApp (PDF + descritivo)" onclick="event.stopPropagation();cobrarOs('${o.id}')">💬 Cobrar</button><span class="tag ${o.pago?'ok':'warn'}" style="cursor:pointer" title="Clique para marcar/desmarcar como pago" onclick="event.stopPropagation();togglePago('${o.id}')">${o.pago?'✓ Pago':'A cobrar'}</span>`:'';
+     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.concluidaEm||o.data)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button class="ghost" onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}<span class="tag ok">Abrir</span></div>`;
    }).join(''):'<div class="empty">Nenhuma OS concluída nessa seleção.</div>');
+}
+// ---- cobrança de clientes particulares do mecânico (fora da frota Carsz) ----
+async function togglePago(id){ const o=S.os.find(x=>x.id===id); if(!o)return; await S.db.doc('os/'+id).update({pago:!o.pago}); toast(o.pago?'Marcado como a cobrar':'Marcado como pago'); }
+async function cobrarOs(id){
+  const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
+  const v=S.veic.find(x=>x.id===o.veiculoId)||{};
+  let tel=(v.clienteTel||'').replace(/\D/g,'');
+  if(!tel){ const t=prompt('WhatsApp do cliente (com DDD), ex: 11987654321:',''); if(!t) return; tel=t.replace(/\D/g,''); if(!tel){toast('Número inválido');return;} await S.db.doc('veiculos/'+v.id).update({clienteTel:tel}); }
+  const telCompleto=tel.length<=11?'55'+tel:tel;
+  const itensTxt=(o.itens||[]).map(i=>`• ${esc(i.nome)}${(+i.qtd||1)>1?' x'+i.qtd:''}`).join('\n');
+  const msg=`Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}* (${v.modelo||''}):\n\n${itensTxt||'Serviço realizado.'}\n\n*Total: ${fmtBRL(osTotal(o))}*\n\nSegue o PDF da OS em anexo (gerado agora — é só selecionar no seletor de arquivos do WhatsApp). Qualquer dúvida, estou à disposição.`;
+  await imprimirOs(id);
+  window.open(`https://wa.me/${telCompleto}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 // ---- gera um PDF resumido da OS (para enviar por WhatsApp) ----
 async function imprimirOs(id){
@@ -1116,11 +1130,12 @@ function formVeic(id){
   <div><label>Km atual</label><input id="f_km" type="number" value="${v.km||0}"></div>
   <div><label>Situação</label><select id="f_st">${opt(['Locado','Disponível','Em manutenção','Sinistrado','Baixado'],v.status)}</select></div>
   <div><label>RENAVAM</label><input id="f_ren" value="${esc(v.renavam)}"></div><div><label>Rastreador (ID)</label><input id="f_rast" value="${esc(v.rastreador)}"></div>
+  <div><label>Nome do cliente (cobrança)</label><input id="f_clinome" value="${esc(v.clienteNome)}" placeholder="só p/ cliente particular"></div><div><label>WhatsApp do cliente</label><input id="f_clitel" value="${esc(v.clienteTel)}" placeholder="11987654321"></div>
   <div class="full"><label>Observações</label><textarea id="f_obs">${esc(v.obs)}</textarea></div></div>
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarVeic('${id||''}')">Salvar</button></div>`);
 }
 async function salvarVeic(id){
-  const d={placa:normPlaca(val('f_placa')),ano:val('f_ano'),modelo:val('f_modelo'),empresa:val('f_emp'),km:+val('f_km')||0,status:val('f_st'),renavam:val('f_ren'),rastreador:val('f_rast'),obs:val('f_obs'),frotaPropria:val('f_frota')!=='externo'};
+  const d={placa:normPlaca(val('f_placa')),ano:val('f_ano'),modelo:val('f_modelo'),empresa:val('f_emp'),km:+val('f_km')||0,status:val('f_st'),renavam:val('f_ren'),rastreador:val('f_rast'),obs:val('f_obs'),frotaPropria:val('f_frota')!=='externo',clienteNome:val('f_clinome'),clienteTel:(val('f_clitel')||'').replace(/\D/g,'')};
   if(!d.placa||!d.modelo){toast('Informe placa e modelo');return;}
   if(!id && S.veic.some(v=>v.placa===d.placa)){toast('Placa já cadastrada');return;}
   if(id) await S.db.doc('veiculos/'+id).set(d); else await S.db.collection('veiculos').add(d);
