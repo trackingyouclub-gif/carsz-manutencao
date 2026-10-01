@@ -957,13 +957,24 @@ function frota(m){
   m.innerHTML=h+'</table></div>';
 }
 function osView(m){
-  let h=`<div class="bar"><h2>Ordens de serviço</h2><input style="max-width:260px" placeholder="Buscar placa, peça, oficina" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()"><span class="sp"></span><button class="sec" onclick="toggleMode()">Abrir OS (modo mecânico)</button></div>`;
+  const ff=S.frotaFiltro||'todos';
+  let h=`<div class="bar"><h2>Ordens de serviço</h2><input style="max-width:260px" placeholder="Buscar placa, peça, oficina" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()">
+  <select onchange="S.frotaFiltro=this.value;render()" style="max-width:220px" title="A frota Carsz é o que conta nos relatórios e no painel">
+    <option value="todos" ${ff==='todos'?'selected':''}>Todos os veículos</option>
+    <option value="frota" ${ff==='frota'?'selected':''}>Só frota Carsz</option>
+    <option value="externo" ${ff==='externo'?'selected':''}>Só clientes do mecânico</option>
+  </select>
+  <span class="sp"></span><button class="sec" onclick="toggleMode()">Abrir OS (modo mecânico)</button></div>`;
   const f=S.filtro.toLowerCase();
-  const lst=S.os.filter(o=>!f||[o.placa,o.oficina,o.mecanico,(o.itens||[]).map(i=>i.nome).join(' ')].join(' ').toLowerCase().includes(f)).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
-  if(!lst.length){ m.innerHTML=h+'<div class="empty">Nenhuma OS registrada.</div>'; return; }
+  const lst=S.os.filter(o=>{
+    const v=S.veic.find(x=>x.id===o.veiculoId);
+    const okFrota=ff==='todos'||(ff==='frota'&&v&&isFrota(v))||(ff==='externo'&&v&&!isFrota(v));
+    return okFrota&&(!f||[o.placa,o.oficina,o.mecanico,(o.itens||[]).map(i=>i.nome).join(' ')].join(' ').toLowerCase().includes(f));
+  }).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  if(!lst.length){ m.innerHTML=h+'<div class="empty">Nenhuma OS nessa seleção.</div>'; return; }
   h+='<div class="tbl"><table><tr><th>Data</th><th>Placa</th><th>Itens</th><th>Mecânico</th><th class="num">Km</th><th class="num">Custo</th><th></th></tr>';
-  for(const o of lst){ const tot=osTotal(o);
-    h+=`<tr><td>${fmtD(o.data)}<div><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div></td><td><span class="plate">${esc(o.placa)}</span></td><td>${(o.itens||[]).map(i=>esc(i.nome)+(i.editado?' <span class="tag warn" title="item editado">✎</span>':'')).join(', ')||'<span class="muted">—</span>'}</td><td>${esc(o.mecanico||'')}${o.oficina?`<div class="muted">${esc(o.oficina)}</div>`:''}</td><td class="num">${fmtKm(o.km)}</td><td class="num">${fmtBRL(tot)}${tagMo(o)}</td>
+  for(const o of lst){ const tot=osTotal(o); const v=S.veic.find(x=>x.id===o.veiculoId);
+    h+=`<tr><td>${fmtD(o.data)}<div><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div></td><td><span class="plate">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico — fora da frota Carsz">cliente</span>':''}</td><td>${(o.itens||[]).map(i=>esc(i.nome)+(i.editado?' <span class="tag warn" title="item editado">✎</span>':'')).join(', ')||'<span class="muted">—</span>'}</td><td>${esc(o.mecanico||'')}${o.oficina?`<div class="muted">${esc(o.oficina)}</div>`:''}</td><td class="num">${fmtKm(o.km)}</td><td class="num">${fmtBRL(tot)}${tagMo(o)}</td>
     <td class="row"><button class="ghost" onclick="abrirOs('${o.id}')">Abrir</button>${ehGestor()?`<button class="ghost danger" title="Excluir OS (ex.: lançamento de teste)" onclick="delOs('${o.id}')">Excluir</button>`:''}</td></tr>`; }
   m.innerHTML=h+'</table></div>';
 }
