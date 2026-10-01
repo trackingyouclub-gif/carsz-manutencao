@@ -725,17 +725,29 @@ async function fecharOs(mo){
   if(v&&v.status==='Em manutenção') await S.db.doc('veiculos/'+v.id).update({status:'Disponível'});
   toast('OS concluída'); render();
 }
+function filtroFrotaSelect(){
+  const ff=S.frotaFiltro||'todos';
+  return `<select onchange="S.frotaFiltro=this.value;render()" style="max-width:220px" title="A frota Carsz é o que conta nos relatórios e no painel">
+    <option value="todos" ${ff==='todos'?'selected':''}>Todos os veículos</option>
+    <option value="frota" ${ff==='frota'?'selected':''}>Só frota Carsz</option>
+    <option value="externo" ${ff==='externo'?'selected':''}>Só clientes do mecânico</option>
+  </select>`;
+}
+function passaFiltroFrota(v){ const ff=S.frotaFiltro||'todos'; return ff==='todos'||(ff==='frota'&&v&&isFrota(v))||(ff==='externo'&&v&&!isFrota(v)); }
 function mabertas(m){
-  const lst=S.os.filter(o=>o.status==='Aberta').sort((a,b)=>(b.data||'').localeCompare(a.data||''));
-  m.innerHTML=`<div class="bar"><h2>OS abertas</h2></div>`+(lst.length?lst.map(o=>`<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span><div><b>${esc((S.veic.find(v=>v.id===o.veiculoId)||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`).join(''):'<div class="empty">Nenhuma OS aberta.</div>');
+  const lst=S.os.filter(o=>o.status==='Aberta'&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
+    return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`;
+  }).join(''):'<div class="empty">Nenhuma OS aberta nessa seleção.</div>');
 }
 function mconc(m){
   const f=normPlaca(S.filtro); const podeMo=podeFinalizarOs();
-  const lst=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))).sort((a,b)=>(b.concluidaEm||b.data||'').localeCompare(a.concluidaEm||a.data||'')).slice(0,60);
-  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2></div><input placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
+  const lst=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.concluidaEm||b.data||'').localeCompare(a.concluidaEm||a.data||'')).slice(0,60);
+  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div><input placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
    (lst.length?lst.map(o=>{
-     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span><div><b>${esc((S.veic.find(v=>v.id===o.veiculoId)||{}).modelo||'')}</b><div class="muted">${fmtD(o.concluidaEm||o.data)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button class="ghost" onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button><span class="tag ok">Abrir</span></div>`;
-   }).join(''):'<div class="empty">Nenhuma OS concluída.</div>');
+     const v=S.veic.find(x=>x.id===o.veiculoId);
+     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.concluidaEm||o.data)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button class="ghost" onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button><span class="tag ok">Abrir</span></div>`;
+   }).join(''):'<div class="empty">Nenhuma OS concluída nessa seleção.</div>');
 }
 // ---- gera um PDF resumido da OS (para enviar por WhatsApp) ----
 async function imprimirOs(id){
