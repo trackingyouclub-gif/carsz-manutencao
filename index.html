@@ -125,7 +125,10 @@ h4{margin:18px 0 8px;font:600 15px "IBM Plex Sans"}
 .lastinfo{padding:8px 10px;border-radius:6px;font-size:13px;margin:6px 0;background:var(--warn-bg);color:var(--warn)}
 .lastinfo.ok{background:var(--ok-bg);color:var(--ok)}
 .lastinfo.neu{background:var(--soft);color:var(--muted)}
-.osrow{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer}
+.osrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer}
+.osrow .osactions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-left:auto}
+.osrow button.ghost,.osrow .tag{font-size:12px}
+@media (max-width:640px){.osrow .osactions{margin-left:0;width:100%;justify-content:flex-start;padding-top:8px;border-top:1px solid var(--line)}}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:sp .8s linear infinite;vertical-align:middle}
 @keyframes sp{to{transform:rotate(360deg)}}
 .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:40;cursor:pointer}
@@ -752,7 +755,7 @@ function mconc(m){
      const statusPago=o.pago?`<span class="tag ok">✓ Pago</span>`:`<span class="tag ${corAtraso}">A cobrar · ${atraso} dia${atraso===1?'':'s'}</span>`;
      const btnPago=`<button class="ghost" title="${o.pago?'Esta cobrança está marcada como paga — clique para desfazer':'Marca esta cobrança como paga'}" onclick="event.stopPropagation();togglePago('${o.id}')">${o.pago?'Desfazer pagamento':'Marcar como pago'}</button>`;
      const cobranca=(v&&!isFrota(v)&&ehChefe())?`<button class="ghost" title="Enviar cobrança por WhatsApp (PDF + descritivo)" onclick="event.stopPropagation();cobrarOs('${o.id}')">💬 Cobrar</button>${statusPago}${btnPago}`:'';
-     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.concluidaEm||o.data)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button class="ghost" onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}<span class="tag ok">Abrir</span></div>`;
+     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.concluidaEm||o.data)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button class="ghost" onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}<span class="tag ok">Abrir</span></div></div>`;
    }).join(''):'<div class="empty">Nenhuma OS concluída nessa seleção.</div>');
 }
 // ---- cobrança de clientes particulares do mecânico (fora da frota Carsz) ----
@@ -780,13 +783,20 @@ async function togglePago(id){ const o=S.os.find(x=>x.id===id); if(!o)return; aw
 async function cobrarOs(id){
   const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
   const v=S.veic.find(x=>x.id===o.veiculoId)||{};
-  let tel=(v.clienteTel||'').replace(/\D/g,'');
-  if(!tel){ const t=prompt('WhatsApp do cliente (com DDD), ex: 11987654321:',''); if(!t) return; tel=t.replace(/\D/g,''); if(!tel){toast('Número inválido');return;} await S.db.doc('veiculos/'+v.id).update({clienteTel:tel}); }
+  let tel=(v.clienteTel||'').replace(/\D/g,''); let novoTel=null;
+  if(!tel){
+    const t=prompt('WhatsApp do cliente (com DDD), ex: 11987654321:',''); if(!t) return;
+    tel=t.replace(/\D/g,''); if(!tel){toast('Número inválido');return;} novoTel=tel;
+  }
   const telCompleto=tel.length<=11?'55'+tel:tel;
   const itensTxt=(o.itens||[]).map(i=>`• ${esc(i.nome)}${(+i.qtd||1)>1?' x'+i.qtd:''}`).join('\n');
-  const msg=`Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}* (${v.modelo||''}):\n\n${itensTxt||'Serviço realizado.'}\n\n*Total: ${fmtBRL(osTotal(o))}*\n\nSegue o PDF da OS em anexo (gerado agora — é só selecionar no seletor de arquivos do WhatsApp). Qualquer dúvida, estou à disposição.`;
-  await imprimirOs(id);
+  const msg=`Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}* (${v.modelo||''}):\n\n${itensTxt||'Serviço realizado.'}\n\n*Total: ${fmtBRL(osTotal(o))}*\n\nO PDF da OS vai aparecer a seguir para você anexar nesta conversa. Qualquer dúvida, estou à disposição.`;
+  // abrir o WhatsApp primeiro, ainda de forma síncrona (nenhum await antes desta linha): é isso que
+  // faz o celular reconhecer como ação direta do usuário e abrir o aplicativo — qualquer await antes
+  // quebra esse reconhecimento e o navegador cai na versão web do WhatsApp sem enviar nada
   window.open(`https://wa.me/${telCompleto}?text=${encodeURIComponent(msg)}`,'_blank');
+  if(novoTel) await S.db.doc('veiculos/'+v.id).update({clienteTel:novoTel});
+  await imprimirOs(id);
 }
 // ---- gera um PDF resumido da OS (para enviar por WhatsApp) ----
 async function imprimirOs(id){
