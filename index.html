@@ -163,6 +163,23 @@ const SUPABASE_ANON_KEY = 'sb_publishable_Ffa53jlirD451vuribGEiw_O9D_cMH2';     
 // ======================================================================
 const LINK_MEC = location.origin+location.pathname+'#mecanico';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Registrado AQUI (logo após criar o client) e não depois de getSession(): o Supabase detecta o
+// token "type=recovery" da URL e dispara o evento PASSWORD_RECOVERY durante a própria inicialização
+// do client, antes de qualquer await nosso. Se o listener só for registrado depois, esse evento é
+// perdido e o link de recuperação acaba logando o usuário direto no sistema, sem pedir nova senha.
+let S_recuperando=false;
+sb.auth.onAuthStateChange((ev,sess)=>{
+  if(ev==='SIGNED_OUT'){ S.user=null; S.perfil=null; render(); }
+  if(ev==='PASSWORD_RECOVERY'&&sess){ S_recuperando=true; trocarSenhaRecuperacao(sess); }
+});
+async function trocarSenhaRecuperacao(session){
+  let np=prompt('Redefinição de senha.\n\nDigite a nova senha (mín. 6 caracteres):');
+  while(np&&np.length<6){ np=prompt('A senha precisa ter ao menos 6 caracteres. Digite novamente (ou cancele):'); }
+  if(np){ const {error}=await sb.auth.updateUser({password:np}); toast(error?'Erro ao trocar senha: '+error.message:'Senha alterada com sucesso'); }
+  else toast('Senha não foi alterada');
+  if(location.hash.includes('type=recovery')) location.hash=(S.mec?'#mecanico':'');
+  await carregarSessao(session);
+}
 // Adaptador: mesma interface do app (collection/doc/onSnapshot) sobre tabelas Supabase (id text, data jsonb)
 const genId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 function mkDb(){
@@ -450,8 +467,6 @@ async function carregarSessao(session){
   S.mecNome=S.perfil.nome;
   const d={...S.perfil,ultimoAcesso:agoraIso()}; delete d.id; sb.from('perfis').upsert({id:S.user.id,data:d}).then(()=>{},()=>{});
   if(S.perfil.papel!=='gestor'){ S.mec=true; S.view='mnova'; }
-  // veio de link de recuperação de senha?
-  if(location.hash.includes('type=recovery')){ const np=prompt('Digite a nova senha (mín. 6):'); if(np&&np.length>=6){ const {error}=await sb.auth.updateUser({password:np}); toast(error?'Erro: '+error.message:'Senha alterada'); } location.hash=S.mec?'#mecanico':''; }
   render();
 }
 function oficinaView(m){
@@ -564,7 +579,7 @@ function osMecanico(m){
     <div class="grid" style="margin-top:8px"><div><label>Mão de obra (R$)</label><input id="os_mo" type="${podeMo?'number':'text'}" step="0.01" inputmode="decimal" value="${podeMo?(o.maoObra||''):(o.maoObra?'••••••':'')}" onchange="maoObra(+this.value||0)" ${(o.status!=='Aberta'||!podeMo)?'disabled':''}><div class="hint">${podeMo?'Ao informar a mão de obra a OS é concluída.':'Valor visível apenas para o mecânico chefe e a gestão.'}</div>${(podeMo&&o.maoObraEdit)?`<div class="muted" style="font-size:12px">${tagMo(o)} antes: ${fmtBRL(o.maoObraEdit.original)} · ${fmtD(o.maoObraEdit.em)} por ${esc(o.maoObraEdit.por||'')}</div>`:''}</div><div><label>Oficina</label><input id="os_of" value="${esc(o.oficina)}" onchange="salvarCampoOs('oficina',this.value)"></div></div>
     <div class="ph" id="os_fotos">${[o.fotoPlaca,o.fotoKm,...(o.fotos||[])].filter(Boolean).map(f=>`<span style="position:relative;display:inline-block"><img src="${blob(f)}" onclick="lightbox('${f}')">${S.assets?`<button class="ghost danger" title="Apagar foto" style="position:absolute;top:-6px;right:-6px;background:var(--panel);border:1px solid var(--line);border-radius:50%;width:22px;height:22px;padding:0;line-height:1" onclick="apagarFoto('${o.id}','${f}')">✕</button>`:''}</span>`).join('')}<label class="sec" style="display:inline-flex;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:6px;cursor:pointer">📷 + foto<input type="file" accept="image/*" capture="environment" style="display:none" onchange="fotoExtra(this)"></label></div>
     ${(o.status==='Concluída'&&ehGestor())?`<div class="row" style="margin-top:8px;align-items:center"><label style="margin:0">Data de conclusão</label><input type="date" style="width:150px" value="${(o.concluidaEm||o.data||'').slice(0,10)}" onchange="salvarCampoOs('concluidaEm',this.value+'T12:00:00.000Z')"><span class="hint" style="margin:0">Ajuste para lançar OS antigas na linha do tempo correta.</span></div>`:''}
-    <div class="act">${o.status==='Aberta'?`<span class="muted">OS aberta · parcial ${fmtBRL(pecasTotal(o))} — fica aberta até a mão de obra ser informada.</span>${((+o.maoObra||0)>0&&podeMo)?`<button class="pri" onclick="fecharOs(+o.maoObra)">Concluir OS · ${fmtBRL(osTotal(o))}</button>`:''}`:podeMo?`<span class="muted">Concluída em ${fmtD(o.concluidaEm)} · total ${fmtBRL(osTotal(o))}. Para alterar itens ou relato, reabra.</span><button class="pri" onclick="reabrirOs()">Reabrir para editar</button>`:`<span class="muted">Concluída em ${fmtD(o.concluidaEm)} · peças ${fmtBRL(pecasTotal(o))}.</span>`}${ehChefe()?`<button class="ghost danger" onclick="excluirOsMec('${o.id}')">Excluir OS</button>`:''}<span class="sp"></span><button class="sec" onclick="sairDaOs()">Sair desta OS</button></div>
+    <div class="act">${o.status==='Aberta'?`<span class="muted">OS aberta · parcial ${fmtBRL(pecasTotal(o))} — fica aberta até a mão de obra ser informada.</span>${((+o.maoObra||0)>0&&podeMo)?`<button class="pri" onclick="fecharOs(+o.maoObra)">Concluir OS · ${fmtBRL(osTotal(o))}</button>`:''}`:podeMo?`<span class="muted">Concluída em ${fmtD(o.concluidaEm)} · total ${fmtBRL(osTotal(o))}. Para alterar itens ou relato, reabra.</span><button class="pri" onclick="reabrirOs()">Reabrir para editar</button>`:`<span class="muted">Concluída em ${fmtD(o.concluidaEm)} · peças ${fmtBRL(pecasTotal(o))}.</span>`}${(ehChefe()||ehGestor())?`<button class="ghost danger" onclick="excluirOsMec('${o.id}')">Excluir OS</button>`:''}<span class="sp"></span><button class="sec" onclick="sairDaOs()">Sair desta OS</button></div>
   </div>
   <div class="step"><h3>Histórico desta placa</h3>${hist.length?timelineHtmlFiltrada(v,o.id):'<div class="muted">Primeira intervenção registrada deste veículo.</div>'}</div>`;
 }
@@ -926,13 +941,13 @@ function osView(m){
   h+='<div class="tbl"><table><tr><th>Data</th><th>Placa</th><th>Itens</th><th>Mecânico</th><th class="num">Km</th><th class="num">Custo</th><th></th></tr>';
   for(const o of lst){ const tot=osTotal(o);
     h+=`<tr><td>${fmtD(o.data)}<div><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div></td><td><span class="plate">${esc(o.placa)}</span></td><td>${(o.itens||[]).map(i=>esc(i.nome)+(i.editado?' <span class="tag warn" title="item editado">✎</span>':'')).join(', ')||'<span class="muted">—</span>'}</td><td>${esc(o.mecanico||'')}${o.oficina?`<div class="muted">${esc(o.oficina)}</div>`:''}</td><td class="num">${fmtKm(o.km)}</td><td class="num">${fmtBRL(tot)}${tagMo(o)}</td>
-    <td class="row"><button class="ghost" onclick="abrirOs('${o.id}')">Abrir</button></td></tr>`; }
+    <td class="row"><button class="ghost" onclick="abrirOs('${o.id}')">Abrir</button>${ehGestor()?`<button class="ghost danger" title="Excluir OS (ex.: lançamento de teste)" onclick="delOs('${o.id}')">Excluir</button>`:''}</td></tr>`; }
   m.innerHTML=h+'</table></div>';
 }
 function abrirOs(id){ S.osAtual=id; S.mec=true; S.view='mnova'; render(); }
 async function delOs(id){ if(!confirm('Excluir esta OS e seu histórico?'))return; await S.db.doc('os/'+id).delete(); fechar(); toast('OS excluída'); }
 async function excluirOsMec(id){
-  if(!ehChefe()){ toast('Somente o mecânico chefe pode excluir uma OS'); return; }
+  if(!ehChefe()&&!ehGestor()){ toast('Somente o mecânico chefe ou a gestão pode excluir uma OS'); return; }
   if(!confirm('Excluir esta OS e seu histórico? Isso não pode ser desfeito.'))return;
   await S.db.doc('os/'+id).delete();
   S.osAtual=null; S.view='mabertas'; toast('OS excluída'); render();
@@ -1115,10 +1130,12 @@ render();
   if(SUPABASE_URL.startsWith('COLE_')){ st.textContent='Configure SUPABASE_URL e SUPABASE_ANON_KEY no index.html'; return; }
   st.textContent='Sincronizado';
   const {data:{session}}=await sb.auth.getSession();
-  sb.auth.onAuthStateChange((ev,sess)=>{ if(ev==='SIGNED_OUT'){ S.user=null; S.perfil=null; render(); } if(ev==='PASSWORD_RECOVERY'&&sess) carregarSessao(sess); });
   S.db.doc('config/geral').onSnapshot(s=>{ S.cfg=s.exists?{...DEF_CFG,...s.data()}:JSON.parse(JSON.stringify(DEF_CFG)); render(); });
   subCol('veiculos','veic'); subCol('os','os'); subCol('sinistros','sin'); subCol('pecas','pecas'); subCol('perfis','mecs');
-  await carregarSessao(session);
+  // se for link de recuperação de senha, o listener registrado logo após criar o "sb" (acima, no
+  // topo do arquivo) já capturou o evento PASSWORD_RECOVERY e está tratando a troca de senha —
+  // não chamamos carregarSessao aqui de novo para não duplicar o fluxo.
+  if(!S_recuperando) await carregarSessao(session);
 })();
 </script>
 </body>
