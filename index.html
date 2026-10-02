@@ -897,7 +897,12 @@ function metricasVeic(v,osList){
   const paradas=os.length;
   const gasto=os.reduce((s,o)=>s+osTotal(o),0);
   const kms=os.map(o=>+o.km||0).filter(k=>k>0);
-  const kmRodado=kms.length>=2?Math.max(...kms)-Math.min(...kms):0;
+  // km rodado = desde a primeira OS conhecida até o último km registrado do veículo — usa o maior
+  // entre o km das OS e o km atual do veículo (v.km), pois o odômetro pode ter sido atualizado
+  // depois da última OS (botão "Atualizar km" na Frota) sem lançar uma OS nova
+  const kmIni=kms.length?Math.min(...kms):null;
+  const kmFim=Math.max(+v.km||0,...(kms.length?kms:[0]));
+  const kmRodado=(kmIni!=null&&kmFim>kmIni)?kmFim-kmIni:0;
   const datas=os.map(o=>o.concluidaEm||o.data).filter(Boolean).sort();
   // dias acompanhados = desde a 1ª OS registrada até hoje (não só o intervalo entre OS) — evita projeção mensal
   // distorcida quando há poucas OS muito próximas no tempo (ex.: histórico antigo lançado tudo de uma vez)
@@ -991,11 +996,32 @@ function painel(m){
   for(const a of lista) h+=`<div class="al ${a.lvl}"><span class="plate">${esc(a.v.placa)}</span><span>${esc(a.v.modelo)}</span><span class="sp">${a.p.critico?'<span class="tag bad">SENSÍVEL</span> ':''}<b>${esc(a.p.nome)}</b> — ${a.txt}</span></div>`;
   h+='</div>';
   if(porVeic.length){
-    const rankCusto=[...porVeic].sort((a,b)=>(b.custoPorKm||0)-(a.custoPorKm||0));
-    h+='<h4>Custo de manutenção por veículo — ranking R$/km rodado</h4><p class="hint" style="margin:-4px 0 8px">Valores realizados até o momento (sem projeção). Do mais caro para o mais barato por km rodado. Veja a tela Relatórios para filtrar por período.</p>';
-    h+='<div class="tbl"><table><tr><th>Placa</th><th>Modelo</th><th class="num">Km rodado</th><th class="num">Gasto total (realizado)</th><th class="num">R$/km</th></tr>';
-    for(const x of rankCusto) h+=`<tr><td><span class="plate">${esc(x.v.placa)}</span></td><td>${esc(x.v.modelo)}</td><td class="num">${x.kmRodado?fmtKm(x.kmRodado):'—'}</td><td class="num">${fmtBRL(x.gasto)}</td><td class="num">${x.custoPorKm!=null?fmtBRL(x.custoPorKm):'—'}</td></tr>`;
-    h+='</table></div>';
+    // evolução gasto x km rodado: km desde a 1ª OS conhecida de cada veículo até o último km
+    // registrado (metricasVeic já calcula isso), rankeado do pior (mais R$/km) para o melhor
+    const rankCusto=[...porVeic].filter(x=>x.custoPorKm!=null).sort((a,b)=>(b.custoPorKm||0)-(a.custoPorKm||0));
+    const maxCustoKm=Math.max(1,...rankCusto.map(x=>x.custoPorKm||0));
+    h+='<h4>Evolução gasto × km rodado — R$/km desde a 1ª OS de cada veículo</h4><p class="hint" style="margin:-4px 0 8px">Km rodado = do km da OS mais antiga até o último km conhecido do veículo (odômetro atual, se mais recente). Gasto realizado, sem projeção. Do mais caro para o mais barato por km.</p>';
+    h+=rankCusto.length?`<div class="barchart">${rankCusto.map(x=>`<div class="brow"><span class="blabel plate">${esc(x.v.placa)}</span><div class="btrack"><div class="bfill warn" style="width:${Math.round((x.custoPorKm||0)/maxCustoKm*100)}%"></div></div><span class="bval">${fmtBRL(x.custoPorKm)}/km</span></div>`).join('')}</div>`:'<div class="empty">Ainda sem km suficiente para calcular R$/km.</div>';
+    h+='<div class="tbl" style="margin-top:8px"><table><tr><th>Placa</th><th>Modelo</th><th class="num">Km rodado (desde a 1ª OS)</th><th class="num">Gasto total (realizado)</th><th class="num">R$/km</th></tr>'+
+      [...porVeic].sort((a,b)=>(b.custoPorKm||0)-(a.custoPorKm||0)).map(x=>`<tr><td><span class="plate">${esc(x.v.placa)}</span></td><td>${esc(x.v.modelo)}</td><td class="num">${x.kmRodado?fmtKm(x.kmRodado):'—'}</td><td class="num">${fmtBRL(x.gasto)}</td><td class="num">${x.custoPorKm!=null?fmtBRL(x.custoPorKm):'—'}</td></tr>`).join('')+
+      '</table></div>';
+  }
+  // gasto médio de manutenção por veículo, mês a mês, desde o mês da OS mais antiga conhecida da
+  // frota (não um período fixo) — mostra a evolução do gasto no tempo
+  const datasFrota=osConcluidas.map(o=>o.concluidaEm||o.data).filter(Boolean).sort();
+  if(datasFrota.length&&veicFrota.length){
+    const MESES_ABREV=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    const ini=new Date(datasFrota[0]); const agora=new Date();
+    const totalMeses=Math.max(1,(agora.getFullYear()-ini.getFullYear())*12+(agora.getMonth()-ini.getMonth())+1);
+    const mesesHist=[...Array(totalMeses)].map((_,i)=>{ const d=new Date(ini.getFullYear(),ini.getMonth()+i,1); return d.toISOString().slice(0,7); });
+    const porMesHist={};
+    for(const o of osConcluidas){ const dm=(o.concluidaEm||o.data||'').slice(0,7); if(dm) porMesHist[dm]=(porMesHist[dm]||0)+osTotal(o); }
+    const mediaMes=mesesHist.map(mm=>(porMesHist[mm]||0)/veicFrota.length);
+    const maxMediaMes=Math.max(1,...mediaMes);
+    h+=`<h4 style="margin-top:18px">Gasto médio de manutenção por veículo — mês a mês</h4><p class="hint" style="margin:-4px 0 8px">Gasto do mês ÷ ${veicFrota.length} veículo${veicFrota.length===1?'':'s'} da frota. Começa em ${MESES_ABREV[ini.getMonth()]}/${ini.getFullYear()}, mês da OS mais antiga registrada.</p>`;
+    h+=`<div class="barchart">${mesesHist.map((mm,i)=>{ const [yy,mo]=mm.split('-'); const val=mediaMes[i];
+      return `<div class="brow"><span class="blabel">${MESES_ABREV[+mo-1]}/${yy.slice(2)}</span><div class="btrack"><div class="bfill" style="width:${Math.round(val/maxMediaMes*100)}%"></div></div><span class="bval">${fmtBRL(val)}</span></div>`;
+    }).join('')}</div>`;
   }
   const tipoPer=S.custoPeriodo||'mes';
   const {inicio,fim}=periodoRange(tipoPer);
