@@ -328,7 +328,9 @@ function statusVeic(v){ const al=alertasVeic(v); return al.some(a=>a.lvl==='bad'
 // ============ navegação ============
 const NAV_ADM=[['painel','Painel'],['rel','Relatórios'],['frota','Frota'],['os','Ordens de serviço'],['sin','Sinistros'],['pecas','Peças'],['oficina','Oficina'],['cfg','Configurações']];
 const NAV_MEC=[['mnova','Nova OS'],['mabertas','OS abertas'],['mconc','OS concluídas'],['mhist','Histórico por placa']];
-function navMec(){ return NAV_MEC; }
+// "Atenção" é uma cópia dos alertas do painel do administrador (manutenções vencidas/próximas),
+// só da frota Carsz — visível só para o mecânico chefe, não para ajudantes
+function navMec(){ return ehChefe()?[...NAV_MEC,['matencao','Atenção']]:NAV_MEC; }
 const PRESERVE=['lg_user','lg_pass','it_nome','it_qtd','it_custo','it_obs','os_rel','os_mo','os_of','n_placa','n_km','n_modelo'];
 function preservar(root){ const k={vals:{},focus:null,sel:null}; for(const id of PRESERVE){ const e=document.getElementById(id); if(e&&e.value!=='') k.vals[id]=e.value; } const a=document.activeElement; if(a&&a.id&&root.contains(a)){ k.focus=a.id; try{k.sel=[a.selectionStart,a.selectionEnd];}catch(e){} } return k; }
 function restaurar(k){ for(const [id,v] of Object.entries(k.vals)){ const e=document.getElementById(id); if(e&&!e.disabled&&e.value!==v) e.value=v; } if(k.focus){ const e=document.getElementById(k.focus); if(e){ e.focus(); if(k.sel&&k.sel[0]!=null){ try{e.setSelectionRange(k.sel[0],k.sel[1]);}catch(x){} } } } }
@@ -353,10 +355,13 @@ function render(){
   const m=document.getElementById('main');
   if(!S.cfg){ m.innerHTML='<div class="empty">Carregando dados…</div>'; return; }
   const keep=preservar(m);
-  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,mconc,mhist})[S.view](m);
+  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,mconc,mhist,matencao})[S.view](m);
   restaurar(keep);
   if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
-  else { const na=S.os.filter(o=>o.status==='Aberta').length; const b=document.querySelector('nav [data-v=mabertas]'); if(b) b.innerHTML='OS abertas'+(na?`<span class="n">${na}</span>`:''); }
+  else {
+    const na=S.os.filter(o=>o.status==='Aberta').length; const b=document.querySelector('nav [data-v=mabertas]'); if(b) b.innerHTML='OS abertas'+(na?`<span class="n">${na}</span>`:'');
+    const nb2=S.veic.filter(v=>isFrota(v)&&statusVeic(v)==='bad').length; const b2=document.querySelector('nav [data-v=matencao]'); if(b2) b2.innerHTML='Atenção'+(nb2?`<span class="n">${nb2}</span>`:'');
+  }
 }
 
 // ============ histórico visual por placa ============
@@ -873,6 +878,23 @@ function mhist(m){
   m.innerHTML=`<div class="bar"><h2>Histórico por placa</h2></div><input class="xl" placeholder="Digite a placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" autofocus>
   ${p.length<7?`<div class="muted" style="margin-top:10px">${S.veic.slice(0,30).filter(x=>!p||x.placa.startsWith(p)).map(x=>`<a href="#" onclick="S.filtro='${x.placa}';render();return false" class="plate" style="margin:4px;display:inline-block">${x.placa}</a>`).join('')}</div>`:
     v?`<div class="step" style="margin-top:12px"><span class="plate" style="font-size:19px">${esc(v.placa)}</span> <b>${esc(v.modelo)} ${esc(v.ano||'')}</b> · ${fmtKm(v.km)}</div>${timelineHtml(v,{edit:true})}`:`<div class="step" style="margin-top:12px;text-align:center"><div class="muted" style="margin-bottom:10px">Placa <span class="plate">${esc(p)}</span> não está cadastrada — sem histórico.</div><button class="big" onclick="novaOsPlaca('${esc(p)}')">Abrir OS para esta placa nova</button></div>`}`;
+}
+// aba do mecânico chefe: mesmos alertas de "Atenção agora" do painel do administrador, só da
+// frota Carsz (clientes particulares do mecânico não entram aqui), para ele acompanhar junto com o gestor
+function matencao(m){
+  const veicFrota=S.veic.filter(isFrota);
+  const venc=[],prox=[];
+  for(const v of veicFrota) for(const a of alertasVeic(v)){ if(a.lvl==='bad')venc.push(a); else if(a.lvl==='warn')prox.push(a); }
+  let h=`<div class="bar"><h2>Atenção agora</h2></div><p class="hint" style="margin:-4px 0 10px">Somente frota Carsz — mesmos alertas do painel do administrador.</p><div class="cards">
+    <div class="card bad"><div class="v">${venc.length}</div><div class="l">manutenções vencidas</div></div>
+    <div class="card warn"><div class="v">${prox.length}</div><div class="l">vencendo em breve</div></div>
+  </div>`;
+  const lista=[...venc,...prox].sort((a,b)=>(b.p.critico?1:0)-(a.p.critico?1:0));
+  h+='<h4>Itens para verificar</h4><div class="alertlist">';
+  if(!lista.length) h+='<div class="empty">Nenhuma manutenção vencida ou próxima.</div>';
+  for(const a of lista) h+=`<div class="al ${a.lvl}"><span class="plate">${esc(a.v.placa)}</span><span>${esc(a.v.modelo)}</span><span class="sp">${a.p.critico?'<span class="tag bad">SENSÍVEL</span> ':''}<b>${esc(a.p.nome)}</b> — ${a.txt}</span></div>`;
+  h+='</div>';
+  m.innerHTML=h;
 }
 // ============ MODO GESTÃO ============
 // ---- período corrente (mês/trimestre/bimestre/ano) para o gráfico de custo por veículo do painel ----
