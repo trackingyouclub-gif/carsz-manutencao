@@ -891,6 +891,20 @@ function periodoLabel(tipo){
   if(tipo==='bimestre') return `${Math.floor(mes/2)+1}º bimestre de ${y}`;
   return `${NOMES_MES[mes]} de ${y}`;
 }
+const MESES_ABREV=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+// gasto por mês desde a OS mais antiga conhecida (não um período fixo de 12 meses) — usado em
+// Relatórios e no Painel. Agrupa pela data da intervenção (o.data), não pela data de conclusão
+// no sistema, senão OS antigas lançadas hoje aparecem todas concentradas no mês atual.
+function gastoPorMesDesdeInicio(osConcluidas){
+  const porMes={};
+  for(const o of osConcluidas){ const d=(o.data||o.concluidaEm||'').slice(0,7); if(d) porMes[d]=(porMes[d]||0)+osTotal(o); }
+  const datas=osConcluidas.map(o=>o.data||o.concluidaEm).filter(Boolean).sort();
+  if(!datas.length) return {meses:[],porMes};
+  const ini=new Date(datas[0]); const agora=new Date();
+  const totalMeses=Math.max(1,(agora.getFullYear()-ini.getFullYear())*12+(agora.getMonth()-ini.getMonth())+1);
+  const meses=[...Array(totalMeses)].map((_,i)=>{ const d=new Date(ini.getFullYear(),ini.getMonth()+i,1); return d.toISOString().slice(0,7); });
+  return {meses,porMes};
+}
 // ---- relatórios: métricas por veículo (paradas, gasto, km rodado, dias acompanhados) ----
 function metricasVeic(v,osList){
   const os=osList.filter(o=>o.veiculoId===v.id);
@@ -931,12 +945,10 @@ function relView(m){
   const mediaPorVeic=porVeic.length?totalGasto/porVeic.length:0;
   const mediaPorParada=totalParadas?totalGasto/totalParadas:0;
   const custoPorKmGeral=totalKm?totalGasto/totalKm:null;
-  // gasto por mês — últimos 12 meses fixos, independente do filtro, para ver a tendência
-  const porMes={};
-  for(const o of osConcluidas){ const d=(o.data||o.concluidaEm||'').slice(0,7); if(d) porMes[d]=(porMes[d]||0)+osTotal(o); }
-  const nomesMes=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-  const meses12=[...Array(12)].map((_,i)=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-(11-i)); return d.toISOString().slice(0,7); });
-  const maxMes=Math.max(1,...meses12.map(mm=>porMes[mm]||0));
+  // gasto por mês — desde a 1ª OS conhecida da frota (não um período fixo), independente do
+  // filtro de período acima, para ver a tendência completa
+  const {meses:mesesHist,porMes}=gastoPorMesDesdeInicio(osConcluidas);
+  const maxMes=Math.max(1,...mesesHist.map(mm=>porMes[mm]||0));
   const ranking=[...porVeic].sort((a,b)=>b.paradas-a.paradas).slice(0,8);
   const maxParadas=Math.max(1,...ranking.map(x=>x.paradas));
   const rankGasto=[...porVeic].sort((a,b)=>b.gasto-a.gasto).slice(0,8);
@@ -952,10 +964,10 @@ function relView(m){
     <div class="card"><div class="v" style="font-size:20px">${fmtBRL(mediaPorParada)}</div><div class="l">média por parada</div></div>
     <div class="card"><div class="v" style="font-size:20px">${custoPorKmGeral!=null?fmtBRL(custoPorKmGeral):'—'}</div><div class="l">custo médio por km rodado</div></div>
   </div>`;
-  h+=`<h4>Gasto por mês (últimos 12 meses)</h4><div class="barchart">`+meses12.map(mm=>{
+  h+=`<h4>Gasto por mês (desde a 1ª OS registrada)</h4><div class="barchart">`+(mesesHist.length?mesesHist.map(mm=>{
     const val=porMes[mm]||0, pct=Math.round(val/maxMes*100), [yy,mo]=mm.split('-');
-    return `<div class="brow"><span class="blabel">${nomesMes[+mo-1]}/${yy.slice(2)}</span><div class="btrack"><div class="bfill" style="width:${pct}%"></div></div><span class="bval">${fmtBRL(val)}</span></div>`;
-  }).join('')+`</div>`;
+    return `<div class="brow"><span class="blabel">${MESES_ABREV[+mo-1]}/${yy.slice(2)}</span><div class="btrack"><div class="bfill" style="width:${pct}%"></div></div><span class="bval">${fmtBRL(val)}</span></div>`;
+  }).join(''):'<div class="empty">Nenhuma OS concluída registrada ainda.</div>')+`</div>`;
   h+=`<div class="grid" style="gap:20px">
     <div class="full" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div><h4>Ranking · mais paradas</h4><div class="barchart">${ranking.length?ranking.map(x=>`<div class="brow"><span class="blabel plate">${esc(x.v.placa)}</span><div class="btrack"><div class="bfill warn" style="width:${Math.round(x.paradas/maxParadas*100)}%"></div></div><span class="bval">${x.paradas}</span></div>`).join(''):'<div class="empty">Sem dados no período.</div>'}</div></div>
@@ -1008,17 +1020,12 @@ function painel(m){
   }
   // gasto médio de manutenção por veículo, mês a mês, desde o mês da OS mais antiga conhecida da
   // frota (não um período fixo) — mostra a evolução do gasto no tempo
-  const datasFrota=osConcluidas.map(o=>o.data||o.concluidaEm).filter(Boolean).sort();
-  if(datasFrota.length&&veicFrota.length){
-    const MESES_ABREV=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-    const ini=new Date(datasFrota[0]); const agora=new Date();
-    const totalMeses=Math.max(1,(agora.getFullYear()-ini.getFullYear())*12+(agora.getMonth()-ini.getMonth())+1);
-    const mesesHist=[...Array(totalMeses)].map((_,i)=>{ const d=new Date(ini.getFullYear(),ini.getMonth()+i,1); return d.toISOString().slice(0,7); });
-    const porMesHist={};
-    for(const o of osConcluidas){ const dm=(o.data||o.concluidaEm||'').slice(0,7); if(dm) porMesHist[dm]=(porMesHist[dm]||0)+osTotal(o); }
+  const {meses:mesesHist,porMes:porMesHist}=gastoPorMesDesdeInicio(osConcluidas);
+  if(mesesHist.length&&veicFrota.length){
+    const [yyIni,moIni]=mesesHist[0].split('-');
     const mediaMes=mesesHist.map(mm=>(porMesHist[mm]||0)/veicFrota.length);
     const maxMediaMes=Math.max(1,...mediaMes);
-    h+=`<h4 style="margin-top:18px">Gasto médio de manutenção por veículo — mês a mês</h4><p class="hint" style="margin:-4px 0 8px">Gasto do mês ÷ ${veicFrota.length} veículo${veicFrota.length===1?'':'s'} da frota. Começa em ${MESES_ABREV[ini.getMonth()]}/${ini.getFullYear()}, mês da OS mais antiga registrada.</p>`;
+    h+=`<h4 style="margin-top:18px">Gasto médio de manutenção por veículo — mês a mês</h4><p class="hint" style="margin:-4px 0 8px">Gasto do mês ÷ ${veicFrota.length} veículo${veicFrota.length===1?'':'s'} da frota. Começa em ${MESES_ABREV[+moIni-1]}/${yyIni}, mês da OS mais antiga registrada.</p>`;
     h+=`<div class="barchart">${mesesHist.map((mm,i)=>{ const [yy,mo]=mm.split('-'); const val=mediaMes[i];
       return `<div class="brow"><span class="blabel">${MESES_ABREV[+mo-1]}/${yy.slice(2)}</span><div class="btrack"><div class="bfill" style="width:${Math.round(val/maxMediaMes*100)}%"></div></div><span class="bval">${fmtBRL(val)}</span></div>`;
     }).join('')}</div>`;
