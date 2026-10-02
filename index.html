@@ -706,7 +706,7 @@ async function apagarFoto(osId,fid){
 async function apagarFotosLote(modo){
   if(!S.assets){toast('Sem permissão para apagar fotos');return;}
   const lim=Date.now()-90*864e5;
-  const alvo=S.os.filter(o=>{ const tem=o.fotoPlaca||o.fotoKm||(o.fotos||[]).length; if(!tem) return false; if(modo==='todas') return true; return o.status==='Concluída'&&new Date(o.concluidaEm||o.data)<lim; });
+  const alvo=S.os.filter(o=>{ const tem=o.fotoPlaca||o.fotoKm||(o.fotos||[]).length; if(!tem) return false; if(modo==='todas') return true; return o.status==='Concluída'&&new Date(o.data||o.concluidaEm)<lim; });
   const n=alvo.reduce((s,o)=>s+[o.fotoPlaca,o.fotoKm,...(o.fotos||[])].filter(Boolean).length,0);
   if(!n){toast('Nenhuma foto para apagar');return;}
   if(!confirm(`Apagar ${n} foto(s) de ${alvo.length} OS${modo==='todas'?'':' concluídas há mais de 90 dias'}? Os dados das OS (peças, custos, relato) são mantidos.`))return;
@@ -755,7 +755,7 @@ function mabertas(m){
 }
 function mconc(m){
   const f=normPlaca(S.filtro); const podeMo=podeFinalizarOs();
-  const lst=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.concluidaEm||b.data||'').localeCompare(a.concluidaEm||a.data||'')).slice(0,60);
+  const lst=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.data||b.concluidaEm||'').localeCompare(a.data||a.concluidaEm||'')).slice(0,60);
   m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${alertaCobrancaBanner()}<input placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
    (lst.length?lst.map(o=>{
      const v=S.veic.find(x=>x.id===o.veiculoId);
@@ -768,11 +768,11 @@ function mconc(m){
      // mesma lógica de pagamento, mas para OS da frota Carsz (a locadora paga o mecânico pelo
      // serviço) — sem cobrança por WhatsApp, só o sinalizador com a data gravada ao marcar
      const pagamentoFrota=(v&&isFrota(v)&&ehChefe())?`<button class="${o.pago?'pago-ok':'pago-pend'}" title="${o.pago?'Pago pela locadora em '+fmtD(o.pagoEm)+' — clique para desfazer':'Marcar esta OS como paga pela locadora'}" onclick="event.stopPropagation();togglePago('${o.id}')">${o.pago?'✓ Pago em '+fmtD(o.pagoEm):'Marcar como pago'}</button>`:'';
-     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.concluidaEm||o.data)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
+     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data||o.concluidaEm)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
    }).join(''):'<div class="empty">Nenhuma OS concluída nessa seleção.</div>');
 }
 // ---- cobrança de clientes particulares do mecânico (fora da frota Carsz) ----
-const diasAtraso = o => Math.max(0,Math.floor((Date.now()-new Date(o.concluidaEm||o.data))/864e5));
+const diasAtraso = o => Math.max(0,Math.floor((Date.now()-new Date(o.data||o.concluidaEm))/864e5));
 function cobrancasAtrasadas(){
   return S.os.filter(o=>o.status==='Concluída'&&!o.pago).map(o=>{
     const v=S.veic.find(x=>x.id===o.veiculoId);
@@ -828,7 +828,7 @@ async function imprimirOs(id){
   doc.setFontSize(12);
   doc.text(`Placa: ${o.placa}`,margin,y); doc.text(`Km: ${fmtKm(o.km)}`,120,y); y+=lh;
   doc.text(`Veículo: ${v.modelo||'—'} ${v.ano||''}`,margin,y); y+=lh;
-  doc.text(`Data do serviço: ${fmtD(o.concluidaEm||o.data)}`,margin,y); y+=lh;
+  doc.text(`Data do serviço: ${fmtD(o.data||o.concluidaEm)}`,margin,y); y+=lh;
   if(o.mecanico){ doc.text(`Mecânico: ${o.mecanico}`,margin,y); y+=lh; }
   doc.text(`Oficina: ${o.oficina||'AMF'}`,margin,y); y+=lh;
   y+=1; linha();
@@ -859,10 +859,10 @@ async function imprimirOs(id){
   }
   doc.setFontSize(8); doc.setTextColor(150);
   doc.text(`Gerado em ${fmtD(agoraIso())} · Carsz · Controle de Manutenção`,margin,290);
-  const nomeArq=`OS-${o.placa}-${(o.concluidaEm||o.data||'').slice(0,10)}.pdf`;
+  const nomeArq=`OS-${o.placa}-${(o.data||o.concluidaEm||'').slice(0,10)}.pdf`;
   const blob=doc.output('blob'); const file=new File([blob],nomeArq,{type:'application/pdf'});
   if(navigator.canShare&&navigator.canShare({files:[file]})){
-    try{ await navigator.share({files:[file],title:'OS '+o.placa,text:`OS ${o.placa} — ${fmtD(o.concluidaEm||o.data)}`}); return; }
+    try{ await navigator.share({files:[file],title:'OS '+o.placa,text:`OS ${o.placa} — ${fmtD(o.data||o.concluidaEm)}`}); return; }
     catch(e){ if(e&&e.name==='AbortError') return; }
   }
   doc.save(nomeArq);
@@ -903,7 +903,7 @@ function metricasVeic(v,osList){
   const kmIni=kms.length?Math.min(...kms):null;
   const kmFim=Math.max(+v.km||0,...(kms.length?kms:[0]));
   const kmRodado=(kmIni!=null&&kmFim>kmIni)?kmFim-kmIni:0;
-  const datas=os.map(o=>o.concluidaEm||o.data).filter(Boolean).sort();
+  const datas=os.map(o=>o.data||o.concluidaEm).filter(Boolean).sort();
   // dias acompanhados = desde a 1ª OS registrada até hoje (não só o intervalo entre OS) — evita projeção mensal
   // distorcida quando há poucas OS muito próximas no tempo (ex.: histórico antigo lançado tudo de uma vez)
   const dias=datas.length?Math.max(1,Math.round((Date.now()-new Date(datas[0]))/864e5)):null;
@@ -923,7 +923,7 @@ function relView(m){
   const frotaIds=new Set(veicFrota.map(v=>v.id));
   const osConcluidas=S.os.filter(o=>o.status==='Concluída'&&frotaIds.has(o.veiculoId));
   const lim=periodo==='tudo'?null:new Date(Date.now()-periodo*30*864e5);
-  const osPeriodo=osConcluidas.filter(o=>!lim||new Date(o.concluidaEm||o.data)>=lim);
+  const osPeriodo=osConcluidas.filter(o=>!lim||new Date(o.data||o.concluidaEm)>=lim);
   const porVeic=veicFrota.map(v=>metricasVeic(v,osPeriodo)).filter(x=>x.paradas>0);
   const totalGasto=porVeic.reduce((s,x)=>s+x.gasto,0);
   const totalParadas=porVeic.reduce((s,x)=>s+x.paradas,0);
@@ -933,7 +933,7 @@ function relView(m){
   const custoPorKmGeral=totalKm?totalGasto/totalKm:null;
   // gasto por mês — últimos 12 meses fixos, independente do filtro, para ver a tendência
   const porMes={};
-  for(const o of osConcluidas){ const d=(o.concluidaEm||o.data||'').slice(0,7); if(d) porMes[d]=(porMes[d]||0)+osTotal(o); }
+  for(const o of osConcluidas){ const d=(o.data||o.concluidaEm||'').slice(0,7); if(d) porMes[d]=(porMes[d]||0)+osTotal(o); }
   const nomesMes=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
   const meses12=[...Array(12)].map((_,i)=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-(11-i)); return d.toISOString().slice(0,7); });
   const maxMes=Math.max(1,...meses12.map(mm=>porMes[mm]||0));
@@ -1008,14 +1008,14 @@ function painel(m){
   }
   // gasto médio de manutenção por veículo, mês a mês, desde o mês da OS mais antiga conhecida da
   // frota (não um período fixo) — mostra a evolução do gasto no tempo
-  const datasFrota=osConcluidas.map(o=>o.concluidaEm||o.data).filter(Boolean).sort();
+  const datasFrota=osConcluidas.map(o=>o.data||o.concluidaEm).filter(Boolean).sort();
   if(datasFrota.length&&veicFrota.length){
     const MESES_ABREV=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
     const ini=new Date(datasFrota[0]); const agora=new Date();
     const totalMeses=Math.max(1,(agora.getFullYear()-ini.getFullYear())*12+(agora.getMonth()-ini.getMonth())+1);
     const mesesHist=[...Array(totalMeses)].map((_,i)=>{ const d=new Date(ini.getFullYear(),ini.getMonth()+i,1); return d.toISOString().slice(0,7); });
     const porMesHist={};
-    for(const o of osConcluidas){ const dm=(o.concluidaEm||o.data||'').slice(0,7); if(dm) porMesHist[dm]=(porMesHist[dm]||0)+osTotal(o); }
+    for(const o of osConcluidas){ const dm=(o.data||o.concluidaEm||'').slice(0,7); if(dm) porMesHist[dm]=(porMesHist[dm]||0)+osTotal(o); }
     const mediaMes=mesesHist.map(mm=>(porMesHist[mm]||0)/veicFrota.length);
     const maxMediaMes=Math.max(1,...mediaMes);
     h+=`<h4 style="margin-top:18px">Gasto médio de manutenção por veículo — mês a mês</h4><p class="hint" style="margin:-4px 0 8px">Gasto do mês ÷ ${veicFrota.length} veículo${veicFrota.length===1?'':'s'} da frota. Começa em ${MESES_ABREV[ini.getMonth()]}/${ini.getFullYear()}, mês da OS mais antiga registrada.</p>`;
@@ -1025,7 +1025,7 @@ function painel(m){
   }
   const tipoPer=S.custoPeriodo||'mes';
   const {inicio,fim}=periodoRange(tipoPer);
-  const osPer=osConcluidas.filter(o=>{ const d=new Date(o.concluidaEm||o.data); return d>=inicio&&d<fim; });
+  const osPer=osConcluidas.filter(o=>{ const d=new Date(o.data||o.concluidaEm); return d>=inicio&&d<fim; });
   const porVeicPer=veicFrota.map(v=>({v,gasto:osPer.filter(o=>o.veiculoId===v.id).reduce((s,o)=>s+osTotal(o),0)})).filter(x=>x.gasto>0).sort((a,b)=>b.gasto-a.gasto);
   const maxPer=Math.max(1,...porVeicPer.map(x=>x.gasto));
   h+=`<div class="bar" style="margin-top:6px"><h4 style="margin:0">Custo de manutenção por veículo — ${esc(periodoLabel(tipoPer))}</h4><span class="sp"></span><select onchange="S.custoPeriodo=this.value;render()" style="max-width:170px">${[['mes','Mensal'],['bimestre','Bimestral'],['trimestre','Trimestral'],['ano','Anual']].map(([v,l])=>`<option value="${v}" ${tipoPer===v?'selected':''}>${l}</option>`).join('')}</select></div>
