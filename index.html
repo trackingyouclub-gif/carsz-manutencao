@@ -430,8 +430,8 @@ function timelineHtml(v, opts={}){
     if(e.t==='sin'){ h+=`<div class="ev sin"><div class="hd"><b>${fmtD(e.d)}</b><span class="tag bad">Sinistro</span><span class="muted">${esc(e.s.status)}</span></div><div>${esc(e.s.desc)}</div></div>`; continue; }
     const o=e.o;
     if(o.externo){
-      // histórico técnico de OUTRA oficina: só itens/km/data, nunca valor nem quem atendeu
-      h+=`<div class="ev ${o.status==='Aberta'?'open':''}"><div class="hd"><b>${fmtD(o.data)}</b><span class="plate">${fmtKm(o.km)}</span><span class="tag neu">Atendido em outra oficina</span></div>`;
+      // histórico técnico de OUTRA oficina: itens/km/data + nome de quem atendeu, nunca o valor cobrado
+      h+=`<div class="ev ${o.status==='Aberta'?'open':''}"><div class="hd"><b>${fmtD(o.data)}</b><span class="plate">${fmtKm(o.km)}</span><span class="tag neu">${o.oficina?esc(o.oficina):'Atendido em outra oficina'}</span></div>`;
       if((o.itens||[]).length){ h+='<ul>'; for(const i of o.itens) h+=`<li>${esc(i.nome)}${i.retroativo?` <span class="tag neu">informado · ${fmtKm(i.kmTroca)}</span>`:''}</li>`; h+='</ul>'; }
       h+='</div>';
       continue;
@@ -1785,7 +1785,7 @@ async function carregarHistoricoCompartilhado(){
   try{
     const {data,error}=await sb.rpc('historico_compartilhado',{p_placas:placas});
     if(error) throw error;
-    S.histCompartilhado=(data||[]).map(r=>({id:r.id,placa:r.placa,veiculoId:r.veiculo_id,data:r.data_intervencao,km:+r.km||0,itens:r.itens||[],status:r.status,externo:true}));
+    S.histCompartilhado=(data||[]).map(r=>({id:r.id,placa:r.placa,veiculoId:r.veiculo_id,data:r.data_intervencao,km:+r.km||0,itens:r.itens||[],status:r.status,oficina:r.oficina||'',externo:true}));
   }catch(e){ console.warn('historico_compartilhado indisponível (rode a migração do banco):',e); }
   render();
 }
@@ -1799,7 +1799,7 @@ async function checarPlacaExterna(p){
   try{
     const {data,error}=await sb.rpc('historico_compartilhado',{p_placas:[p]});
     if(error) throw error;
-    const novos=(data||[]).map(r=>({id:r.id,placa:r.placa,veiculoId:r.veiculo_id,data:r.data_intervencao,km:+r.km||0,itens:r.itens||[],status:r.status,externo:true}));
+    const novos=(data||[]).map(r=>({id:r.id,placa:r.placa,veiculoId:r.veiculo_id,data:r.data_intervencao,km:+r.km||0,itens:r.itens||[],status:r.status,oficina:r.oficina||'',externo:true}));
     if(novos.length){
       const idsExistentes=new Set(S.histCompartilhado.map(h=>h.id));
       S.histCompartilhado=[...S.histCompartilhado,...novos.filter(n=>!idsExistentes.has(n.id))];
