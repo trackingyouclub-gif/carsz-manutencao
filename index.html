@@ -30,6 +30,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,sans-serif}
 header{background:var(--brand);color:var(--brand-ink);padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header #hdrLogo{height:32px;width:32px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;display:none}
 body.mec header{background:var(--mec)}
 header h1{margin:0;font:700 21px/1 "IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;letter-spacing:.3px}
 header .sub{opacity:.8;font-size:13px}
@@ -157,6 +158,7 @@ h4{margin:18px 0 8px;font:600 15px "IBM Plex Sans"}
 </head>
 <body>
 <header>
+  <img id="hdrLogo" alt="Logo da oficina">
   <h1 id="ttl">CARSZ · Manutenção da frota</h1>
   <span class="sub" id="subttl">Controle de revisões, custos e sinistros</span>
   <span id="status">Conectando…</span>
@@ -365,6 +367,12 @@ function render(){
   const nomeOficina=S.oficina?S.oficina.nome:(ehSuperadmin()?'Administração geral':'');
   document.getElementById('subttl').textContent=S.mec?('Mecânico: '+S.mecNome+(nomeOficina?' · '+nomeOficina:'')+(gestor?' · ':'')):('Logado como '+(S.perfil?S.perfil.nome:'')+(nomeOficina?' · '+nomeOficina:''));
   if(gestor&&S.mec){ const sub=document.getElementById('subttl'); sub.innerHTML+='<a href="#" onclick="sairMec();return false" style="color:inherit">sair</a>'; }
+  // marca no cabeçalho: oficinas parceiras (fora da Oficina Matriz) veem o próprio nome/logo no
+  // lugar de "CARSZ" — cada uma com a sua marca, não um nome genérico compartilhado
+  const marca=(S.oficina&&S.oficina.id!=='matriz')?S.oficina.nome:'CARSZ';
+  document.getElementById('ttl').textContent=S.mec?(marca+' · Oficina'):(marca+' · Manutenção da frota');
+  const hdrLogo=document.getElementById('hdrLogo');
+  if(S.oficina&&S.oficina.logo&&S.oficina.logo.url){ hdrLogo.src=S.oficina.logo.url; hdrLogo.style.display='inline-block'; } else hdrLogo.style.display='none';
   const nav=(S.mec?navMec():navAdm());
   document.getElementById('nav').innerHTML=nav.map(([k,l])=>`<button data-v="${k}" class="${k===S.view?'on':''}">${l}</button>`).join('');
   document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;S.filtro='';render();});
@@ -869,6 +877,15 @@ async function cobrarOs(id){
   if(novoTel) await S.db.doc('veiculos/'+v.id).update({clienteTel:novoTel});
   await imprimirOs(id);
 }
+// baixa uma imagem (ex: logo de uma oficina) e converte para data URL, formato aceito pelo
+// addImage do jsPDF — se falhar (rede, CORS etc.), devolve null e o PDF segue sem a logo
+async function imgParaDataUrl(url){
+  try{
+    const resp=await fetch(url); if(!resp.ok) throw new Error('http '+resp.status);
+    const blob=await resp.blob();
+    return await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(blob); });
+  }catch(e){ console.warn('logo no pdf indisponível:',e); return null; }
+}
 // ---- gera um PDF resumido da OS (para enviar por WhatsApp) ----
 async function imprimirOs(id){
   const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
@@ -880,7 +897,14 @@ async function imprimirOs(id){
   const margin=16, pageW=210, lh=7; let y=20;
   const linha=()=>{ doc.setDrawColor(200); doc.line(margin,y,pageW-margin,y); y+=5; };
   const quebraSeNecessario=()=>{ if(y>274){ doc.addPage(); y=20; } };
-  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('CARSZ · Ordem de Serviço',margin,y); y+=8;
+  // marca no PDF: oficina parceira usa o próprio nome/logo, a Oficina Matriz (Carsz) continua com "CARSZ"
+  const marcaTxt=(S.oficina&&S.oficina.id!=='matriz')?S.oficina.nome:'CARSZ';
+  const logoUrl=S.oficina&&S.oficina.logo&&S.oficina.logo.url;
+  const logoDataUrl=logoUrl?await imgParaDataUrl(logoUrl):null;
+  doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  if(logoDataUrl){ try{ doc.addImage(logoDataUrl,'JPEG',margin,y-7,10,10); }catch(e){ console.warn(e); } doc.text(`${marcaTxt} · Ordem de Serviço`,margin+13,y); }
+  else doc.text(`${marcaTxt} · Ordem de Serviço`,margin,y);
+  y+=8;
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(`Nº OS: ${o.id}`,margin,y); doc.setTextColor(0); y+=6;
   linha();
   doc.setFontSize(12);
@@ -1275,12 +1299,27 @@ function oficinasView(m){
   h+='</table></div>';
   m.innerHTML=h;
 }
+// logoTemp: undefined = não mexeu nela nesta sessão de formulário; null = removida explicitamente;
+// {id,url} = nova logo enviada agora. Usado tanto no pré-cadastro quanto na edição de oficina.
+let logoTemp;
+async function escolherLogoOficina(input,previewId){
+  const f=input.files[0]; if(!f) return;
+  const prev=document.getElementById(previewId); if(prev) prev.innerHTML='Enviando…';
+  try{
+    const b=await redimensionar(f,400);
+    const r=await S.assets.upload(b,{type:'image/jpeg'});
+    logoTemp={id:r.id,url:r.url};
+    if(prev) prev.innerHTML=`<img src="${r.url}" style="height:44px;border-radius:6px;vertical-align:middle;background:#fff;padding:2px"> <span class="tag ok">Logo carregada</span> <a href="#" onclick="logoTemp=null;document.getElementById('${previewId}').innerHTML='Sem logo';return false">remover</a>`;
+  }catch(e){ console.error(e); toast('Erro ao enviar a logo'); if(prev) prev.innerHTML='Erro ao enviar — tente de novo'; }
+}
 function formOficina(){
+  logoTemp=undefined;
   abrir(`<h3>Pré-cadastrar oficina</h3><div class="grid">
   <div class="full"><label>Nome da oficina</label><input id="of_nome" placeholder="Ex: Oficina São Bernardo"></div>
   <div><label>Responsável</label><input id="of_resp"></div>
   <div><label>Telefone / WhatsApp do responsável</label><input id="of_tel" inputmode="tel" placeholder="(11) 99999-9999" oninput="this.value=mascaraTel(this.value)"></div>
-  <div class="full"><label>E-mail do gestor (login do responsável pela oficina)</label><input id="of_email" type="email"></div></div>
+  <div class="full"><label>E-mail do gestor (login do responsável pela oficina)</label><input id="of_email" type="email"></div>
+  <div class="full"><label>Logo da oficina (opcional)</label><input type="file" accept="image/*" onchange="escolherLogoOficina(this,'of_logo_prev')"><div id="of_logo_prev" class="muted" style="margin-top:6px"></div></div></div>
   <div class="hint">O responsável não precisa de senha definida por você — ele recebe um e-mail para criar a própria senha, e você pode reenviar esse acesso por WhatsApp na tela seguinte. A oficina fica "pendente" até você marcar como "ativa" na lista.</div>
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarOficina()">Cadastrar</button></div>`);
 }
@@ -1297,7 +1336,7 @@ async function salvarOficina(){
   if(error){toast('Erro: '+error.message);return;}
   if(!data.user){toast('Não foi possível criar o acesso');return;}
   if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado');return;}
-  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email,status:'pendente',criadoEm:agoraIso()});
+  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email,logo:logoTemp||null,status:'pendente',criadoEm:agoraIso()});
   await sb.from('perfis').upsert({id:data.user.id,data:{nome:resp||nome,email,papel:'gestor',oficinaId:oid,ativo:true,criadoEm:agoraIso()}});
   const {error:eReset}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
   toast('Oficina cadastrada — marque como "ativa" quando quiser liberar o acesso');
@@ -1330,11 +1369,15 @@ async function reenviarAcessoOficina(id){
 // que não tem uma)
 function formEditarOficina(id){
   const o=S.oficinas.find(x=>x.id===id); if(!o){toast('Oficina não encontrada');return;}
+  logoTemp=undefined;
   const staff=S.mecs.filter(x=>x.oficinaId===id).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
   let h=`<h3>Editar oficina</h3><div class="grid">
   <div class="full"><label>Nome da oficina</label><input id="eo_nome" value="${esc(o.nome)}"></div>
   <div><label>Responsável</label><input id="eo_resp" value="${esc(o.responsavel)}"></div>
-  <div><label>Telefone / WhatsApp do responsável</label><input id="eo_tel" value="${esc(o.telefone)}" inputmode="tel" oninput="this.value=mascaraTel(this.value)"></div></div>
+  <div><label>Telefone / WhatsApp do responsável</label><input id="eo_tel" value="${esc(o.telefone)}" inputmode="tel" oninput="this.value=mascaraTel(this.value)"></div>
+  <div class="full"><label>Logo da oficina</label>
+    <div id="eo_logo_prev" class="muted" style="margin:4px 0">${o.logo&&o.logo.url?`<img src="${o.logo.url}" style="height:44px;border-radius:6px;vertical-align:middle;background:#fff;padding:2px"> <span class="tag ok">Logo atual</span> <a href="#" onclick="logoTemp=null;document.getElementById('eo_logo_prev').innerHTML='Sem logo';return false">remover</a>`:'Sem logo ainda'}</div>
+    <input type="file" accept="image/*" onchange="escolherLogoOficina(this,'eo_logo_prev')"></div></div>
   <div class="act"><button class="sec" onclick="fechar()">Fechar</button><button class="pri" onclick="salvarEdicaoOficina('${id}')">Salvar dados da oficina</button></div>
   <h4 style="margin-top:18px">Usuários desta oficina</h4>
   <div class="tbl"><table style="min-width:0"><tr><th>Nome</th><th>Contato</th><th>Papel</th><th></th></tr>`;
@@ -1346,6 +1389,7 @@ function formEditarOficina(id){
 async function salvarEdicaoOficina(id){
   const d={nome:val('eo_nome'),responsavel:val('eo_resp'),telefone:val('eo_tel')};
   if(!d.nome){toast('Informe o nome da oficina');return;}
+  if(logoTemp!==undefined) d.logo=logoTemp;
   await S.db.doc('oficinas/'+id).update(d); fechar(); toast('Oficina atualizada');
 }
 
