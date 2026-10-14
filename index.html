@@ -231,7 +231,7 @@ const mkAssets=()=>({
   async list(){ const {data,error}=await sb.storage.from(BUCKET).list('',{limit:1000}); if(error) throw error; return {assets:(data||[]).map(f=>({id:f.name,url:sb.storage.from(BUCKET).getPublicUrl(f.name).data.publicUrl,sizeBytes:(f.metadata&&f.metadata.size)||0,contentType:'image/jpeg',createdAt:f.created_at})),usage:{}}; }
 });
 
-const S = { veic:[], os:[], sin:[], pecas:[], cfg:null, view:'painel', db:null, assets:null, sample:null, canOcr:false, filtro:'', mec:false, osAtual:null, mecNome:'', mecs:[], mecsOk:false, sess:null, user:null, perfil:null, relPeriodo:12, relOrdem:'paradas', custoPeriodo:'mes', frotaFiltro:'todos' };
+const S = { veic:[], os:[], sin:[], pecas:[], oficinas:[], histCompartilhado:[], oficina:null, cfg:null, view:'painel', db:null, assets:null, sample:null, canOcr:false, filtro:'', mec:false, osAtual:null, mecNome:'', mecs:[], mecsOk:false, sess:null, user:null, perfil:null, relPeriodo:12, relOrdem:'paradas', custoPeriodo:'mes', frotaFiltro:'todos' };
 const DEF_CFG = { avisoKm:500, avisoDias:15 };
 // catálogo inicial de peças/serviços (intervalos em km e dias; 0 = não avisa)
 const DEF_PECAS = [
@@ -275,14 +275,18 @@ const blob = id => sb.storage.from(BUCKET).getPublicUrl(id).data.publicUrl;
 const osTotal = o => (o.itens||[]).reduce((s,i)=>s+(+i.custo||0)*(+i.qtd||1),0)+(+o.maoObra||0);
 const pecasTotal = o => (o.itens||[]).reduce((s,i)=>s+(+i.custo||0)*(+i.qtd||1),0);
 const lightbox = id => { document.getElementById('lbimg').src=blob(id); document.getElementById('lb').classList.add('on'); };
-// ---- papéis: gestor (acesso total), chefe (oficina completa, inclui mão de obra), ajudante (só peças) ----
-const PAPEL_LABEL = {gestor:'Gestão',chefe:'Mecânico chefe',ajudante:'Mecânico ajudante',mecanico:'Mecânico chefe'};
+// ---- papéis: superadmin (rede de oficinas, só a frota Carsz), gestor (acesso total dentro da
+// própria oficina), chefe (oficina completa, inclui mão de obra), ajudante (só peças) ----
+const PAPEL_LABEL = {superadmin:'Administrador geral',gestor:'Gestão',chefe:'Mecânico chefe',ajudante:'Mecânico ajudante',mecanico:'Mecânico chefe'};
 const papelLabel = p => PAPEL_LABEL[p]||p;
+// superadmin não aparece aqui: só é concedido manualmente (fora do app), nunca por um gestor de oficina
 const papelOptions = sel => ['ajudante','chefe','gestor'].map(p=>`<option value="${p}" ${p===sel?'selected':''}>${esc(papelLabel(p))}</option>`).join('');
-const podeFinalizarOs = () => !!(S.perfil&&(S.perfil.papel==='gestor'||S.perfil.papel==='chefe'||S.perfil.papel==='mecanico'));
+const podeFinalizarOs = () => !!(S.perfil&&(S.perfil.papel==='gestor'||S.perfil.papel==='chefe'||S.perfil.papel==='mecanico'||S.perfil.papel==='superadmin'));
 // excluir OS é uma ação exclusiva do mecânico chefe (nem gestor, nem ajudante)
 const ehChefe = () => !!(S.perfil&&(S.perfil.papel==='chefe'||S.perfil.papel==='mecanico'));
-const ehGestor = () => !!(S.perfil&&S.perfil.papel==='gestor');
+// superadmin herda os poderes de gestor (acesso total), mais a tela de Oficinas (rede)
+const ehGestor = () => !!(S.perfil&&(S.perfil.papel==='gestor'||S.perfil.papel==='superadmin'));
+const ehSuperadmin = () => !!(S.perfil&&S.perfil.papel==='superadmin');
 // frota própria (nossos carros, entram nos relatórios/painel) vs. cliente particular do mecânico
 // (carro de fora da locadora que ele também atende por aqui — fica fora dos relatórios e do painel,
 // mas continua com OS, histórico e alertas normalmente, no mesmo sistema)
@@ -297,7 +301,16 @@ function catalogo(){
 const peca = id => catalogo().find(p=>p.id===id)||{id,nome:id};
 
 // ============ histórico / alertas (lastro = placa + km) ============
-function osDoVeic(vId){ return S.os.filter(o=>o.veiculoId===vId).sort((a,b)=>(b.data||'').localeCompare(a.data||'')); }
+// histórico próprio (OS que esta oficina pode ver por completo) + histórico técnico vindo de
+// OUTRAS oficinas para a mesma placa (S.histCompartilhado — sem valor, sem identificar quem
+// atendeu), pra ajudar a diagnosticar mesmo quando o carro já passou por outra oficina
+function osDoVeic(vId){
+  const v=S.veic.find(x=>x.id===vId);
+  const proprias=S.os.filter(o=>o.veiculoId===vId);
+  const idsProprias=new Set(proprias.map(o=>o.id));
+  const externas=v?S.histCompartilhado.filter(h=>h.placa===v.placa&&!idsProprias.has(h.id)):[];
+  return [...proprias,...externas].sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+}
 function ultimaTroca(vId,pecaId){
   for(const o of osDoVeic(vId)) if((o.itens||[]).some(i=>i.pecaId===pecaId)) return o;
   return null;
@@ -327,6 +340,8 @@ function statusVeic(v){ const al=alertasVeic(v); return al.some(a=>a.lvl==='bad'
 
 // ============ navegação ============
 const NAV_ADM=[['painel','Painel'],['rel','Relatórios'],['frota','Frota'],['os','Ordens de serviço'],['sin','Sinistros'],['pecas','Peças'],['oficina','Oficina'],['cfg','Configurações']];
+// aba "Oficinas" (rede de oficinas parceiras) só aparece para o administrador geral
+function navAdm(){ return ehSuperadmin()?[...NAV_ADM,['oficinas','Oficinas']]:NAV_ADM; }
 const NAV_MEC=[['mnova','Nova OS'],['mabertas','OS abertas'],['mconc','OS concluídas'],['mhist','Histórico por placa']];
 // "Atenção" é uma cópia dos alertas do painel do administrador (manutenções vencidas/próximas),
 // só da frota Carsz — visível só para o mecânico chefe, não para ajudantes
@@ -343,19 +358,20 @@ function render(){
   const mb=document.getElementById('modeBtn');
   if(!S.user){ document.getElementById('nav').innerHTML=''; mb.style.display='none'; const mm=document.getElementById('main'); if(!document.getElementById('lg_user')){ const k=preservar(mm); loginMec(mm); restaurar(k); } return; }
   mb.style.display='';
-  const gestor=S.perfil&&S.perfil.papel==='gestor';
+  const gestor=S.perfil&&(S.perfil.papel==='gestor'||S.perfil.papel==='superadmin');
   if(!gestor&&!S.mec){ S.mec=true; S.view='mnova'; }
   if(gestor){ mb.textContent=S.mec?'Modo gestão':'Modo mecânico'; mb.onclick=toggleMode; }
   else { mb.textContent='Sair'; mb.onclick=sairMec; }
-  document.getElementById('subttl').textContent=S.mec?('Mecânico: '+S.mecNome+(gestor?' · ':'')):('Logado como '+(S.perfil?S.perfil.nome:''));
+  const nomeOficina=S.oficina?S.oficina.nome:(ehSuperadmin()?'Administração geral':'');
+  document.getElementById('subttl').textContent=S.mec?('Mecânico: '+S.mecNome+(nomeOficina?' · '+nomeOficina:'')+(gestor?' · ':'')):('Logado como '+(S.perfil?S.perfil.nome:'')+(nomeOficina?' · '+nomeOficina:''));
   if(gestor&&S.mec){ const sub=document.getElementById('subttl'); sub.innerHTML+='<a href="#" onclick="sairMec();return false" style="color:inherit">sair</a>'; }
-  const nav=(S.mec?navMec():NAV_ADM);
+  const nav=(S.mec?navMec():navAdm());
   document.getElementById('nav').innerHTML=nav.map(([k,l])=>`<button data-v="${k}" class="${k===S.view?'on':''}">${l}</button>`).join('');
   document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;S.filtro='';render();});
   const m=document.getElementById('main');
   if(!S.cfg){ m.innerHTML='<div class="empty">Carregando dados…</div>'; return; }
   const keep=preservar(m);
-  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,mconc,mhist,matencao})[S.view](m);
+  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,mconc,mhist,matencao,oficinas:oficinasView})[S.view](m);
   restaurar(keep);
   if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
   else {
@@ -373,7 +389,15 @@ function timelineHtml(v, opts={}){
   let h='<div class="tl">';
   for(const e of evs){
     if(e.t==='sin'){ h+=`<div class="ev sin"><div class="hd"><b>${fmtD(e.d)}</b><span class="tag bad">Sinistro</span><span class="muted">${esc(e.s.status)}</span></div><div>${esc(e.s.desc)}</div></div>`; continue; }
-    const o=e.o; const tot=podeMo?osTotal(o):pecasTotal(o);
+    const o=e.o;
+    if(o.externo){
+      // histórico técnico de OUTRA oficina: só itens/km/data, nunca valor nem quem atendeu
+      h+=`<div class="ev ${o.status==='Aberta'?'open':''}"><div class="hd"><b>${fmtD(o.data)}</b><span class="plate">${fmtKm(o.km)}</span><span class="tag neu">Atendido em outra oficina</span></div>`;
+      if((o.itens||[]).length){ h+='<ul>'; for(const i of o.itens) h+=`<li>${esc(i.nome)}${i.retroativo?` <span class="tag neu">informado · ${fmtKm(i.kmTroca)}</span>`:''}</li>`; h+='</ul>'; }
+      h+='</div>';
+      continue;
+    }
+    const tot=podeMo?osTotal(o):pecasTotal(o);
     h+=`<div class="ev ${o.status==='Aberta'?'open':''}"><div class="hd"><b>${fmtD(o.data)}</b><span class="plate">${fmtKm(o.km)}</span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${esc(o.status)}</span><span class="muted">${esc(o.mecanico||'')}${o.oficina?' · '+esc(o.oficina):''}</span><span class="sp"></span><b>${fmtBRL(tot)}</b>${opts.edit?`<button class="sec" onclick="abrirOs('${o.id}')">Abrir OS</button>`:''}</div>`;
     if((o.itens||[]).length){ h+='<ul>'; for(const i of o.itens) h+=`<li>${esc(i.nome)}${(+i.qtd||1)>1?' ×'+i.qtd:''}${i.custo?` — ${fmtBRL((+i.custo)*(+i.qtd||1))}`:''}${i.obs?` <span class="muted">(${esc(i.obs)})</span>`:''}${i.retroativo?` <span class="tag neu">informado · ${fmtKm(i.kmTroca)}</span>`:''}${tagEditado(i)}</li>`; h+='</ul>'; }
     if(podeMo&&(o.maoObra||o.maoObraEdit)) h+=`<div class="muted">Mão de obra: ${fmtBRL(o.maoObra)}${tagMo(o)}</div>`;
@@ -413,7 +437,15 @@ function sugPlaca(){
   l.style.display='block';
   l.innerHTML=arr.map(v=>`<div onmousedown="nova.placa='${v.placa}';document.getElementById('n_placa').value='${v.placa}';chkPlaca();"><span class="plate">${v.placa}</span> ${esc(v.modelo)}<small>${osDoVeic(v.id).length} intervenções · último km ${fmtKm(v.km)}${osAbertaDe(v)?' · <b>OS aberta</b>':''}</small></div>`).join('');
 }
-function osAbertaDe(v){ return v?S.os.find(o=>o.veiculoId===v.id&&o.status==='Aberta'):null; }
+// também olha o histórico compartilhado de outras oficinas, pra não deixar duas oficinas
+// atenderem o mesmo carro (frota Carsz) ao mesmo tempo sem saber uma da outra
+function osAbertaDe(v){
+  if(!v) return null;
+  const propria=S.os.find(o=>o.veiculoId===v.id&&o.status==='Aberta');
+  if(propria) return propria;
+  const ext=S.histCompartilhado.find(h=>h.placa===v.placa&&h.status==='Aberta');
+  return ext?{...ext,mecanico:'',itens:ext.itens||[]}:null;
+}
 const kmMinimo = v => +((v&&v.km)||0);
 function kmRuim(){ if(ehGestor()) return false; const v=S.veic.find(x=>x.placa===normPlaca(nova.placa)); return !!(v&&+nova.km>0&&+nova.km<kmMinimo(v)); }
 function infoPlaca(){
@@ -476,19 +508,35 @@ async function entrarMec(){
   location.reload();
 }
 async function carregarSessao(session){
-  if(!session){ S.user=null; S.perfil=null; S.mecNome=''; render(); return; }
+  if(!session){ S.user=null; S.perfil=null; S.mecNome=''; S.oficina=null; render(); return; }
   S.user=session.user;
   const {data:perf}=await sb.from('perfis').select('id,data').eq('id',S.user.id).maybeSingle();
   if(perf){ S.perfil={id:perf.id,...perf.data}; }
   else {
     const {count}=await sb.from('perfis').select('id',{count:'exact',head:true});
-    const novo={nome:S.user.email.split('@')[0],email:S.user.email,papel:count?'ajudante':'gestor',ativo:true,criadoEm:agoraIso()};
+    // primeiríssimo acesso (nenhum perfil ainda): vira gestor da Oficina Matriz
+    const novo={nome:S.user.email.split('@')[0],email:S.user.email,papel:count?'ajudante':'gestor',oficinaId:'matriz',ativo:true,criadoEm:agoraIso()};
     await sb.from('perfis').upsert({id:S.user.id,data:novo}); S.perfil={id:S.user.id,...novo};
   }
   if(S.perfil.ativo===false){ await sb.auth.signOut(); S.user=null; S.perfil=null; alert('Acesso desativado. Fale com a gestão.'); render(); return; }
+  // usuário de uma oficina (não é o administrador geral): a oficina precisa estar "ativa".
+  // se a tabela "oficinas" ainda não existir (migração do banco não rodada ainda), não bloqueia
+  // o login — assim esta atualização não trava ninguém antes de você rodar o SQL da migração.
+  if(S.perfil.papel!=='superadmin'){
+    const {data:ofi,error:eOfi}=await sb.from('oficinas').select('id,data').eq('id',S.perfil.oficinaId||'').maybeSingle();
+    if(eOfi){ console.warn('tabela "oficinas" indisponível (rode a migração do banco):',eOfi); S.oficina=null; }
+    else {
+      S.oficina=ofi?{id:ofi.id,...ofi.data}:null;
+      if(!S.oficina||S.oficina.status!=='ativa'){
+        await sb.auth.signOut(); S.user=null; S.perfil=null; S.oficina=null;
+        alert(S.oficina?'Sua oficina está suspensa. Fale com o administrador.':'Sua oficina ainda não foi aprovada. Fale com o administrador.');
+        render(); return;
+      }
+    }
+  } else S.oficina=null;
   S.mecNome=S.perfil.nome;
   const d={...S.perfil,ultimoAcesso:agoraIso()}; delete d.id; sb.from('perfis').upsert({id:S.user.id,data:d}).then(()=>{},()=>{});
-  if(S.perfil.papel!=='gestor'){ S.mec=true; S.view='mnova'; }
+  if(S.perfil.papel!=='gestor'&&S.perfil.papel!=='superadmin'){ S.mec=true; S.view='mnova'; }
   render();
 }
 function oficinaView(m){
@@ -528,7 +576,7 @@ async function salvarMec(id){
     if(error){toast('Erro: '+error.message);return;}
     if(!data.user){toast('Não foi possível criar o usuário');return;}
     if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado');return;}
-    const d={nome,cpf,telefone:tel,email,papel,ativo,criadoEm:agoraIso()};
+    const d={nome,cpf,telefone:tel,email,papel,oficinaId:S.perfil.oficinaId||null,ativo,criadoEm:agoraIso()};
     const {error:e2}=await sb.from('perfis').upsert({id:data.user.id,data:d}); if(e2){toast('Erro ao salvar perfil: '+e2.message);return;}
   } else {
     const ex=S.mecs.find(m=>m.id===id)||{}; const d={...ex,nome,cpf,telefone:tel,papel,ativo}; delete d.id;
@@ -573,10 +621,12 @@ async function criarOs(){
   // placa nova aberta pelo mecânico: por padrão é cliente particular dele (fora da frota Carsz e fora
   // dos relatórios/painel) — a gestão reclassifica como frota própria em Frota > Completar cadastro
   // se for, de fato, um carro da locadora
-  if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'',frotaPropria:false,km,status:'Em manutenção',criadoPor:S.mecNome,pendente:true}); v={id:ref.id,placa,km}; }
+  if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'',frotaPropria:false,oficinaId:S.perfil.oficinaId||null,km,status:'Em manutenção',criadoPor:S.mecNome,pendente:true}); v={id:ref.id,placa,km}; }
   else if(km>(+v.km||0)) await S.db.doc('veiculos/'+v.id).update({km});
   const dataOs=(ehGestor()&&nova.data)?new Date(nova.data+'T12:00:00').toISOString():agoraIso();
-  const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:S.mecNome,status:'Aberta',fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:'AMF',relato:''};
+  // oficinaId identifica quem atendeu — decide quem pode ver valor/mão de obra desta OS (ver
+  // regras de segurança no banco); oficina (texto livre) é só um rótulo informativo, igual já era
+  const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:S.mecNome,oficinaId:S.perfil.oficinaId||null,status:'Aberta',fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:(S.oficina&&S.oficina.nome)||'',relato:''};
   const ref=await S.db.collection('os').add(d);
   nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje()};
   S.osAtual=ref.id; toast('OS aberta'); render();
@@ -835,7 +885,7 @@ async function imprimirOs(id){
   doc.text(`Veículo: ${v.modelo||'—'} ${v.ano||''}`,margin,y); y+=lh;
   doc.text(`Data do serviço: ${fmtD(o.data||o.concluidaEm)}`,margin,y); y+=lh;
   if(o.mecanico){ doc.text(`Mecânico: ${o.mecanico}`,margin,y); y+=lh; }
-  doc.text(`Oficina: ${o.oficina||'AMF'}`,margin,y); y+=lh;
+  doc.text(`Oficina: ${o.oficina||(S.oficina&&S.oficina.nome)||''}`,margin,y); y+=lh;
   y+=1; linha();
   doc.setFont('helvetica','bold'); doc.text('Peças e serviços',margin,y); y+=lh; doc.setFont('helvetica','normal');
   if((o.itens||[]).length){
@@ -1205,6 +1255,54 @@ async function limparTeste(){
 async function salvarCfg(){
   S.cfg={...S.cfg,avisoKm:+val('avisoKm')||0,avisoDias:+val('avisoDias')||0}; await S.db.doc('config/geral').set(S.cfg); toast('Configurações salvas'); }
 
+// ---- Oficinas (rede de oficinas parceiras) — só o administrador geral gerencia ----
+// Pré-cadastro: a oficina nasce "pendente" e só opera (login libera) depois que o administrador
+// geral marca como "ativa". Oficina nenhuma enxerga os clientes particulares de outra — só o
+// histórico técnico (itens/km/data) da frota Carsz, e dos clientes particulares que ela mesma
+// atende, mais o histórico técnico compartilhado (sem valor, sem identificar quem atendeu).
+function oficinasView(m){
+  let h=`<div class="bar"><h2>Oficinas</h2><span class="sp"></span><button class="pri" onclick="formOficina()">+ Pré-cadastrar oficina</button></div>
+  <p class="hint" style="margin:-4px 0 10px">Cada oficina só vê os próprios clientes particulares e os valores dos próprios atendimentos. A frota Carsz é compartilhada (qualquer oficina ativa pode atender), e o histórico técnico de manutenção (itens trocados, km, data) é visto por todas as oficinas, pra ajudar a diagnosticar — sem valor e sem identificar quem atendeu.</p>
+  <div class="tbl"><table><tr><th>Oficina</th><th>Responsável / contato</th><th>Status</th><th></th></tr>`;
+  const lista=[...S.oficinas].filter(o=>o.id!=='matriz'||S.oficinas.length===1).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  for(const o of (lista.length?lista:S.oficinas)){
+    h+=`<tr><td><b>${esc(o.nome)}</b></td><td class="muted">${esc(o.responsavel||'')}${o.email?'<br>'+esc(o.email):''}${o.telefone?'<br>'+esc(o.telefone):''}</td><td><span class="tag ${o.status==='ativa'?'ok':o.status==='suspensa'?'bad':'warn'}">${o.status==='ativa'?'Ativa':o.status==='suspensa'?'Suspensa':'Pendente'}</span></td><td class="row">${o.status!=='ativa'?`<button class="sec" onclick="statusOficina('${o.id}','ativa')">Ativar</button>`:`<button class="ghost" onclick="statusOficina('${o.id}','suspensa')">Suspender</button>`}</td></tr>`;
+  }
+  if(!S.oficinas.length) h+='<tr><td colspan="4" class="muted">Nenhuma oficina cadastrada ainda.</td></tr>';
+  h+='</table></div>';
+  m.innerHTML=h;
+}
+function formOficina(){
+  abrir(`<h3>Pré-cadastrar oficina</h3><div class="grid">
+  <div class="full"><label>Nome da oficina</label><input id="of_nome" placeholder="Ex: Oficina São Bernardo"></div>
+  <div><label>Responsável</label><input id="of_resp"></div>
+  <div><label>Telefone / WhatsApp</label><input id="of_tel" inputmode="tel" placeholder="(11) 99999-9999" oninput="this.value=mascaraTel(this.value)"></div>
+  <div class="full"><label>E-mail do gestor (login do responsável pela oficina)</label><input id="of_email" type="email"></div>
+  <div><label>Senha inicial (mín. 6)</label><input id="of_pass" type="text" autocomplete="off"></div></div>
+  <div class="hint">Cria a oficina já com o primeiro acesso de gestor dela. A oficina fica "pendente" até você marcar como "ativa" na lista.</div>
+  <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarOficina()">Cadastrar</button></div>`);
+}
+async function salvarOficina(){
+  const nome=val('of_nome'), resp=val('of_resp'), tel=val('of_tel'), email=val('of_email').toLowerCase(), pass=document.getElementById('of_pass').value;
+  if(!nome){toast('Informe o nome da oficina');return;}
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('E-mail inválido');return;}
+  if(pass.length<6){toast('Senha com pelo menos 6 caracteres');return;}
+  const oid=genId();
+  const tmp=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+  const {data,error}=await tmp.auth.signUp({email,password:pass});
+  if(error){toast('Erro: '+error.message);return;}
+  if(!data.user){toast('Não foi possível criar o acesso');return;}
+  if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado');return;}
+  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email,status:'pendente',criadoEm:agoraIso()});
+  await sb.from('perfis').upsert({id:data.user.id,data:{nome:resp||nome,email,papel:'gestor',oficinaId:oid,ativo:true,criadoEm:agoraIso()}});
+  fechar(); toast('Oficina cadastrada — marque como "ativa" quando quiser liberar o acesso');
+}
+async function statusOficina(id,status){
+  if(status==='ativa'&&!confirm('Ativar esta oficina? Ela passa a poder atender a frota Carsz e usar o sistema.'))return;
+  if(status==='suspensa'&&!confirm('Suspender esta oficina? Os usuários dela perdem acesso imediatamente.'))return;
+  await S.db.doc('oficinas/'+id).update({status}); toast('Status atualizado');
+}
+
 // ---- detalhe/histórico veículo (gestão) ----
 function detVeic(id){
   const v=S.veic.find(x=>x.id===id); if(!v)return;
@@ -1238,7 +1336,10 @@ function formVeic(id){
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarVeic('${id||''}')">Salvar</button></div>`);
 }
 async function salvarVeic(id){
+  const existente=id?S.veic.find(x=>x.id===id):null;
   const d={placa:normPlaca(val('f_placa')),ano:val('f_ano'),modelo:val('f_modelo'),empresa:val('f_emp'),km:+val('f_km')||0,status:val('f_st'),renavam:val('f_ren'),rastreador:val('f_rast'),obs:val('f_obs'),frotaPropria:val('f_frota')!=='externo',clienteNome:val('f_clinome'),clienteTel:(val('f_clitel')||'').replace(/\D/g,'')};
+  // cliente particular pertence à oficina de quem cadastrou — preserva o dono original ao editar
+  if(!d.frotaPropria) d.oficinaId=(existente&&existente.oficinaId)||S.perfil.oficinaId||null;
   if(!d.placa||!d.modelo){toast('Informe placa e modelo');return;}
   if(!id && S.veic.some(v=>v.placa===d.placa)){toast('Placa já cadastrada');return;}
   if(id) await S.db.doc('veiculos/'+id).set(d); else await S.db.collection('veiculos').add(d);
@@ -1291,6 +1392,19 @@ async function delSin(id){ if(!confirm('Excluir este sinistro?'))return; await S
 
 // ============ boot ============
 function subCol(col,key){ S.db.collection(col).onSnapshot(snap=>{ S[key]=snap.docs.map(d=>({id:d.id,...d.data()})); render(); }, e=>{ document.getElementById('status').textContent='Erro: '+e.code; }); }
+// busca, pra todas as placas conhecidas, o histórico técnico registrado em OUTRAS oficinas (via
+// RPC historico_compartilhado do banco — nunca traz valor nem quem atendeu). Se a migração do
+// banco ainda não foi aplicada, falha em silêncio e o app continua funcionando sem esse extra.
+async function carregarHistoricoCompartilhado(){
+  const placas=[...new Set(S.veic.map(v=>v.placa).filter(Boolean))];
+  if(!placas.length){ S.histCompartilhado=[]; render(); return; }
+  try{
+    const {data,error}=await sb.rpc('historico_compartilhado',{p_placas:placas});
+    if(error) throw error;
+    S.histCompartilhado=(data||[]).map(r=>({id:r.id,placa:r.placa,veiculoId:r.veiculo_id,data:r.data_intervencao,km:+r.km||0,itens:r.itens||[],status:r.status,externo:true}));
+  }catch(e){ console.warn('historico_compartilhado indisponível (rode a migração do banco):',e); }
+  render();
+}
 if(location.hash.startsWith('#mecanico')){ S.mec=true; S.view='mnova'; }
 S.db=mkDb(); S.assets=mkAssets(); S.cfg=JSON.parse(JSON.stringify(DEF_CFG)); S.mecsOk=true;
 render();
@@ -1300,7 +1414,10 @@ render();
   st.textContent='Sincronizado';
   const {data:{session}}=await sb.auth.getSession();
   S.db.doc('config/geral').onSnapshot(s=>{ S.cfg=s.exists?{...DEF_CFG,...s.data()}:JSON.parse(JSON.stringify(DEF_CFG)); render(); });
-  subCol('veiculos','veic'); subCol('os','os'); subCol('sinistros','sin'); subCol('pecas','pecas'); subCol('perfis','mecs');
+  S.db.collection('veiculos').onSnapshot(snap=>{ S.veic=snap.docs.map(d=>({id:d.id,...d.data()})); render(); carregarHistoricoCompartilhado(); }, e=>{ document.getElementById('status').textContent='Erro: '+e.code; });
+  subCol('os','os'); subCol('sinistros','sin'); subCol('pecas','pecas'); subCol('perfis','mecs');
+  // "oficinas" só existe depois da migração do banco — falha em silêncio até lá, sem derrubar o status
+  S.db.collection('oficinas').onSnapshot(snap=>{ S.oficinas=snap.docs.map(d=>({id:d.id,...d.data()})); render(); }, e=>{ console.warn('tabela "oficinas" indisponível (rode a migração do banco):',e); });
   // se for link de recuperação de senha, o listener registrado logo após criar o "sb" (acima, no
   // topo do arquivo) já capturou o evento PASSWORD_RECOVERY e está tratando a troca de senha —
   // não chamamos carregarSessao aqui de novo para não duplicar o fluxo.
