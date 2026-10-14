@@ -402,7 +402,10 @@ function render(){
   if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
   else {
     const na=S.os.filter(o=>o.status==='Aberta').length; const b=document.querySelector('nav [data-v=mabertas]'); if(b) b.innerHTML='OS abertas'+(na?`<span class="n">${na}</span>`:'');
-    const nb2=S.veic.filter(v=>isFrota(v)&&statusVeic(v)==='bad').length; const b2=document.querySelector('nav [data-v=matencao]'); if(b2) b2.innerHTML='Atenção'+(nb2?`<span class="n">${nb2}</span>`:'');
+    // mesmo filtro de "oficina parceira só vê placa que já atendeu" usado na tela matencao()
+    const souParceiraNav=!!(S.perfil&&S.perfil.oficinaId&&S.perfil.oficinaId!=='matriz');
+    const placasAtendidasNav=souParceiraNav?new Set(S.os.map(o=>o.veiculoId)):null;
+    const nb2=S.veic.filter(v=>isFrota(v)&&statusVeic(v)==='bad'&&(!souParceiraNav||placasAtendidasNav.has(v.id))).length; const b2=document.querySelector('nav [data-v=matencao]'); if(b2) b2.innerHTML='Atenção'+(nb2?`<span class="n">${nb2}</span>`:'');
   }
 }
 
@@ -1046,10 +1049,14 @@ function mhist(m){
 // aba do mecânico chefe: mesmos alertas de "Atenção agora" do painel do administrador, só da
 // frota Carsz (clientes particulares do mecânico não entram aqui), para ele acompanhar junto com o gestor
 function matencao(m){
-  const veicFrota=S.veic.filter(isFrota);
+  // oficina PARCEIRA (não a Matriz): só mostra alerta de placa que ela já atendeu alguma vez
+  // (abriu OS) — senão ela veria avisos da frota inteira da Carsz, não só do que é dela
+  const souParceira=!!(S.perfil&&S.perfil.oficinaId&&S.perfil.oficinaId!=='matriz');
+  const placasAtendidas=souParceira?new Set(S.os.map(o=>o.veiculoId)):null;
+  const veicFrota=S.veic.filter(isFrota).filter(v=>!souParceira||placasAtendidas.has(v.id));
   const venc=[],prox=[];
   for(const v of veicFrota) for(const a of alertasVeic(v)){ if(a.lvl==='bad')venc.push(a); else if(a.lvl==='warn')prox.push(a); }
-  let h=`<div class="bar"><h2>Atenção agora</h2></div><p class="hint" style="margin:-4px 0 10px">Somente frota Carsz — mesmos alertas do painel do administrador.</p><div class="cards">
+  let h=`<div class="bar"><h2>Atenção agora</h2></div><p class="hint" style="margin:-4px 0 10px">${souParceira?'Somente veículos da frota Carsz que sua oficina já atendeu.':'Somente frota Carsz — mesmos alertas do painel do administrador.'}</p><div class="cards">
     <div class="card bad"><div class="v">${venc.length}</div><div class="l">manutenções vencidas</div></div>
     <div class="card warn"><div class="v">${prox.length}</div><div class="l">vencendo em breve</div></div>
   </div>`;
