@@ -929,7 +929,7 @@ function mabertas(m){
 function mconc(m){
   const f=normPlaca(S.filtro); const podeMo=podeFinalizarOs();
   const lst=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.data||b.concluidaEm||'').localeCompare(a.data||a.concluidaEm||'')).slice(0,60);
-  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${cardsFinanceiro()}${alertaCobrancaBanner()}<input placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
+  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${cardsFinanceiro()}${alertaCobrancaBanner()}<input id="mc_busca" placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
    (lst.length?lst.map(o=>{
      const v=S.veic.find(x=>x.id===o.veiculoId);
      const atraso=diasAtraso(o);
@@ -1214,7 +1214,7 @@ async function visualizarOs(id){
 }
 function mhist(m){
   const p=normPlaca(S.filtro); const v=S.veic.find(x=>x.placa===p);
-  m.innerHTML=`<div class="bar"><h2>Histórico por placa</h2></div><input class="xl" placeholder="Digite a placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" autofocus>
+  m.innerHTML=`<div class="bar"><h2>Histórico por placa</h2></div><input id="mh_busca" class="xl" placeholder="Digite a placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" autofocus>
   ${p.length<7?`<div class="muted" style="margin-top:10px">${S.veic.slice(0,30).filter(x=>!p||x.placa.startsWith(p)).map(x=>`<a href="#" onclick="S.filtro='${x.placa}';render();return false" class="plate" style="margin:4px;display:inline-block">${x.placa}</a>`).join('')}</div>`:
     v?`<div class="step" style="margin-top:12px"><span class="plate" style="font-size:19px">${esc(v.placa)}</span> <b>${esc(v.modelo)} ${esc(v.ano||'')}</b> · ${fmtKm(v.km)}</div>${timelineHtml(v,{edit:true})}`:`<div class="step" style="margin-top:12px;text-align:center"><div class="muted" style="margin-bottom:10px">Placa <span class="plate">${esc(p)}</span> não está cadastrada — sem histórico.</div><button class="big" onclick="novaOsPlaca('${esc(p)}')">Abrir OS para esta placa nova</button></div>`}`;
 }
