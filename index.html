@@ -289,6 +289,13 @@ const ehChefe = () => !!(S.perfil&&(S.perfil.papel==='chefe'||S.perfil.papel==='
 // superadmin herda os poderes de gestor (acesso total), mais a tela de Oficinas (rede)
 const ehGestor = () => !!(S.perfil&&(S.perfil.papel==='gestor'||S.perfil.papel==='superadmin'));
 const ehSuperadmin = () => !!(S.perfil&&S.perfil.papel==='superadmin');
+// "administrador geral do negócio": só o administrador geral (superadmin) e a gestão da própria
+// Oficina Matriz (equipe interna da Carsz) enxergam as telas administrativas de toda a operação
+// (Painel, Relatórios, Frota, Sinistros, Peças, Configurações). O "gestor" de uma oficina parceira
+// (o responsável dela, dono/sócio) NÃO entra aqui — ele é o chefe só da própria oficina, com acesso
+// completo aos próprios atendimentos (modo mecânico + aba "Oficina" pra gerenciar a própria equipe),
+// mas nunca aos painéis e configurações do negócio da Carsz como um todo
+const ehAdminGeral = () => ehSuperadmin()||!!(S.perfil&&S.perfil.papel==='gestor'&&(!S.perfil.oficinaId||S.perfil.oficinaId==='matriz'));
 // frota própria (nossos carros, entram nos relatórios/painel) vs. cliente particular do mecânico
 // (carro de fora da locadora que ele também atende por aqui — fica fora dos relatórios e do painel,
 // mas continua com OS, histórico e alertas normalmente, no mesmo sistema)
@@ -346,8 +353,16 @@ const NAV_ADM=[['painel','Painel'],['rel','Relatórios'],['frota','Frota'],['os'
 function navAdm(){ return ehSuperadmin()?[...NAV_ADM,['oficinas','Oficinas']]:NAV_ADM; }
 const NAV_MEC=[['mnova','Nova OS'],['mabertas','OS abertas'],['mconc','OS concluídas'],['mhist','Histórico por placa']];
 // "Atenção" é uma cópia dos alertas do painel do administrador (manutenções vencidas/próximas),
-// só da frota Carsz — visível só para o mecânico chefe, não para ajudantes
-function navMec(){ return ehChefe()?[...NAV_MEC,['matencao','Atenção']]:NAV_MEC; }
+// só da frota Carsz — visível pro mecânico chefe e pro responsável de oficina parceira, não pro
+// ajudante. "Oficina" (gerenciar a própria equipe) só aparece pro responsável de oficina parceira
+// (dono da própria oficina) — a gestão geral da Carsz já gerencia equipes por "Oficinas" > Editar
+function navMec(){
+  const donoOficina=!!(S.perfil&&S.perfil.papel==='gestor'&&!ehAdminGeral());
+  let nav=[...NAV_MEC];
+  if(ehChefe()||donoOficina) nav.push(['matencao','Atenção']);
+  if(donoOficina) nav.push(['oficina','Oficina']);
+  return nav;
+}
 const PRESERVE=['lg_user','lg_pass','it_nome','it_qtd','it_custo','it_obs','os_rel','os_mo','os_of','n_placa','n_km','n_modelo'];
 function preservar(root){ const k={vals:{},focus:null,sel:null}; for(const id of PRESERVE){ const e=document.getElementById(id); if(e&&e.value!=='') k.vals[id]=e.value; } const a=document.activeElement; if(a&&a.id&&root.contains(a)){ k.focus=a.id; try{k.sel=[a.selectionStart,a.selectionEnd];}catch(e){} } return k; }
 function restaurar(k){ for(const [id,v] of Object.entries(k.vals)){ const e=document.getElementById(id); if(e&&!e.disabled&&e.value!==v) e.value=v; } if(k.focus){ const e=document.getElementById(k.focus); if(e){ e.focus(); if(k.sel&&k.sel[0]!=null){ try{e.setSelectionRange(k.sel[0],k.sel[1]);}catch(x){} } } } }
@@ -360,7 +375,10 @@ function render(){
   const mb=document.getElementById('modeBtn');
   if(!S.user){ document.getElementById('nav').innerHTML=''; mb.style.display='none'; const mm=document.getElementById('main'); if(!document.getElementById('lg_user')){ const k=preservar(mm); loginMec(mm); restaurar(k); } return; }
   mb.style.display='';
-  const gestor=S.perfil&&(S.perfil.papel==='gestor'||S.perfil.papel==='superadmin');
+  // "gestor" aqui = administrador geral do negócio (vê Painel/Relatórios/Frota/Sinistros/
+  // Configurações e o botão de trocar "Modo gestão"/"Modo mecânico"). O responsável de uma oficina
+  // parceira NÃO entra nessa conta — fica sempre em modo mecânico, com a aba extra "Oficina"
+  const gestor=ehAdminGeral();
   if(!gestor&&!S.mec){ S.mec=true; S.view='mnova'; }
   if(gestor){ mb.textContent=S.mec?'Modo gestão':'Modo mecânico'; mb.onclick=toggleMode; }
   else { mb.textContent='Sair'; mb.onclick=sairMec; }
@@ -544,7 +562,7 @@ async function carregarSessao(session){
   } else S.oficina=null;
   S.mecNome=S.perfil.nome;
   const d={...S.perfil,ultimoAcesso:agoraIso()}; delete d.id; sb.from('perfis').upsert({id:S.user.id,data:d}).then(()=>{},()=>{});
-  if(S.perfil.papel!=='gestor'&&S.perfil.papel!=='superadmin'){ S.mec=true; S.view='mnova'; }
+  if(!ehAdminGeral()){ S.mec=true; S.view='mnova'; }
   render();
 }
 function oficinaView(m){
@@ -577,7 +595,7 @@ function formMec(id,oficinaId){
   <div><label>Papel</label><select id="mc_papel">${papelOptions(x.papel)}</select></div>
   <div><label>Situação</label><select id="mc_ativo">${opt(['Ativo','Inativo'],x.ativo===false?'Inativo':'Ativo')}</select></div>
   ${campoOficina}</div>
-  <div class="hint">Ajudante: insere peças e valores de peças na OS, mas não vê nem edita a mão de obra e não pode concluir a OS. Mecânico chefe: acesso completo na oficina — peças, mão de obra e concluir/reabrir OS. Gestão: acesso ilimitado ao sistema.</div>
+  <div class="hint">Ajudante: insere peças e valores de peças na OS, mas não vê nem edita a mão de obra e não pode concluir a OS. Mecânico chefe: acesso completo na oficina — peças, mão de obra e concluir/reabrir OS. Gestão: igual ao mecânico chefe, mais a aba "Oficina" para gerenciar a própria equipe (só a equipe da Oficina Matriz enxerga também os painéis gerais do sistema).</div>
   ${ehSuperadmin()?'<div class="hint">O campo "Oficina" move o usuário para outra oficina — as OS que ele já fez continuam registradas na oficina que atendeu na época, só os próximos atendimentos passam a contar pra oficina nova.</div>':''}
   <div class="hint">${id?'Para redefinir a senha de outro usuário, ele usa "Esqueci a senha" na tela de entrada.':'O usuário é criado já ativo, sem confirmação de e-mail (ver configuração do Supabase no LEIA-ME).'}</div>
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarMec('${id||''}','${oficinaId||''}')">Salvar</button></div>`);
