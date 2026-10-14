@@ -550,7 +550,10 @@ function oficinaView(m){
   m.innerHTML=h;
   if(window.QRCode){ new QRCode(document.getElementById('qr'),{text:link,width:220,height:220,correctLevel:QRCode.CorrectLevel.M}); }
 }
-function formMec(id){
+// oficinaId: só usado ao CRIAR um usuário novo — permite ao administrador geral cadastrar alguém
+// direto para outra oficina (a partir de Oficinas > Editar oficina); sem isso, usa a própria oficina
+// de quem está logado (uso normal, pela aba "Oficina" de cada oficina)
+function formMec(id,oficinaId){
   const x=id?S.mecs.find(m=>m.id===id):{ativo:true,papel:'ajudante'};
   abrir(`<h3>${id?'Editar':'Novo'} usuário</h3><div class="grid">
   <div class="full"><label>Nome completo</label><input id="mc_nome" value="${esc(x.nome)}"></div>
@@ -562,9 +565,9 @@ function formMec(id){
   <div><label>Situação</label><select id="mc_ativo">${opt(['Ativo','Inativo'],x.ativo===false?'Inativo':'Ativo')}</select></div></div>
   <div class="hint">Ajudante: insere peças e valores de peças na OS, mas não vê nem edita a mão de obra e não pode concluir a OS. Mecânico chefe: acesso completo na oficina — peças, mão de obra e concluir/reabrir OS. Gestão: acesso ilimitado ao sistema.</div>
   <div class="hint">${id?'Para redefinir a senha de outro usuário, ele usa "Esqueci a senha" na tela de entrada.':'O usuário é criado já ativo, sem confirmação de e-mail (ver configuração do Supabase no LEIA-ME).'}</div>
-  <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarMec('${id||''}')">Salvar</button></div>`);
+  <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarMec('${id||''}','${oficinaId||''}')">Salvar</button></div>`);
 }
-async function salvarMec(id){
+async function salvarMec(id,oficinaId){
   const cpf=val('mc_cpf'), tel=val('mc_tel'), email=val('mc_email').toLowerCase(), nome=val('mc_nome'), pass=document.getElementById('mc_pass').value, papel=val('mc_papel'), ativo=val('mc_ativo')==='Ativo';
   if(!nome){toast('Informe o nome');return;}
   if(cpf&&!cpfValido(cpf)){toast('CPF inválido');return;}
@@ -576,7 +579,7 @@ async function salvarMec(id){
     if(error){toast('Erro: '+error.message);return;}
     if(!data.user){toast('Não foi possível criar o usuário');return;}
     if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado');return;}
-    const d={nome,cpf,telefone:tel,email,papel,oficinaId:S.perfil.oficinaId||null,ativo,criadoEm:agoraIso()};
+    const d={nome,cpf,telefone:tel,email,papel,oficinaId:oficinaId||S.perfil.oficinaId||null,ativo,criadoEm:agoraIso()};
     const {error:e2}=await sb.from('perfis').upsert({id:data.user.id,data:d}); if(e2){toast('Erro ao salvar perfil: '+e2.message);return;}
   } else {
     const ex=S.mecs.find(m=>m.id===id)||{}; const d={...ex,nome,cpf,telefone:tel,papel,ativo}; delete d.id;
@@ -1266,7 +1269,7 @@ function oficinasView(m){
   <div class="tbl"><table><tr><th>Oficina</th><th>Responsável / contato</th><th>Status</th><th></th></tr>`;
   const lista=[...S.oficinas].filter(o=>o.id!=='matriz'||S.oficinas.length===1).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
   for(const o of (lista.length?lista:S.oficinas)){
-    h+=`<tr><td><b>${esc(o.nome)}</b></td><td class="muted">${esc(o.responsavel||'')}${o.email?'<br>'+esc(o.email):''}${o.telefone?'<br>'+esc(o.telefone):''}</td><td><span class="tag ${o.status==='ativa'?'ok':o.status==='suspensa'?'bad':'warn'}">${o.status==='ativa'?'Ativa':o.status==='suspensa'?'Suspensa':'Pendente'}</span></td><td class="row">${o.status!=='ativa'?`<button class="sec" onclick="statusOficina('${o.id}','ativa')">Ativar</button>`:`<button class="ghost" onclick="statusOficina('${o.id}','suspensa')">Suspender</button>`}${o.email?`<button class="ghost" onclick="reenviarAcessoOficina('${o.id}')">Reenviar acesso</button>`:''}</td></tr>`;
+    h+=`<tr><td><b>${esc(o.nome)}</b></td><td class="muted">${esc(o.responsavel||'')}${o.email?'<br>'+esc(o.email):''}${o.telefone?'<br>'+esc(o.telefone):''}</td><td><span class="tag ${o.status==='ativa'?'ok':o.status==='suspensa'?'bad':'warn'}">${o.status==='ativa'?'Ativa':o.status==='suspensa'?'Suspensa':'Pendente'}</span></td><td class="row">${o.status!=='ativa'?`<button class="sec" onclick="statusOficina('${o.id}','ativa')">Ativar</button>`:`<button class="ghost" onclick="statusOficina('${o.id}','suspensa')">Suspender</button>`}${o.email?`<button class="ghost" onclick="reenviarAcessoOficina('${o.id}')">Reenviar acesso</button>`:''}<button class="ghost" onclick="formEditarOficina('${o.id}')">Editar oficina</button></td></tr>`;
   }
   if(!S.oficinas.length) h+='<tr><td colspan="4" class="muted">Nenhuma oficina cadastrada ainda.</td></tr>';
   h+='</table></div>';
@@ -1321,6 +1324,29 @@ async function reenviarAcessoOficina(id){
   const o=S.oficinas.find(x=>x.id===id); if(!o||!o.email){toast('Oficina sem e-mail cadastrado');return;}
   const {error}=await sb.auth.resetPasswordForEmail(o.email,{redirectTo:location.origin+location.pathname});
   avisoAcessoOficina(o.nome,o.responsavel,o.telefone,o.email,!error);
+}
+// edita os dados da oficina e gerencia os usuários dela — só o administrador geral acessa esta
+// tela; os usuários criados aqui já nascem vinculados a esta oficina (não à do administrador,
+// que não tem uma)
+function formEditarOficina(id){
+  const o=S.oficinas.find(x=>x.id===id); if(!o){toast('Oficina não encontrada');return;}
+  const staff=S.mecs.filter(x=>x.oficinaId===id).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  let h=`<h3>Editar oficina</h3><div class="grid">
+  <div class="full"><label>Nome da oficina</label><input id="eo_nome" value="${esc(o.nome)}"></div>
+  <div><label>Responsável</label><input id="eo_resp" value="${esc(o.responsavel)}"></div>
+  <div><label>Telefone / WhatsApp do responsável</label><input id="eo_tel" value="${esc(o.telefone)}" inputmode="tel" oninput="this.value=mascaraTel(this.value)"></div></div>
+  <div class="act"><button class="sec" onclick="fechar()">Fechar</button><button class="pri" onclick="salvarEdicaoOficina('${id}')">Salvar dados da oficina</button></div>
+  <h4 style="margin-top:18px">Usuários desta oficina</h4>
+  <div class="tbl"><table style="min-width:0"><tr><th>Nome</th><th>Contato</th><th>Papel</th><th></th></tr>`;
+  for(const x of staff) h+=`<tr><td>${esc(x.nome)}<div class="muted">${esc(x.cpf||'')}</div></td><td class="muted">${esc(x.email||'')}${x.telefone?'<br>'+esc(x.telefone):''}</td><td><span class="tag ${x.papel==='gestor'?'ok':(x.papel==='chefe'||x.papel==='mecanico')?'warn':'neu'}">${esc(papelLabel(x.papel))}</span>${x.ativo===false?' <span class="tag bad">Inativo</span>':''}</td><td><button class="ghost" onclick="formMec('${x.id}')">Editar</button></td></tr>`;
+  if(!staff.length) h+='<tr><td colspan="4" class="muted">Nenhum usuário nesta oficina ainda.</td></tr>';
+  h+=`</table></div><div class="act"><button class="pri" onclick="formMec('','${id}')">+ Adicionar usuário a esta oficina</button></div>`;
+  abrir(h);
+}
+async function salvarEdicaoOficina(id){
+  const d={nome:val('eo_nome'),responsavel:val('eo_resp'),telefone:val('eo_tel')};
+  if(!d.nome){toast('Informe o nome da oficina');return;}
+  await S.db.doc('oficinas/'+id).update(d); fechar(); toast('Oficina atualizada');
 }
 
 // ---- detalhe/histórico veículo (gestão) ----
