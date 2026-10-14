@@ -449,13 +449,23 @@ function timelineHtml(v, opts={}){
 }
 
 // ============ MODO MECÂNICO ============
-let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje()};
+let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:''};
 function mnova(m){
   if(S.osAtual){ osMecanico(m); return; }
   const v=S.veic.find(x=>x.placa===normPlaca(nova.placa));
   const kmAtual=v?(+v.km||0):null;
   m.innerHTML=`<div class="step"><h3>Identifique o veículo</h3><p class="muted" style="margin:0 0 10px">Fotografe ou digite. A placa é a chave do histórico: o sistema reconhece o carro e continua as manutenções anteriores.</p>
     ${ehGestor()?`<div style="max-width:220px;margin-bottom:10px"><label>Data da manutenção</label><input type="date" value="${esc(nova.data||hoje())}" onchange="nova.data=this.value"><div class="hint">Use uma data passada para lançar OS antigas e completar o histórico.</div></div>`:''}
+    ${ehAdminGeral()?`<div class="grid" style="max-width:460px;margin-bottom:10px">
+      <div><label>Atendida por</label><select id="n_oficina" onchange="nova.oficinaId=this.value;nova.mecanicoNome='';render()">
+        <option value="">${esc((S.oficina&&S.oficina.nome)||'Minha oficina')} (eu)</option>
+        ${(S.oficinas||[]).filter(o=>o.status==='ativa').map(o=>`<option value="${o.id}"${nova.oficinaId===o.id?' selected':''}>${esc(o.nome)}</option>`).join('')}
+      </select></div>
+      <div><label>Mecânico responsável</label><select id="n_mecanico" onchange="nova.mecanicoNome=this.value">
+        <option value="">${esc(S.mecNome)} (eu)</option>
+        ${S.mecs.filter(x=>(x.oficinaId||'')===(nova.oficinaId||S.perfil.oficinaId||'')&&x.ativo!==false).map(x=>`<option value="${esc(x.nome)}"${nova.mecanicoNome===x.nome?' selected':''}>${esc(x.nome)}</option>`).join('')}
+      </select></div></div>
+    <div class="hint">Pra lançar uma manutenção que já aconteceu, atendida por outra oficina/mecânico — a OS já nasce atribuída a quem realmente atendeu, sem precisar mover depois.</div>`:''}
     <div class="shot">
       <div><label class="btn ${nova.fotoPlaca?'done':''}"><input type="file" accept="image/*" capture="environment" onchange="foto(this,'placa')">${nova.fotoPlaca?`<img src="${nova.fotoPlaca.url}">`:'📷<span>Fotografar placa</span>'}</label>
         <label style="margin-top:8px">ou digite a placa</label><div class="sug"><input class="xl" id="n_placa" value="${esc(nova.placa)}" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" oninput="nova.placa=this.value;chkPlaca();sugPlaca()" onfocus="sugPlaca()" onblur="setTimeout(()=>{const l=document.getElementById('sug_placa');if(l)l.style.display='none'},150)"><div class="list" id="sug_placa" style="display:none"></div></div></div>
@@ -685,14 +695,20 @@ async function criarOs(){
   // placa nova aberta pelo mecânico: por padrão é cliente particular dele (fora da frota Carsz e fora
   // dos relatórios/painel) — a gestão reclassifica como frota própria em Frota > Completar cadastro
   // se for, de fato, um carro da locadora
-  if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'',frotaPropria:false,oficinaId:S.perfil.oficinaId||null,km,status:'Em manutenção',criadoPor:S.mecNome,pendente:true}); v={id:ref.id,placa,km}; }
+  // admin geral pode lançar uma OS atribuindo diretamente a outra oficina/mecânico (backfill de
+  // manutenção que já aconteceu em outro lugar) — "Atendida por"/"Mecânico responsável" na tela
+  const oficinaEsc=(ehAdminGeral()&&nova.oficinaId)?(S.oficinas||[]).find(o=>o.id===nova.oficinaId):null;
+  const oficinaIdFinal=oficinaEsc?oficinaEsc.id:(S.perfil.oficinaId||null);
+  const oficinaNomeFinal=oficinaEsc?oficinaEsc.nome:((S.oficina&&S.oficina.nome)||'');
+  const mecanicoFinal=(ehAdminGeral()&&nova.mecanicoNome)?nova.mecanicoNome:S.mecNome;
+  if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'',frotaPropria:false,oficinaId:oficinaIdFinal,km,status:'Em manutenção',criadoPor:mecanicoFinal,pendente:true}); v={id:ref.id,placa,km}; }
   else if(km>(+v.km||0)) await S.db.doc('veiculos/'+v.id).update({km});
   const dataOs=(ehGestor()&&nova.data)?new Date(nova.data+'T12:00:00').toISOString():agoraIso();
   // oficinaId identifica quem atendeu — decide quem pode ver valor/mão de obra desta OS (ver
   // regras de segurança no banco); oficina (texto livre) é só um rótulo informativo, igual já era
-  const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:S.mecNome,oficinaId:S.perfil.oficinaId||null,status:'Aberta',fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:(S.oficina&&S.oficina.nome)||'',relato:''};
+  const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:mecanicoFinal,oficinaId:oficinaIdFinal,status:'Aberta',fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:oficinaNomeFinal,relato:''};
   const ref=await S.db.collection('os').add(d);
-  nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje()};
+  nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:''};
   S.osAtual=ref.id; toast('OS aberta'); render();
 }
 // ---- tela da OS (mecânico) ----
@@ -729,7 +745,7 @@ function osMecanico(m){
   </div>
   <div class="step"><h3>Histórico desta placa</h3>${hist.length?timelineHtmlFiltrada(v,o.id):'<div class="muted">Primeira intervenção registrada deste veículo.</div>'}</div>`;
 }
-function novaOsPlaca(p){ nova={placa:p,km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje()}; S.osAtual=null; S.filtro=''; S.view='mnova'; render(); const k=document.getElementById('n_km'); if(k) k.focus(); }
+function novaOsPlaca(p){ nova={placa:p,km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:''}; S.osAtual=null; S.filtro=''; S.view='mnova'; render(); const k=document.getElementById('n_km'); if(k) k.focus(); }
 async function jaTrocado(pecaId){
   const o=S.os.find(x=>x.id===S.osAtual); const p=peca(pecaId);
   const kmStr=prompt(`${p.nome}: em que km foi feita a troca? (entre a última registrada e ${fmtKm(o.km)})`, o.km);
@@ -741,7 +757,7 @@ async function jaTrocado(pecaId){
   toast(`${p.nome}: troca registrada a ${fmtKm(km)} · próxima aos ${fmtKm(km+(p.km||0))}`);
 }
 async function ignorarAlerta(pecaId){ const o=S.os.find(x=>x.id===S.osAtual); await S.db.doc('os/'+o.id).update({ignorados:[...(o.ignorados||[]),pecaId]}); toast('Ok — o alerta volta na próxima OS'); }
-function sairDaOs(){ S.osAtual=null; novoItem={q:'',hl:0}; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje()}; S.view='mnova'; toast('OS guardada — continua aberta'); render(); }
+function sairDaOs(){ S.osAtual=null; novoItem={q:'',hl:0}; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:''}; S.view='mnova'; toast('OS guardada — continua aberta'); render(); }
 function timelineHtmlFiltrada(v,skipId){ const bak=S.os; S.os=S.os.filter(x=>x.id!==skipId); const h=timelineHtml(v); S.os=bak; return h; }
 function itensHtml(o){ if(!(o.itens||[]).length) return '<div class="muted" style="padding:10px 0">Nenhuma peça adicionada ainda.</div>';
   const ab=(S.os.find(x=>x.id===S.osAtual)||{}).status==='Aberta';
