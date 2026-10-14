@@ -834,7 +834,7 @@ function mconc(m){
      // mesma lógica de pagamento, mas para OS da frota Carsz (a locadora paga o mecânico pelo
      // serviço) — sem cobrança por WhatsApp, só o sinalizador com a data gravada ao marcar
      const pagamentoFrota=(v&&isFrota(v)&&ehChefe())?`<button class="${o.pago?'pago-ok':'pago-pend'}" title="${o.pago?'Pago pela locadora em '+fmtD(o.pagoEm)+' — clique para desfazer':'Marcar esta OS como paga pela locadora'}" onclick="event.stopPropagation();togglePago('${o.id}')">${o.pago?'✓ Pago em '+fmtD(o.pagoEm):'Marcar como pago'}</button>`:'';
-     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data||o.concluidaEm)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
+     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data||o.concluidaEm)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();visualizarOs('${o.id}')" title="Ver como fica o PDF antes de baixar/enviar">👁 Visualizar</button><button onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
    }).join(''):'<div class="empty">Nenhuma OS concluída nessa seleção.</div>');
 }
 // ---- cobrança de clientes particulares do mecânico (fora da frota Carsz) ----
@@ -886,12 +886,13 @@ async function imgParaDataUrl(url){
     return await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(blob); });
   }catch(e){ console.warn('logo no pdf indisponível:',e); return null; }
 }
-// ---- gera um PDF resumido da OS (para enviar por WhatsApp) ----
-async function imprimirOs(id){
-  const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
+// ---- monta o PDF resumido da OS e devolve {doc,nomeArq,o} (ou null) — usado tanto pela
+// pré-visualização quanto pelo download/envio, pra não duplicar o layout nos dois lugares ----
+async function montarOsPdf(id){
+  const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return null;}
   const v=S.veic.find(x=>x.id===o.veiculoId)||{};
   const podeMo=podeFinalizarOs();
-  if(!window.jspdf){toast('Gerador de PDF ainda carregando, tente de novo em instantes');return;}
+  if(!window.jspdf){toast('Gerador de PDF ainda carregando, tente de novo em instantes');return null;}
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4'});
   const margin=16, pageW=210, lh=7; let y=20;
@@ -942,6 +943,12 @@ async function imprimirOs(id){
   doc.setFontSize(8); doc.setTextColor(150);
   doc.text(`Gerado em ${fmtD(agoraIso())} · Carsz · Controle de Manutenção`,margin,290);
   const nomeArq=`OS-${o.placa}-${(o.data||o.concluidaEm||'').slice(0,10)}.pdf`;
+  return {doc,nomeArq,o};
+}
+// ---- gera o PDF da OS e baixa/envia (para enviar por WhatsApp) ----
+async function imprimirOs(id){
+  const r=await montarOsPdf(id); if(!r) return;
+  const {doc,nomeArq,o}=r;
   const blob=doc.output('blob'); const file=new File([blob],nomeArq,{type:'application/pdf'});
   if(navigator.canShare&&navigator.canShare({files:[file]})){
     try{ await navigator.share({files:[file],title:'OS '+o.placa,text:`OS ${o.placa} — ${fmtD(o.data||o.concluidaEm)}`}); return; }
@@ -949,6 +956,17 @@ async function imprimirOs(id){
   }
   doc.save(nomeArq);
   toast('PDF baixado — anexe no WhatsApp pelo seletor de arquivos');
+}
+// ---- mostra como o PDF vai ficar antes de baixar/enviar, num modal com o PDF embutido ----
+async function visualizarOs(id){
+  const r=await montarOsPdf(id); if(!r) return;
+  const url=r.doc.output('bloburl');
+  abrir(`<h3>Pré-visualização da OS</h3>
+  <iframe src="${url}" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>
+  <div class="act">
+    <button class="pri" onclick="imprimirOs('${id}')">🖨 Baixar / Enviar</button>
+    <button class="sec" onclick="URL.revokeObjectURL('${url}');fechar()">Fechar</button>
+  </div>`);
 }
 function mhist(m){
   const p=normPlaca(S.filtro); const v=S.veic.find(x=>x.placa===p);
