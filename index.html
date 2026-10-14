@@ -313,11 +313,16 @@ const peca = id => catalogo().find(p=>p.id===id)||{id,nome:id};
 // histórico próprio (OS que esta oficina pode ver por completo) + histórico técnico vindo de
 // OUTRAS oficinas para a mesma placa (S.histCompartilhado — sem valor, sem identificar quem
 // atendeu), pra ajudar a diagnosticar mesmo quando o carro já passou por outra oficina
+// histórico técnico de uma placa vindo de OUTRAS oficinas, mesmo sem nenhum veículo cadastrado
+// ainda aqui — é geral pra toda a base (qualquer placa, frota ou cliente particular), não só frota
+function historicoPorPlaca(placa){
+  return S.histCompartilhado.filter(h=>h.placa===placa).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+}
 function osDoVeic(vId){
   const v=S.veic.find(x=>x.id===vId);
   const proprias=S.os.filter(o=>o.veiculoId===vId);
   const idsProprias=new Set(proprias.map(o=>o.id));
-  const externas=v?S.histCompartilhado.filter(h=>h.placa===v.placa&&!idsProprias.has(h.id)):[];
+  const externas=v?historicoPorPlaca(v.placa).filter(h=>!idsProprias.has(h.id)):[];
   return [...proprias,...externas].sort((a,b)=>(b.data||'').localeCompare(a.data||''));
 }
 function ultimaTroca(vId,pecaId){
@@ -327,11 +332,15 @@ function ultimaTroca(vId,pecaId){
 const OLEO='oleo-do-motor';
 const destaque=p=>p.critico||p.id===OLEO;
 function trocaInfo(o,pecaId){ const it=(o.itens||[]).find(i=>i.pecaId===pecaId)||{}; return {km:it.kmTroca?+it.kmTroca:(+o.km||0),data:it.dataTroca||o.data}; }
-function alertasVeic(v,kmRef){
+// eventosOverride: usado quando ainda não existe veículo cadastrado aqui (placa nova, mas com
+// histórico técnico vindo de outra oficina) — nesse caso v.id não existe, então os eventos vêm
+// prontos (de historicoPorPlaca) em vez de ir buscar por id
+function alertasVeic(v,kmRef,eventosOverride){
   const out=[]; const kmAtual=kmRef!=null?+kmRef:(+v.km||0);
+  const eventos=eventosOverride||osDoVeic(v.id);
   for(const p of catalogo()){
     if(!p.km&&!p.dias) continue;
-    const ult=ultimaTroca(v.id,p.id);
+    const ult=eventos.find(o=>(o.itens||[]).some(i=>i.pecaId===p.id))||null;
     if(!ult){ out.push({v,p,lvl:'neu',txt:'sem registro'}); continue; }
     let lvl=null,txt='';
     const avisoKm=p.critico?Math.max(S.cfg.avisoKm,5000):p.id===OLEO?Math.max(S.cfg.avisoKm,1000):S.cfg.avisoKm;
@@ -402,10 +411,11 @@ function render(){
   if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
   else {
     const na=S.os.filter(o=>o.status==='Aberta').length; const b=document.querySelector('nav [data-v=mabertas]'); if(b) b.innerHTML='OS abertas'+(na?`<span class="n">${na}</span>`:'');
-    // mesmo filtro de "oficina parceira só vê placa que já atendeu" usado na tela matencao()
+    // mesmo filtro usado na tela matencao(): frota só conta placa já atendida por esta oficina
+    // parceira; clientes particulares (já visíveis aqui) contam sempre
     const souParceiraNav=!!(S.perfil&&S.perfil.oficinaId&&S.perfil.oficinaId!=='matriz');
     const placasAtendidasNav=souParceiraNav?new Set(S.os.map(o=>o.veiculoId)):null;
-    const nb2=S.veic.filter(v=>isFrota(v)&&statusVeic(v)==='bad'&&(!souParceiraNav||placasAtendidasNav.has(v.id))).length; const b2=document.querySelector('nav [data-v=matencao]'); if(b2) b2.innerHTML='Atenção'+(nb2?`<span class="n">${nb2}</span>`:'');
+    const nb2=S.veic.filter(v=>statusVeic(v)==='bad'&&(!isFrota(v)||!souParceiraNav||placasAtendidasNav.has(v.id))).length; const b2=document.querySelector('nav [data-v=matencao]'); if(b2) b2.innerHTML='Atenção'+(nb2?`<span class="n">${nb2}</span>`:'');
   }
 }
 
@@ -480,7 +490,17 @@ function kmRuim(){ if(ehGestor()) return false; const v=S.veic.find(x=>x.placa==
 function infoPlaca(){
   const p=normPlaca(nova.placa); if(p.length<7) return '';
   const v=S.veic.find(x=>x.placa===p);
-  if(!v) return `<div class="lastinfo">Placa não cadastrada — será criada agora. <input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px"></div>`;
+  if(!v){
+    const base=`<div class="lastinfo">Placa não cadastrada — será criada agora. <input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px"></div>`;
+    const hist=historicoPorPlaca(p);
+    if(!hist.length) return base;
+    // placa nova por aqui, mas já tem histórico técnico vindo de outra oficina — mostra pendências
+    // mesmo antes do veículo existir no cadastro local (histórico é geral pra toda a base)
+    const al=alertasVeic({placa:p},+nova.km>0?+nova.km:null,hist).filter(a=>a.lvl==='bad'||a.lvl==='warn');
+    const ul=hist[0];
+    const avisoBox=al.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Esta placa já tem histórico em outra oficina</b> (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}):<ul style="margin:6px 0 0;padding-left:18px">${al.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:`<div class="lastinfo ok">Esta placa já tem histórico em outra oficina (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}) — sem pendências vencidas.</div>`;
+    return avisoBox+base;
+  }
   const ab=osAbertaDe(v);
   if(ab){ const dias=Math.max(0,Math.round((Date.now()-new Date(ab.data))/864e5));
     return `<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad)"><b>Bloqueado: este veículo já tem uma OS aberta</b> desde ${fmtD(ab.data)} (há ${dias} dias, ${fmtKm(ab.km)}, ${esc(ab.mecanico||'')}, ${(ab.itens||[]).length} itens).<br>Ela precisa ser finalizada com o valor da mão de obra antes de abrir outra.</div><button class="big sec" onclick="S.osAtual='${ab.id}';render()">Abrir a OS pendente para finalizar</button>`; }
@@ -628,7 +648,9 @@ async function salvarMec(id,oficinaId){
   fechar(); toast('Usuário salvo');
 }
 function bloqueado(){ return !!osAbertaDe(S.veic.find(x=>x.placa===normPlaca(nova.placa))); }
-function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||!(+nova.km>0)||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true; }
+function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||!(+nova.km>0)||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
+  const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
+}
 function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return 'Informe o km atual para abrir a OS.'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`; return ''; }
 async function redimensionar(file,max=1280){
   const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(file);});
@@ -1049,14 +1071,19 @@ function mhist(m){
 // aba do mecânico chefe: mesmos alertas de "Atenção agora" do painel do administrador, só da
 // frota Carsz (clientes particulares do mecânico não entram aqui), para ele acompanhar junto com o gestor
 function matencao(m){
-  // oficina PARCEIRA (não a Matriz): só mostra alerta de placa que ela já atendeu alguma vez
-  // (abriu OS) — senão ela veria avisos da frota inteira da Carsz, não só do que é dela
+  // oficina PARCEIRA (não a Matriz): só mostra alerta de placa da FROTA que ela já atendeu
+  // alguma vez (abriu OS) — senão ela veria avisos da frota inteira da Carsz, não só do que é dela
   const souParceira=!!(S.perfil&&S.perfil.oficinaId&&S.perfil.oficinaId!=='matriz');
   const placasAtendidas=souParceira?new Set(S.os.map(o=>o.veiculoId)):null;
   const veicFrota=S.veic.filter(isFrota).filter(v=>!souParceira||placasAtendidas.has(v.id));
+  // clientes particulares (não-frota) já visíveis aqui — pelo próprio cadastro, ou por estar
+  // envolvida num encaminhamento — também entram nos alertas: o histórico é geral em toda a
+  // base, então uma manutenção vencida registrada por OUTRA oficina aparece aqui também
+  const veicParticulares=S.veic.filter(v=>!isFrota(v));
+  const veicAlerta=[...veicFrota,...veicParticulares];
   const venc=[],prox=[];
-  for(const v of veicFrota) for(const a of alertasVeic(v)){ if(a.lvl==='bad')venc.push(a); else if(a.lvl==='warn')prox.push(a); }
-  let h=`<div class="bar"><h2>Atenção agora</h2></div><p class="hint" style="margin:-4px 0 10px">${souParceira?'Somente veículos da frota Carsz que sua oficina já atendeu.':'Somente frota Carsz — mesmos alertas do painel do administrador.'}</p><div class="cards">
+  for(const v of veicAlerta) for(const a of alertasVeic(v)){ if(a.lvl==='bad')venc.push(a); else if(a.lvl==='warn')prox.push(a); }
+  let h=`<div class="bar"><h2>Atenção agora</h2></div><p class="hint" style="margin:-4px 0 10px">${souParceira?'Veículos da frota Carsz que sua oficina já atendeu, mais seus clientes particulares — considerando também manutenções registradas em outras oficinas.':'Frota Carsz e clientes particulares — considerando também manutenções registradas em outras oficinas.'}</p><div class="cards">
     <div class="card bad"><div class="v">${venc.length}</div><div class="l">manutenções vencidas</div></div>
     <div class="card warn"><div class="v">${prox.length}</div><div class="l">vencendo em breve</div></div>
   </div>`;
@@ -1595,6 +1622,24 @@ async function carregarHistoricoCompartilhado(){
     S.histCompartilhado=(data||[]).map(r=>({id:r.id,placa:r.placa,veiculoId:r.veiculo_id,data:r.data_intervencao,km:+r.km||0,itens:r.itens||[],status:r.status,externo:true}));
   }catch(e){ console.warn('historico_compartilhado indisponível (rode a migração do banco):',e); }
   render();
+}
+// placa nova (ainda sem veículo cadastrado aqui) digitada na tela de Nova OS: consulta avulsa,
+// na hora, pra ver se já existe histórico técnico dessa placa vindo de outra oficina — sem isso,
+// só placas já cadastradas localmente entrariam na busca em lote de carregarHistoricoCompartilhado
+let placaChecada=null;
+async function checarPlacaExterna(p){
+  if(placaChecada===p) return;
+  placaChecada=p;
+  try{
+    const {data,error}=await sb.rpc('historico_compartilhado',{p_placas:[p]});
+    if(error) throw error;
+    const novos=(data||[]).map(r=>({id:r.id,placa:r.placa,veiculoId:r.veiculo_id,data:r.data_intervencao,km:+r.km||0,itens:r.itens||[],status:r.status,externo:true}));
+    if(novos.length){
+      const idsExistentes=new Set(S.histCompartilhado.map(h=>h.id));
+      S.histCompartilhado=[...S.histCompartilhado,...novos.filter(n=>!idsExistentes.has(n.id))];
+      if(normPlaca(nova.placa)===p) chkPlaca();
+    }
+  }catch(e){ console.warn('consulta de placa externa indisponível:',e); }
 }
 if(location.hash.startsWith('#mecanico')){ S.mec=true; S.view='mnova'; }
 S.db=mkDb(); S.assets=mkAssets(); S.cfg=JSON.parse(JSON.stringify(DEF_CFG)); S.mecsOk=true;
