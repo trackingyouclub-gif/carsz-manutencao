@@ -563,6 +563,11 @@ function oficinaView(m){
 // de quem está logado (uso normal, pela aba "Oficina" de cada oficina)
 function formMec(id,oficinaId){
   const x=id?S.mecs.find(m=>m.id===id):{ativo:true,papel:'ajudante'};
+  // só o administrador geral pode trocar a oficina de um usuário já existente (ou escolher, na
+  // criação, uma oficina diferente da própria) — é o jeito de "mover" alguém que já tem login
+  // de uma oficina pra outra, sem precisar recriar a conta
+  const atual=oficinaId||x.oficinaId||'';
+  const campoOficina=ehSuperadmin()?`<div><label>Oficina</label><select id="mc_oficina">${S.oficinas.map(o=>`<option value="${o.id}"${atual===o.id?' selected':''}>${esc(o.nome)}</option>`).join('')}</select></div>`:'';
   abrir(`<h3>${id?'Editar':'Novo'} usuário</h3><div class="grid">
   <div class="full"><label>Nome completo</label><input id="mc_nome" value="${esc(x.nome)}"></div>
   <div><label>CPF</label><input id="mc_cpf" value="${esc(x.cpf)}" inputmode="numeric" placeholder="000.000.000-00" oninput="this.value=mascaraCpf(this.value)"></div>
@@ -570,13 +575,16 @@ function formMec(id,oficinaId){
   <div class="full"><label>E-mail (usado para entrar)</label><input id="mc_email" type="email" value="${esc(x.email)}" ${id?'disabled':''}></div>
   <div><label>${id?'Nova senha (só para o próprio usuário logado)':'Senha (mín. 6)'}</label><input id="mc_pass" type="text" autocomplete="off"></div>
   <div><label>Papel</label><select id="mc_papel">${papelOptions(x.papel)}</select></div>
-  <div><label>Situação</label><select id="mc_ativo">${opt(['Ativo','Inativo'],x.ativo===false?'Inativo':'Ativo')}</select></div></div>
+  <div><label>Situação</label><select id="mc_ativo">${opt(['Ativo','Inativo'],x.ativo===false?'Inativo':'Ativo')}</select></div>
+  ${campoOficina}</div>
   <div class="hint">Ajudante: insere peças e valores de peças na OS, mas não vê nem edita a mão de obra e não pode concluir a OS. Mecânico chefe: acesso completo na oficina — peças, mão de obra e concluir/reabrir OS. Gestão: acesso ilimitado ao sistema.</div>
+  ${ehSuperadmin()?'<div class="hint">O campo "Oficina" move o usuário para outra oficina — as OS que ele já fez continuam registradas na oficina que atendeu na época, só os próximos atendimentos passam a contar pra oficina nova.</div>':''}
   <div class="hint">${id?'Para redefinir a senha de outro usuário, ele usa "Esqueci a senha" na tela de entrada.':'O usuário é criado já ativo, sem confirmação de e-mail (ver configuração do Supabase no LEIA-ME).'}</div>
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarMec('${id||''}','${oficinaId||''}')">Salvar</button></div>`);
 }
 async function salvarMec(id,oficinaId){
   const cpf=val('mc_cpf'), tel=val('mc_tel'), email=val('mc_email').toLowerCase(), nome=val('mc_nome'), pass=document.getElementById('mc_pass').value, papel=val('mc_papel'), ativo=val('mc_ativo')==='Ativo';
+  const oficinaEscolhida=ehSuperadmin()?val('mc_oficina'):'';
   if(!nome){toast('Informe o nome');return;}
   if(cpf&&!cpfValido(cpf)){toast('CPF inválido');return;}
   if(!id){
@@ -587,10 +595,12 @@ async function salvarMec(id,oficinaId){
     if(error){toast('Erro: '+error.message);return;}
     if(!data.user){toast('Não foi possível criar o usuário');return;}
     if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado');return;}
-    const d={nome,cpf,telefone:tel,email,papel,oficinaId:oficinaId||S.perfil.oficinaId||null,ativo,criadoEm:agoraIso()};
+    const d={nome,cpf,telefone:tel,email,papel,oficinaId:oficinaEscolhida||oficinaId||S.perfil.oficinaId||null,ativo,criadoEm:agoraIso()};
     const {error:e2}=await sb.from('perfis').upsert({id:data.user.id,data:d}); if(e2){toast('Erro ao salvar perfil: '+e2.message);return;}
   } else {
-    const ex=S.mecs.find(m=>m.id===id)||{}; const d={...ex,nome,cpf,telefone:tel,papel,ativo}; delete d.id;
+    const ex=S.mecs.find(m=>m.id===id)||{}; const d={...ex,nome,cpf,telefone:tel,papel,ativo};
+    if(ehSuperadmin()) d.oficinaId=oficinaEscolhida||ex.oficinaId||null;
+    delete d.id;
     const {error}=await sb.from('perfis').upsert({id,data:d}); if(error){toast('Erro: '+error.message);return;}
     if(pass&&id===S.user.id){ const {error:e3}=await sb.auth.updateUser({password:pass}); if(e3) toast('Senha não alterada: '+e3.message); }
   }
@@ -1340,26 +1350,33 @@ function formOficina(){
   <div class="full"><label>Nome da oficina</label><input id="of_nome" placeholder="Ex: Oficina São Bernardo"></div>
   <div><label>Responsável</label><input id="of_resp"></div>
   <div><label>Telefone / WhatsApp do responsável</label><input id="of_tel" inputmode="tel" placeholder="(11) 99999-9999" oninput="this.value=mascaraTel(this.value)"></div>
-  <div class="full"><label>E-mail do gestor (login do responsável pela oficina)</label><input id="of_email" type="email"></div>
+  <div class="full"><label>E-mail do gestor (opcional — só se for criar um login novo)</label><input id="of_email" type="email"></div>
   <div class="full"><label>Logo da oficina (opcional)</label><input type="file" accept="image/*" onchange="escolherLogoOficina(this,'of_logo_prev')"><div id="of_logo_prev" class="muted" style="margin-top:6px"></div></div></div>
-  <div class="hint">O responsável não precisa de senha definida por você — ele recebe um e-mail para criar a própria senha, e você pode reenviar esse acesso por WhatsApp na tela seguinte. A oficina fica "pendente" até você marcar como "ativa" na lista.</div>
+  <div class="hint">Se o responsável ainda não tem login, preencha o e-mail: ele recebe uma mensagem pra criar a própria senha (sem precisar de senha definida por você), e você pode reenviar esse acesso por WhatsApp na tela seguinte.</div>
+  <div class="hint">Se as pessoas que vão trabalhar nessa oficina JÁ têm login no sistema (por exemplo, hoje estão na Oficina Matriz), deixe o e-mail em branco: cadastre só nome e logo aqui, e depois mova cada uma delas pra esta oficina em "Oficina" (menu) → Editar → campo "Oficina".</div>
+  <div class="hint">A oficina fica "pendente" até você marcar como "ativa" na lista.</div>
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarOficina()">Cadastrar</button></div>`);
 }
 async function salvarOficina(){
   const nome=val('of_nome'), resp=val('of_resp'), tel=val('of_tel'), email=val('of_email').toLowerCase();
   if(!nome){toast('Informe o nome da oficina');return;}
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('E-mail inválido');return;}
+  if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('E-mail inválido');return;}
   const oid=genId();
-  // senha aleatória, de uso único e descartável: ninguém a usa — o responsável define a própria
-  // senha pelo e-mail de acesso disparado logo abaixo (reaproveita o fluxo de recuperação de senha)
-  const senhaTemp=genId()+genId()+genId();
-  const tmp=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
-  const {data,error}=await tmp.auth.signUp({email,password:senhaTemp});
-  if(error){toast('Erro: '+error.message);return;}
-  if(!data.user){toast('Não foi possível criar o acesso');return;}
-  if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado');return;}
-  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email,logo:logoTemp||null,status:'pendente',criadoEm:agoraIso()});
-  await sb.from('perfis').upsert({id:data.user.id,data:{nome:resp||nome,email,papel:'gestor',oficinaId:oid,ativo:true,criadoEm:agoraIso()}});
+  let userId=null;
+  if(email){
+    // senha aleatória, de uso único e descartável: ninguém a usa — o responsável define a própria
+    // senha pelo e-mail de acesso disparado logo abaixo (reaproveita o fluxo de recuperação de senha)
+    const senhaTemp=genId()+genId()+genId();
+    const tmp=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+    const {data,error}=await tmp.auth.signUp({email,password:senhaTemp});
+    if(error){toast('Erro: '+error.message);return;}
+    if(!data.user){toast('Não foi possível criar o acesso');return;}
+    if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado — deixe o e-mail em branco e depois mova o usuário existente pra esta oficina em "Oficina" → Editar');return;}
+    userId=data.user.id;
+  }
+  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email:email||null,logo:logoTemp||null,status:'pendente',criadoEm:agoraIso()});
+  if(!userId){ fechar(); toast('Oficina cadastrada. Agora mova os usuários dela em "Oficina" (menu) → Editar → campo "Oficina".'); return; }
+  await sb.from('perfis').upsert({id:userId,data:{nome:resp||nome,email,papel:'gestor',oficinaId:oid,ativo:true,criadoEm:agoraIso()}});
   const {error:eReset}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
   toast('Oficina cadastrada — marque como "ativa" quando quiser liberar o acesso');
   avisoAcessoOficina(nome,resp,tel,email,!eReset);
