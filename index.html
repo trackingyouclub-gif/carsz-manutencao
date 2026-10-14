@@ -728,6 +728,7 @@ function osMecanico(m){
   const encHtml=encs.length?`<div class="step"><h3 style="margin-top:0">↪ Encaminhamentos entre oficinas</h3>${encs.map(e=>`<div class="muted" style="margin-bottom:4px"><b>${esc(e.deNome)}</b> → <b>${esc(e.paraNome)}</b> · ${fmtD(e.em)} · por ${esc(e.por||'')}${e.nota?` — "${esc(e.nota)}"`:''}</div>`).join('')}</div>`:'';
   m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}${encHtml}<div class="step"><div class="row"><span class="plate" style="font-size:20px">${esc(o.placa)}</span><b>${esc(v.modelo||'')}</b><span class="muted">${fmtKm(o.km)} · ${ehGestor()?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span><span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>
     ${podeEncaminhar?`<div class="row" style="margin-top:10px"><button class="pri" style="background:var(--warn);border-color:var(--warn);color:#fff" onclick="formEncaminharOs('${o.id}')">↪ Encaminhar p/ outra oficina</button>${ultimoEnc?`<button class="ghost" onclick="devolverOs('${o.id}')">↩ Devolver p/ ${esc(ultimoEnc.deNome)}</button>`:''}</div>`:''}
+    ${(ehChefe()||ehGestor())?`<div class="row" style="margin-top:10px"><button class="sec" onclick="abrirPixOs('${o.id}')">💳 Gerar Pix para pagamento</button><span class="muted">Pra cobrar o cliente na hora, presencialmente — gera QR code com o valor desta OS.</span></div>`:''}
     <div class="row" style="margin-top:10px"><button class="sec" onclick="sairDaOs()">⏏ Sair desta OS (continua aberta)</button><span class="muted">Tudo já está salvo. Ela fica em "OS abertas" para inserir a mão de obra depois, e você pode abrir OS de outra placa.</span></div></div>
   <div class="step"><h3>Peças e serviços</h3>
     <div class="sug"><input id="it_nome" placeholder="Digite a peça (ex: óleo, pastilha, pneu…)" autocomplete="off" value="${esc(novoItem.q)}" oninput="novoItem.q=this.value;novoItem.hl=0;sugRender()" onkeydown="sugKey(event)"><div class="list" id="sug_list" style="display:none"></div></div>
@@ -921,14 +922,14 @@ function filtroFrotaSelect(){
 function passaFiltroFrota(v){ const ff=S.frotaFiltro||'todos'; return ff==='todos'||(ff==='frota'&&v&&isFrota(v))||(ff==='externo'&&v&&!isFrota(v)); }
 function mabertas(m){
   const lst=S.os.filter(o=>o.status==='Aberta'&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
-  m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${alertaCobrancaBanner()}`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
+  m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${cardsFinanceiro()}${alertaCobrancaBanner()}`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`;
   }).join(''):'<div class="empty">Nenhuma OS aberta nessa seleção.</div>');
 }
 function mconc(m){
   const f=normPlaca(S.filtro); const podeMo=podeFinalizarOs();
   const lst=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.data||b.concluidaEm||'').localeCompare(a.data||a.concluidaEm||'')).slice(0,60);
-  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${alertaCobrancaBanner()}<input placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
+  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${cardsFinanceiro()}${alertaCobrancaBanner()}<input placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
    (lst.length?lst.map(o=>{
      const v=S.veic.find(x=>x.id===o.veiculoId);
      const atraso=diasAtraso(o);
@@ -942,6 +943,30 @@ function mconc(m){
      const pagamentoFrota=(v&&isFrota(v)&&ehChefe())?`<button class="${o.pago?'pago-ok':'pago-pend'}" title="${o.pago?'Pago pela locadora em '+fmtD(o.pagoEm)+' — clique para desfazer':'Marcar esta OS como paga pela locadora'}" onclick="event.stopPropagation();togglePago('${o.id}')">${o.pago?'✓ Pago em '+fmtD(o.pagoEm):'Marcar como pago'}</button>`:'';
      return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data||o.concluidaEm)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();visualizarOs('${o.id}')" title="Ver como fica o PDF antes de baixar/enviar">👁 Visualizar</button><button onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
    }).join(''):'<div class="empty">Nenhuma OS concluída nessa seleção.</div>');
+}
+// ---- resumo financeiro (mecânico chefe / gestão) ----
+// só conta as OS que são da própria oficina AGORA — uma OS encaminhada pra outra oficina deixa de
+// contar aqui (quem está com ela agora é quem cobra e recebe); ajudante não vê valor de mão de obra
+// em outras telas, então também não vê este resumo
+function resumoFinanceiro(){
+  const minhas=S.os.filter(o=>o.oficinaId===(S.perfil&&S.perfil.oficinaId));
+  let abertas=0,pagas=0,aReceber=0;
+  for(const o of minhas){
+    const tot=osTotal(o);
+    if(o.status==='Aberta') abertas+=tot;
+    else if(o.pago) pagas+=tot;
+    else aReceber+=tot;
+  }
+  return {abertas,pagas,aReceber};
+}
+function cardsFinanceiro(){
+  if(!(ehChefe()||ehGestor())) return '';
+  const r=resumoFinanceiro();
+  return `<div class="cards" style="margin-bottom:12px">
+    <div class="card warn"><div class="v">${fmtBRL(r.abertas)}</div><div class="l">OS em aberto</div></div>
+    <div class="card bad"><div class="v">${fmtBRL(r.aReceber)}</div><div class="l">Saldo a receber</div></div>
+    <div class="card ok"><div class="v">${fmtBRL(r.pagas)}</div><div class="l">OS pagas</div></div>
+  </div>`;
 }
 // ---- cobrança de clientes particulares do mecânico (fora da frota Carsz) ----
 const diasAtraso = o => Math.max(0,Math.floor((Date.now()-new Date(o.data||o.concluidaEm))/864e5));
@@ -965,6 +990,68 @@ function alertaCobrancaBanner(){
   <button class="sec" onclick="try{localStorage.setItem('cobrancaSnoozeAt',String(Date.now()))}catch(e){};render()">Entendido, lembrar em 3 dias</button></div>`;
 }
 async function togglePago(id){ const o=S.os.find(x=>x.id===id); if(!o)return; const novoPago=!o.pago; await S.db.doc('os/'+id).update({pago:novoPago,pagoEm:novoPago?agoraIso():null}); toast(novoPago?'Marcado como pago':'Marcado como pendente'); }
+// ---- Pix (cobrança e QR code para pagamento presencial) ----
+// dados da própria oficina pra montar o Pix: pra quem não é superadmin, S.oficina já vem carregado
+// no login; o superadmin (Matriz) não carrega S.oficina, então busca o mesmo registro em S.oficinas
+function minhaOficinaDados(){
+  if(S.oficina) return S.oficina;
+  return (S.oficinas||[]).find(o=>o.id===(S.perfil&&S.perfil.oficinaId))||null;
+}
+function pixTLV(id,valor){ return id+String(valor.length).padStart(2,'0')+valor; }
+// Pix exige texto sem acento, maiúsculo, só letras/números/espaço — "limpa" nome/cidade pro padrão
+function limparPixTexto(s,max){
+  return ((s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9 ]/g,'').trim().slice(0,max))||'NA';
+}
+function crc16Pix(str){
+  let crc=0xFFFF;
+  for(let i=0;i<str.length;i++){
+    crc^=str.charCodeAt(i)<<8;
+    for(let j=0;j<8;j++) crc=(crc&0x8000)?((crc<<1)^0x1021)&0xFFFF:(crc<<1)&0xFFFF;
+  }
+  return crc.toString(16).toUpperCase().padStart(4,'0');
+}
+// monta o "Pix Copia e Cola" (padrão EMV do Banco Central) a partir da chave cadastrada da oficina
+function montarPixPayload(chave,nome,cidade,valor,txid){
+  chave=(chave||'').trim(); if(!chave) return null;
+  const nomeF=limparPixTexto(nome,25), cidadeF=limparPixTexto(cidade,15);
+  const txidF=(txid||'***').replace(/[^A-Za-z0-9]/g,'').slice(0,25)||'***';
+  let p=pixTLV('00','01');
+  p+=pixTLV('26',pixTLV('00','br.gov.bcb.pix')+pixTLV('01',chave));
+  p+=pixTLV('52','0000')+pixTLV('53','986');
+  if(valor>0) p+=pixTLV('54',(+valor).toFixed(2));
+  p+=pixTLV('58','BR')+pixTLV('59',nomeF)+pixTLV('60',cidadeF);
+  p+=pixTLV('62',pixTLV('05',txidF));
+  p+='6304';
+  return p+crc16Pix(p);
+}
+// texto do Pix pronto pra entrar na mensagem de cobrança por WhatsApp — vazio se a oficina não
+// tiver chave Pix cadastrada ainda (não trava a cobrança, só não inclui essa parte)
+function pixTextoCobranca(o){
+  const of=minhaOficinaDados(); if(!of||!of.pixChave) return '';
+  const payload=montarPixPayload(of.pixChave,of.pixNome||of.nome||of.responsavel||'',of.pixCidade,osTotal(o),('OS'+o.id).slice(0,25));
+  if(!payload) return '';
+  return `\n\n💳 *Pagamento via Pix*\nChave: ${of.pixChave}${of.pixNome?' ('+of.pixNome+')':''}\nOu copie e cole no app do seu banco:\n${payload}`;
+}
+function abrirPixOs(id){
+  const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
+  const of=minhaOficinaDados();
+  if(!of||!of.pixChave){ toast('Cadastre a chave Pix da oficina primeiro (fale com o administrador geral, em Oficinas > Editar)'); return; }
+  const valor=osTotal(o);
+  const payload=montarPixPayload(of.pixChave,of.pixNome||of.nome||of.responsavel||'',of.pixCidade,valor,('OS'+o.id).slice(0,25));
+  if(!payload){ toast('Não foi possível gerar o Pix'); return; }
+  abrir(`<h3>Pix para pagamento</h3><div style="text-align:center">
+    <div id="pix_qr" style="display:inline-block;padding:14px;background:#fff;border-radius:10px;margin:8px 0"></div>
+    <div style="font-size:22px;font-weight:700;margin:4px 0">${fmtBRL(valor)}</div>
+    <p class="muted" style="margin:0 0 8px">Peça pro cliente escanear com o app do banco, ou copie o código abaixo.</p>
+    <textarea readonly style="font-size:11px;height:70px;width:100%" onclick="this.select()">${esc(payload)}</textarea>
+    <div class="act" style="justify-content:center;margin-top:10px"><button class="sec" onclick="copiarPix(this,'${payload}')">📋 Copiar código</button><button class="sec" onclick="fechar()">Fechar</button></div>
+  </div>`);
+  setTimeout(()=>{ const el=document.getElementById('pix_qr'); if(el&&window.QRCode) new QRCode(el,{text:payload,width:220,height:220,correctLevel:QRCode.CorrectLevel.M}); },30);
+}
+function copiarPix(btn,payload){
+  try{ navigator.clipboard.writeText(payload); toast('Código Pix copiado'); }
+  catch(e){ toast('Não foi possível copiar — selecione o texto e copie manualmente'); }
+}
 async function cobrarOs(id){
   const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
   const v=S.veic.find(x=>x.id===o.veiculoId)||{};
@@ -975,7 +1062,7 @@ async function cobrarOs(id){
   }
   const telCompleto=tel.length<=11?'55'+tel:tel;
   const itensTxt=(o.itens||[]).map(i=>`• ${esc(i.nome)}${(+i.qtd||1)>1?' x'+i.qtd:''}`).join('\n');
-  const msg=`Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}* (${v.modelo||''}):\n\n${itensTxt||'Serviço realizado.'}\n\n*Total: ${fmtBRL(osTotal(o))}*\n\nO PDF da OS vai aparecer a seguir para você anexar nesta conversa. Qualquer dúvida, estou à disposição.`;
+  const msg=`Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}* (${v.modelo||''}):\n\n${itensTxt||'Serviço realizado.'}\n\n*Total: ${fmtBRL(osTotal(o))}*${pixTextoCobranca(o)}\n\nO PDF da OS vai aparecer a seguir para você anexar nesta conversa. Qualquer dúvida, estou à disposição.`;
   // abrir o WhatsApp primeiro, ainda de forma síncrona (nenhum await antes desta linha): é isso que
   // faz o celular reconhecer como ação direta do usuário e abrir o aplicativo — qualquer await antes
   // quebra esse reconhecimento e o navegador cai na versão web do WhatsApp sem enviar nada
@@ -994,6 +1081,24 @@ async function imgParaDataUrl(url){
 }
 // ---- monta o PDF resumido da OS e devolve {doc,nomeArq,o} (ou null) — usado tanto pela
 // pré-visualização quanto pelo download/envio, pra não duplicar o layout nos dois lugares ----
+// gera o QR code do Pix fora da tela (QRCode.js desenha num elemento invisível) e devolve a
+// imagem como data URL, pra poder entrar no PDF com doc.addImage
+async function qrCodeDataUrl(texto,tamanho){
+  return new Promise(resolve=>{
+    if(!window.QRCode){ resolve(null); return; }
+    const div=document.createElement('div');
+    div.style.position='fixed'; div.style.left='-9999px'; div.style.top='0';
+    document.body.appendChild(div);
+    try{ new QRCode(div,{text:texto,width:tamanho,height:tamanho,correctLevel:QRCode.CorrectLevel.M}); }
+    catch(e){ try{document.body.removeChild(div);}catch(x){} resolve(null); return; }
+    setTimeout(()=>{
+      const canvas=div.querySelector('canvas');
+      let url=null; try{ url=canvas?canvas.toDataURL('image/png'):null; }catch(e){}
+      try{ document.body.removeChild(div); }catch(x){}
+      resolve(url);
+    },80);
+  });
+}
 async function montarOsPdf(id){
   const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return null;}
   const v=S.veic.find(x=>x.id===o.veiculoId)||{};
@@ -1045,6 +1150,27 @@ async function montarOsPdf(id){
   if(o.relato){ y+=2; quebraSeNecessario(); linha(); doc.setFont('helvetica','bold'); doc.text('Relato:',margin,y); y+=lh; doc.setFont('helvetica','normal');
     const linhasRelato=doc.splitTextToSize(o.relato,pageW-margin*2); quebraSeNecessario();
     doc.text(linhasRelato,margin,y); y+=linhasRelato.length*5+2;
+  }
+  // Pix para pagamento: só entra no PDF se a oficina já tiver chave cadastrada
+  const ofPdf=minhaOficinaDados();
+  if(ofPdf&&ofPdf.pixChave){
+    const valorPdf=podeMo?osTotal(o):pecasTotal(o);
+    const pixPayload=montarPixPayload(ofPdf.pixChave,ofPdf.pixNome||ofPdf.nome||ofPdf.responsavel||'',ofPdf.pixCidade,valorPdf,('OS'+o.id).slice(0,25));
+    const qrUrl=pixPayload?await qrCodeDataUrl(pixPayload,220):null;
+    if(qrUrl){
+      if(y>230){ doc.addPage(); y=20; }
+      y+=2; linha();
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.text('Pagamento via Pix',margin,y); y+=6;
+      try{
+        doc.addImage(qrUrl,'PNG',margin,y,32,32);
+        doc.setFont('helvetica','normal'); doc.setFontSize(9);
+        doc.text(`Valor: ${fmtBRL(valorPdf)}`,margin+38,y+6);
+        doc.text(`Chave: ${ofPdf.pixChave}`,margin+38,y+12);
+        if(ofPdf.pixNome) doc.text(`Favorecido: ${ofPdf.pixNome}`,margin+38,y+18);
+        doc.text('Escaneie com o app do seu banco para pagar',margin+38,y+24);
+      }catch(e){ console.warn('qr pix no pdf indisponível:',e); }
+      doc.setFontSize(12); y+=36;
+    }
   }
   doc.setFontSize(8); doc.setTextColor(150);
   doc.text(`Gerado em ${fmtD(agoraIso())} · Carsz · Controle de Manutenção`,margin,290);
@@ -1456,7 +1582,10 @@ function formOficina(){
   <div><label>Responsável</label><input id="of_resp"></div>
   <div><label>Telefone / WhatsApp do responsável</label><input id="of_tel" inputmode="tel" placeholder="(11) 99999-9999" oninput="this.value=mascaraTel(this.value)"></div>
   <div class="full"><label>E-mail do gestor (opcional — só se for criar um login novo)</label><input id="of_email" type="email"></div>
-  <div class="full"><label>Logo da oficina (opcional)</label><input type="file" accept="image/*" onchange="escolherLogoOficina(this,'of_logo_prev')"><div id="of_logo_prev" class="muted" style="margin-top:6px"></div></div></div>
+  <div class="full"><label>Logo da oficina (opcional)</label><input type="file" accept="image/*" onchange="escolherLogoOficina(this,'of_logo_prev')"><div id="of_logo_prev" class="muted" style="margin-top:6px"></div></div>
+  <div><label>Chave Pix (opcional)</label><input id="of_pixchave" placeholder="CPF/CNPJ, e-mail, telefone ou aleatória"></div>
+  <div><label>Nome do favorecido</label><input id="of_pixnome"></div>
+  <div><label>Cidade</label><input id="of_pixcidade"></div></div>
   <div class="hint">Se o responsável ainda não tem login, preencha o e-mail: ele recebe uma mensagem pra criar a própria senha (sem precisar de senha definida por você), e você pode reenviar esse acesso por WhatsApp na tela seguinte.</div>
   <div class="hint">Se as pessoas que vão trabalhar nessa oficina JÁ têm login no sistema (por exemplo, hoje estão na Oficina Matriz), deixe o e-mail em branco: cadastre só nome e logo aqui, e depois mova cada uma delas pra esta oficina em "Oficina" (menu) → Editar → campo "Oficina".</div>
   <div class="hint">A oficina fica "pendente" até você marcar como "ativa" na lista.</div>
@@ -1479,7 +1608,7 @@ async function salvarOficina(){
     if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado — deixe o e-mail em branco e depois mova o usuário existente pra esta oficina em "Oficina" → Editar');return;}
     userId=data.user.id;
   }
-  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email:email||null,logo:logoTemp||null,status:'pendente',criadoEm:agoraIso()});
+  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email:email||null,logo:logoTemp||null,pixChave:val('of_pixchave').trim(),pixNome:val('of_pixnome').trim(),pixCidade:val('of_pixcidade').trim(),status:'pendente',criadoEm:agoraIso()});
   if(!userId){ fechar(); toast('Oficina cadastrada. Agora mova os usuários dela em "Oficina" (menu) → Editar → campo "Oficina".'); return; }
   await sb.from('perfis').upsert({id:userId,data:{nome:resp||nome,email,papel:'gestor',oficinaId:oid,ativo:true,criadoEm:agoraIso()}});
   const {error:eReset}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
@@ -1521,7 +1650,12 @@ function formEditarOficina(id){
   <div><label>Telefone / WhatsApp do responsável</label><input id="eo_tel" value="${esc(o.telefone)}" inputmode="tel" oninput="this.value=mascaraTel(this.value)"></div>
   <div class="full"><label>Logo da oficina</label>
     <div id="eo_logo_prev" class="muted" style="margin:4px 0">${o.logo&&o.logo.url?`<img src="${o.logo.url}" style="height:44px;border-radius:6px;vertical-align:middle;background:#fff;padding:2px"> <span class="tag ok">Logo atual</span> <a href="#" onclick="logoTemp=null;document.getElementById('eo_logo_prev').innerHTML='Sem logo';return false">remover</a>`:'Sem logo ainda'}</div>
-    <input type="file" accept="image/*" onchange="escolherLogoOficina(this,'eo_logo_prev')"></div></div>
+    <input type="file" accept="image/*" onchange="escolherLogoOficina(this,'eo_logo_prev')"></div>
+  <div class="full" style="margin-top:6px"><b>Dados de pagamento (Pix)</b></div>
+  <div><label>Chave Pix</label><input id="eo_pixchave" value="${esc(o.pixChave)}" placeholder="CPF/CNPJ, e-mail, telefone ou chave aleatória"></div>
+  <div><label>Nome do favorecido</label><input id="eo_pixnome" value="${esc(o.pixNome)}" placeholder="Nome de quem recebe"></div>
+  <div><label>Cidade (do favorecido)</label><input id="eo_pixcidade" value="${esc(o.pixCidade)}" placeholder="Ex: Barueri"></div>
+  <div class="full hint" style="margin-top:0">Usada pra gerar o QR code de pagamento na OS e pra incluir os dados de Pix na mensagem de cobrança ao cliente.</div></div>
   <div class="act"><button class="sec" onclick="fechar()">Fechar</button><button class="pri" onclick="salvarEdicaoOficina('${id}')">Salvar dados da oficina</button></div>
   <h4 style="margin-top:18px">Usuários desta oficina</h4>
   <div class="tbl"><table style="min-width:0"><tr><th>Nome</th><th>Contato</th><th>Papel</th><th></th></tr>`;
@@ -1531,7 +1665,7 @@ function formEditarOficina(id){
   abrir(h);
 }
 async function salvarEdicaoOficina(id){
-  const d={nome:val('eo_nome'),responsavel:val('eo_resp'),telefone:val('eo_tel')};
+  const d={nome:val('eo_nome'),responsavel:val('eo_resp'),telefone:val('eo_tel'),pixChave:val('eo_pixchave').trim(),pixNome:val('eo_pixnome').trim(),pixCidade:val('eo_pixcidade').trim()};
   if(!d.nome){toast('Informe o nome da oficina');return;}
   if(logoTemp!==undefined) d.logo=logoTemp;
   await S.db.doc('oficinas/'+id).update(d); fechar(); toast('Oficina atualizada');
