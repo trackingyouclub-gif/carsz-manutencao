@@ -679,7 +679,14 @@ function osMecanico(m){
   const crit=v.id?alertasVeic(v,+o.km).filter(a=>(a.lvl==='bad'||a.lvl==='warn')&&destaque(a.p)&&!(o.itens||[]).some(i=>i.pecaId===a.p.id)&&!(o.ignorados||[]).includes(a.p.id)):[];
   const lembretes=v.lembretes||[];
   const podeMo=podeFinalizarOs();
-  m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}<div class="step"><div class="row"><span class="plate" style="font-size:20px">${esc(o.placa)}</span><b>${esc(v.modelo||'')}</b><span class="muted">${fmtKm(o.km)} · ${ehGestor()?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span><span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>
+  // encaminhamento entre oficinas: só faz sentido pra cliente particular (não frota Carsz, que já
+  // tem o próprio jeito de ser atendida por qualquer oficina ativa) e enquanto a OS está aberta
+  const encs=o.encaminhamentos||[];
+  const ultimoEnc=encs[encs.length-1];
+  const podeEncaminhar=(ehChefe()||ehGestor())&&o.status==='Aberta'&&v&&!isFrota(v);
+  const encHtml=encs.length?`<div class="step"><h3 style="margin-top:0">↪ Encaminhamentos entre oficinas</h3>${encs.map(e=>`<div class="muted" style="margin-bottom:4px"><b>${esc(e.deNome)}</b> → <b>${esc(e.paraNome)}</b> · ${fmtD(e.em)} · por ${esc(e.por||'')}${e.nota?` — "${esc(e.nota)}"`:''}</div>`).join('')}</div>`:'';
+  m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}${encHtml}<div class="step"><div class="row"><span class="plate" style="font-size:20px">${esc(o.placa)}</span><b>${esc(v.modelo||'')}</b><span class="muted">${fmtKm(o.km)} · ${ehGestor()?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span><span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>
+    ${podeEncaminhar?`<div class="row" style="margin-top:10px"><button class="ghost" onclick="formEncaminharOs('${o.id}')">↪ Encaminhar p/ outra oficina</button>${ultimoEnc?`<button class="ghost" onclick="devolverOs('${o.id}')">↩ Devolver p/ ${esc(ultimoEnc.deNome)}</button>`:''}</div>`:''}
     <div class="row" style="margin-top:10px"><button class="sec" onclick="sairDaOs()">⏏ Sair desta OS (continua aberta)</button><span class="muted">Tudo já está salvo. Ela fica em "OS abertas" para inserir a mão de obra depois, e você pode abrir OS de outra placa.</span></div></div>
   <div class="step"><h3>Peças e serviços</h3>
     <div class="sug"><input id="it_nome" placeholder="Digite a peça (ex: óleo, pastilha, pneu…)" autocomplete="off" value="${esc(novoItem.q)}" oninput="novoItem.q=this.value;novoItem.hl=0;sugRender()" onkeydown="sugKey(event)"><div class="list" id="sug_list" style="display:none"></div></div>
@@ -821,6 +828,36 @@ async function maoObra(valor){
   if(!(o.itens||[]).length&&!o.relato&&!confirm('OS sem peças nem relato. Concluir mesmo assim?')){ document.getElementById('os_mo').value=''; return; }
   await fecharOs(valor);
 }
+// encaminhar a OS de um cliente particular pra outra oficina continuar o serviço: ela passa a ser
+// dona da OS (oficinaId muda pra ela), vê tudo que já foi lançado, e pode concluir/cobrar o
+// cliente ela mesma ou devolver depois — quem estiver com a OS no momento é quem decide
+function formEncaminharOs(id){
+  const destino=(S.oficinas||[]).filter(o=>o.status==='ativa'&&o.id!==(S.perfil.oficinaId||''));
+  if(!destino.length){ toast('Nenhuma outra oficina ativa pra encaminhar ainda'); return; }
+  abrir(`<h3>Encaminhar OS para outra oficina</h3><div class="grid">
+  <div class="full"><label>Oficina de destino</label><select id="enc_destino">${destino.map(o=>`<option value="${o.id}">${esc(o.nome)}</option>`).join('')}</select></div>
+  <div class="full"><label>Nota (opcional)</label><textarea id="enc_nota" placeholder="Ex: precisa de retífica, não fazemos aqui"></textarea></div></div>
+  <div class="hint">A oficina de destino passa a ver tudo que já foi lançado nesta OS (itens, valores, mão de obra) e pode continuar, concluir e cobrar o cliente, ou devolver pra você depois.</div>
+  <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarEncaminhamento('${id}')">Encaminhar</button></div>`);
+}
+async function salvarEncaminhamento(id,destinoForcado,nomeForcado){
+  const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
+  const destino=destinoForcado||val('enc_destino'); if(!destino){toast('Escolha a oficina de destino');return;}
+  const ofiDestino=(S.oficinas||[]).find(x=>x.id===destino);
+  const nomeDestino=nomeForcado||(ofiDestino&&ofiDestino.nome);
+  if(!nomeDestino){toast('Oficina de destino não encontrada ou inativa');return;}
+  const nota=destinoForcado?'':val('enc_nota');
+  const item={de:S.perfil.oficinaId||'',deNome:(S.oficina&&S.oficina.nome)||'',para:destino,paraNome:nomeDestino,por:S.mecNome,em:agoraIso(),nota};
+  await S.db.doc('os/'+id).update({oficinaId:destino,oficina:nomeDestino,encaminhamentos:[...(o.encaminhamentos||[]),item]});
+  fechar(); toast('OS encaminhada para '+nomeDestino);
+  S.osAtual=null; S.view='mabertas'; render();
+}
+function devolverOs(id){
+  const o=S.os.find(x=>x.id===id); const encs=o&&o.encaminhamentos||[]; if(!encs.length) return;
+  const ult=encs[encs.length-1];
+  if(!confirm(`Devolver esta OS para ${ult.deNome}?`))return;
+  salvarEncaminhamento(id,ult.de,ult.deNome);
+}
 async function reabrirOs(){
   if(!podeFinalizarOs()){ toast('Sem permissão para reabrir a OS'); return; }
   const o=S.os.find(x=>x.id===S.osAtual); const outra=S.os.find(x=>x.veiculoId===o.veiculoId&&x.status==='Aberta'&&x.id!==o.id); if(outra){ toast('Já existe outra OS aberta desta placa — finalize-a antes'); return; } await S.db.doc('os/'+o.id).update({status:'Aberta',concluidaEm:null}); toast('OS reaberta'); }
@@ -844,7 +881,7 @@ function passaFiltroFrota(v){ const ff=S.frotaFiltro||'todos'; return ff==='todo
 function mabertas(m){
   const lst=S.os.filter(o=>o.status==='Aberta'&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
   m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${alertaCobrancaBanner()}`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
-    return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`;
+    return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`;
   }).join(''):'<div class="empty">Nenhuma OS aberta nessa seleção.</div>');
 }
 function mconc(m){
@@ -862,7 +899,7 @@ function mconc(m){
      // mesma lógica de pagamento, mas para OS da frota Carsz (a locadora paga o mecânico pelo
      // serviço) — sem cobrança por WhatsApp, só o sinalizador com a data gravada ao marcar
      const pagamentoFrota=(v&&isFrota(v)&&ehChefe())?`<button class="${o.pago?'pago-ok':'pago-pend'}" title="${o.pago?'Pago pela locadora em '+fmtD(o.pagoEm)+' — clique para desfazer':'Marcar esta OS como paga pela locadora'}" onclick="event.stopPropagation();togglePago('${o.id}')">${o.pago?'✓ Pago em '+fmtD(o.pagoEm):'Marcar como pago'}</button>`:'';
-     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data||o.concluidaEm)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();visualizarOs('${o.id}')" title="Ver como fica o PDF antes de baixar/enviar">👁 Visualizar</button><button onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
+     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data||o.concluidaEm)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();visualizarOs('${o.id}')" title="Ver como fica o PDF antes de baixar/enviar">👁 Visualizar</button><button onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
    }).join(''):'<div class="empty">Nenhuma OS concluída nessa seleção.</div>');
 }
 // ---- cobrança de clientes particulares do mecânico (fora da frota Carsz) ----
