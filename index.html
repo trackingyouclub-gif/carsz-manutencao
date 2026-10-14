@@ -1114,10 +1114,13 @@ async function montarOsPdf(id){
   const logoUrl=S.oficina&&S.oficina.logo&&S.oficina.logo.url;
   const logoDataUrl=logoUrl?await imgParaDataUrl(logoUrl):null;
   const ofDados=minhaOficinaDados();
-  doc.setFont('helvetica','bold'); doc.setFontSize(16);
-  if(logoDataUrl){ try{ doc.addImage(logoDataUrl,'JPEG',margin,y-7,10,10); }catch(e){ console.warn(e); } doc.text(`${marcaTxt} · Ordem de Serviço`,margin+13,y); }
-  else doc.text(`${marcaTxt} · Ordem de Serviço`,margin,y);
-  y+=8;
+  const logoSize=24; // logo maior e mais em destaque no cabeçalho da OS impressa
+  doc.setFont('helvetica','bold'); doc.setFontSize(17);
+  if(logoDataUrl){
+    try{ doc.addImage(logoDataUrl,'JPEG',margin,14,logoSize,logoSize); }catch(e){ console.warn(e); }
+    doc.text(`${marcaTxt} · Ordem de Serviço`,margin+logoSize+6,26);
+    y=14+logoSize+5;
+  } else { doc.text(`${marcaTxt} · Ordem de Serviço`,margin,y); y+=8; }
   // dados da oficina (endereço, telefone, documento) — vira o "cabeçalho" da OS impressa, igual um
   // papel timbrado; só entra o que estiver cadastrado, nada aparece em branco
   const infoOficinaTxt=[ofDados&&ofDados.endereco,ofDados&&ofDados.telefoneOficina?`Tel: ${ofDados.telefoneOficina}`:null,ofDados&&ofDados.documento?`CNPJ/CPF: ${ofDados.documento}`:null].filter(Boolean).join(' · ');
