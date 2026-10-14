@@ -166,7 +166,7 @@ h4{margin:18px 0 8px;font:600 15px "IBM Plex Sans"}
 </header>
 <nav id="nav"></nav>
 <main id="main"></main>
-<div class="ov" id="ov"><div class="md" id="md"></div></div>
+<div class="ov" id="ov" onclick="if(event.target===this)fechar()"><div class="md" id="md"></div></div>
 <div class="lightbox" id="lb" onclick="this.classList.remove('on')"><img id="lbimg"></div>
 <div class="toast" id="toast"></div>
 
@@ -958,15 +958,19 @@ async function imprimirOs(id){
   toast('PDF baixado — anexe no WhatsApp pelo seletor de arquivos');
 }
 // ---- mostra como o PDF vai ficar antes de baixar/enviar, num modal com o PDF embutido ----
+// os botões ficam ACIMA do PDF (não abaixo): o visualizador de PDF dentro do iframe captura o
+// toque/scroll pra rolar a página em celulares, então um botão "Fechar" abaixo do PDF pode ficar
+// inalcançável — por isso o fechar some com try/catch (nunca trava por causa do revokeObjectURL)
+// e fica sempre visível, sem precisar rolar nada
 async function visualizarOs(id){
   const r=await montarOsPdf(id); if(!r) return;
   const url=r.doc.output('bloburl');
-  abrir(`<h3>Pré-visualização da OS</h3>
-  <iframe src="${url}" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>
-  <div class="act">
+  abrir(`<div class="act" style="margin-top:0;align-items:center">
+    <h3 style="margin:0;flex:1">Pré-visualização da OS</h3>
     <button class="pri" onclick="imprimirOs('${id}')">🖨 Baixar / Enviar</button>
-    <button class="sec" onclick="URL.revokeObjectURL('${url}');fechar()">Fechar</button>
-  </div>`);
+    <button class="sec" onclick="try{URL.revokeObjectURL('${url}')}catch(e){}fechar()">✕ Fechar</button>
+  </div>
+  <iframe src="${url}" style="width:100%;height:62vh;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:10px"></iframe>`);
 }
 function mhist(m){
   const p=normPlaca(S.filtro); const v=S.veic.find(x=>x.placa===p);
