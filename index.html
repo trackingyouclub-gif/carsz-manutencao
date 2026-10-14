@@ -1266,7 +1266,7 @@ function oficinasView(m){
   <div class="tbl"><table><tr><th>Oficina</th><th>Responsável / contato</th><th>Status</th><th></th></tr>`;
   const lista=[...S.oficinas].filter(o=>o.id!=='matriz'||S.oficinas.length===1).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
   for(const o of (lista.length?lista:S.oficinas)){
-    h+=`<tr><td><b>${esc(o.nome)}</b></td><td class="muted">${esc(o.responsavel||'')}${o.email?'<br>'+esc(o.email):''}${o.telefone?'<br>'+esc(o.telefone):''}</td><td><span class="tag ${o.status==='ativa'?'ok':o.status==='suspensa'?'bad':'warn'}">${o.status==='ativa'?'Ativa':o.status==='suspensa'?'Suspensa':'Pendente'}</span></td><td class="row">${o.status!=='ativa'?`<button class="sec" onclick="statusOficina('${o.id}','ativa')">Ativar</button>`:`<button class="ghost" onclick="statusOficina('${o.id}','suspensa')">Suspender</button>`}</td></tr>`;
+    h+=`<tr><td><b>${esc(o.nome)}</b></td><td class="muted">${esc(o.responsavel||'')}${o.email?'<br>'+esc(o.email):''}${o.telefone?'<br>'+esc(o.telefone):''}</td><td><span class="tag ${o.status==='ativa'?'ok':o.status==='suspensa'?'bad':'warn'}">${o.status==='ativa'?'Ativa':o.status==='suspensa'?'Suspensa':'Pendente'}</span></td><td class="row">${o.status!=='ativa'?`<button class="sec" onclick="statusOficina('${o.id}','ativa')">Ativar</button>`:`<button class="ghost" onclick="statusOficina('${o.id}','suspensa')">Suspender</button>`}${o.email?`<button class="ghost" onclick="reenviarAcessoOficina('${o.id}')">Reenviar acesso</button>`:''}</td></tr>`;
   }
   if(!S.oficinas.length) h+='<tr><td colspan="4" class="muted">Nenhuma oficina cadastrada ainda.</td></tr>';
   h+='</table></div>';
@@ -1276,31 +1276,51 @@ function formOficina(){
   abrir(`<h3>Pré-cadastrar oficina</h3><div class="grid">
   <div class="full"><label>Nome da oficina</label><input id="of_nome" placeholder="Ex: Oficina São Bernardo"></div>
   <div><label>Responsável</label><input id="of_resp"></div>
-  <div><label>Telefone / WhatsApp</label><input id="of_tel" inputmode="tel" placeholder="(11) 99999-9999" oninput="this.value=mascaraTel(this.value)"></div>
-  <div class="full"><label>E-mail do gestor (login do responsável pela oficina)</label><input id="of_email" type="email"></div>
-  <div><label>Senha inicial (mín. 6)</label><input id="of_pass" type="text" autocomplete="off"></div></div>
-  <div class="hint">Cria a oficina já com o primeiro acesso de gestor dela. A oficina fica "pendente" até você marcar como "ativa" na lista.</div>
+  <div><label>Telefone / WhatsApp do responsável</label><input id="of_tel" inputmode="tel" placeholder="(11) 99999-9999" oninput="this.value=mascaraTel(this.value)"></div>
+  <div class="full"><label>E-mail do gestor (login do responsável pela oficina)</label><input id="of_email" type="email"></div></div>
+  <div class="hint">O responsável não precisa de senha definida por você — ele recebe um e-mail para criar a própria senha, e você pode reenviar esse acesso por WhatsApp na tela seguinte. A oficina fica "pendente" até você marcar como "ativa" na lista.</div>
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarOficina()">Cadastrar</button></div>`);
 }
 async function salvarOficina(){
-  const nome=val('of_nome'), resp=val('of_resp'), tel=val('of_tel'), email=val('of_email').toLowerCase(), pass=document.getElementById('of_pass').value;
+  const nome=val('of_nome'), resp=val('of_resp'), tel=val('of_tel'), email=val('of_email').toLowerCase();
   if(!nome){toast('Informe o nome da oficina');return;}
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('E-mail inválido');return;}
-  if(pass.length<6){toast('Senha com pelo menos 6 caracteres');return;}
   const oid=genId();
+  // senha aleatória, de uso único e descartável: ninguém a usa — o responsável define a própria
+  // senha pelo e-mail de acesso disparado logo abaixo (reaproveita o fluxo de recuperação de senha)
+  const senhaTemp=genId()+genId()+genId();
   const tmp=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
-  const {data,error}=await tmp.auth.signUp({email,password:pass});
+  const {data,error}=await tmp.auth.signUp({email,password:senhaTemp});
   if(error){toast('Erro: '+error.message);return;}
   if(!data.user){toast('Não foi possível criar o acesso');return;}
   if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado');return;}
   await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email,status:'pendente',criadoEm:agoraIso()});
   await sb.from('perfis').upsert({id:data.user.id,data:{nome:resp||nome,email,papel:'gestor',oficinaId:oid,ativo:true,criadoEm:agoraIso()}});
-  fechar(); toast('Oficina cadastrada — marque como "ativa" quando quiser liberar o acesso');
+  const {error:eReset}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  toast('Oficina cadastrada — marque como "ativa" quando quiser liberar o acesso');
+  avisoAcessoOficina(nome,resp,tel,email,!eReset);
+}
+// mostra a confirmação de envio do e-mail de acesso + botão para reenviar o mesmo aviso por
+// WhatsApp (o link de senha em si só pode ser enviado por e-mail pelo Supabase; o WhatsApp leva
+// o link do site e o login, pedindo pra conferir o e-mail ou usar "Esqueci a senha")
+function avisoAcessoOficina(nome,resp,tel,email,emailOk){
+  const telDigits=(tel||'').replace(/\D/g,'');
+  const site=location.origin+location.pathname;
+  const msg=`Olá${resp?', '+resp:''}! A oficina *${nome}* foi cadastrada no sistema de manutenção da Carsz.\n\nAcesse: ${site}\nSeu login: ${email}\n\nVocê recebeu um e-mail para definir sua senha de acesso (confira também a caixa de spam). Se não achar, use "Esqueci a senha" na tela de entrada com este e-mail.`;
+  abrir(`<h3>Oficina cadastrada</h3><p class="muted">${emailOk?'E-mail de acesso enviado para '+esc(email)+'.':'Não foi possível enviar o e-mail automático agora — avise o responsável para usar "Esqueci a senha" com este e-mail: '+esc(email)+'.'}</p>
+  <div class="act">${telDigits?`<button class="pri" onclick="window.open('https://wa.me/${telDigits.length<=11?'55'+telDigits:telDigits}?text=${encodeURIComponent(msg)}','_blank')">💬 Enviar acesso por WhatsApp</button>`:'<span class="hint">Sem telefone cadastrado — não é possível enviar por WhatsApp.</span>'}<button class="sec" onclick="fechar()">Fechar</button></div>`);
 }
 async function statusOficina(id,status){
   if(status==='ativa'&&!confirm('Ativar esta oficina? Ela passa a poder atender a frota Carsz e usar o sistema.'))return;
   if(status==='suspensa'&&!confirm('Suspender esta oficina? Os usuários dela perdem acesso imediatamente.'))return;
   await S.db.doc('oficinas/'+id).update({status}); toast('Status atualizado');
+}
+// reenvia o e-mail de acesso (sem recriar a conta) e abre o botão de WhatsApp de novo — útil se o
+// responsável não achou o e-mail da primeira vez ou perdeu o link
+async function reenviarAcessoOficina(id){
+  const o=S.oficinas.find(x=>x.id===id); if(!o||!o.email){toast('Oficina sem e-mail cadastrado');return;}
+  const {error}=await sb.auth.resetPasswordForEmail(o.email,{redirectTo:location.origin+location.pathname});
+  avisoAcessoOficina(o.nome,o.responsavel,o.telefone,o.email,!error);
 }
 
 // ---- detalhe/histórico veículo (gestão) ----
