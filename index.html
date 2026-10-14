@@ -1113,10 +1113,15 @@ async function montarOsPdf(id){
   const marcaTxt=(S.oficina&&S.oficina.id!=='matriz')?S.oficina.nome:'CARSZ';
   const logoUrl=S.oficina&&S.oficina.logo&&S.oficina.logo.url;
   const logoDataUrl=logoUrl?await imgParaDataUrl(logoUrl):null;
+  const ofDados=minhaOficinaDados();
   doc.setFont('helvetica','bold'); doc.setFontSize(16);
   if(logoDataUrl){ try{ doc.addImage(logoDataUrl,'JPEG',margin,y-7,10,10); }catch(e){ console.warn(e); } doc.text(`${marcaTxt} · Ordem de Serviço`,margin+13,y); }
   else doc.text(`${marcaTxt} · Ordem de Serviço`,margin,y);
   y+=8;
+  // dados da oficina (endereço, telefone, documento) — vira o "cabeçalho" da OS impressa, igual um
+  // papel timbrado; só entra o que estiver cadastrado, nada aparece em branco
+  const infoOficinaTxt=[ofDados&&ofDados.endereco,ofDados&&ofDados.telefoneOficina?`Tel: ${ofDados.telefoneOficina}`:null,ofDados&&ofDados.documento?`CNPJ/CPF: ${ofDados.documento}`:null].filter(Boolean).join(' · ');
+  if(infoOficinaTxt){ doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(infoOficinaTxt,margin,y); doc.setTextColor(0); y+=5; }
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(`Nº OS: ${o.id}`,margin,y); doc.setTextColor(0); y+=6;
   linha();
   doc.setFontSize(12);
@@ -1152,7 +1157,7 @@ async function montarOsPdf(id){
     doc.text(linhasRelato,margin,y); y+=linhasRelato.length*5+2;
   }
   // Pix para pagamento: só entra no PDF se a oficina já tiver chave cadastrada
-  const ofPdf=minhaOficinaDados();
+  const ofPdf=ofDados;
   if(ofPdf&&ofPdf.pixChave){
     const valorPdf=podeMo?osTotal(o):pecasTotal(o);
     const pixPayload=montarPixPayload(ofPdf.pixChave,ofPdf.pixNome||ofPdf.nome||ofPdf.responsavel||'',ofPdf.pixCidade,valorPdf,('OS'+o.id).slice(0,25));
@@ -1583,9 +1588,13 @@ function formOficina(){
   <div><label>Telefone / WhatsApp do responsável</label><input id="of_tel" inputmode="tel" placeholder="(11) 99999-9999" oninput="this.value=mascaraTel(this.value)"></div>
   <div class="full"><label>E-mail do gestor (opcional — só se for criar um login novo)</label><input id="of_email" type="email"></div>
   <div class="full"><label>Logo da oficina (opcional)</label><input type="file" accept="image/*" onchange="escolherLogoOficina(this,'of_logo_prev')"><div id="of_logo_prev" class="muted" style="margin-top:6px"></div></div>
-  <div><label>Chave Pix (opcional)</label><input id="of_pixchave" placeholder="CPF/CNPJ, e-mail, telefone ou aleatória"></div>
+  <div class="full" style="margin-top:6px"><b>Dados que aparecem na OS (tela e impressão) — opcionais, pode completar depois</b></div>
+  <div><label>Telefone da oficina</label><input id="of_telofi" inputmode="tel" placeholder="Pode ser o mesmo do responsável" oninput="this.value=mascaraTel(this.value)"></div>
+  <div><label>CNPJ ou CPF</label><input id="of_doc" placeholder="00.000.000/0000-00"></div>
+  <div class="full"><label>Endereço</label><input id="of_end" placeholder="Rua, número, bairro, cidade"></div>
+  <div><label>Chave Pix</label><input id="of_pixchave" placeholder="CPF/CNPJ, e-mail, telefone ou aleatória"></div>
   <div><label>Nome do favorecido</label><input id="of_pixnome"></div>
-  <div><label>Cidade</label><input id="of_pixcidade"></div></div>
+  <div><label>Cidade (do Pix)</label><input id="of_pixcidade"></div></div>
   <div class="hint">Se o responsável ainda não tem login, preencha o e-mail: ele recebe uma mensagem pra criar a própria senha (sem precisar de senha definida por você), e você pode reenviar esse acesso por WhatsApp na tela seguinte.</div>
   <div class="hint">Se as pessoas que vão trabalhar nessa oficina JÁ têm login no sistema (por exemplo, hoje estão na Oficina Matriz), deixe o e-mail em branco: cadastre só nome e logo aqui, e depois mova cada uma delas pra esta oficina em "Oficina" (menu) → Editar → campo "Oficina".</div>
   <div class="hint">A oficina fica "pendente" até você marcar como "ativa" na lista.</div>
@@ -1608,7 +1617,7 @@ async function salvarOficina(){
     if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado — deixe o e-mail em branco e depois mova o usuário existente pra esta oficina em "Oficina" → Editar');return;}
     userId=data.user.id;
   }
-  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email:email||null,logo:logoTemp||null,pixChave:val('of_pixchave').trim(),pixNome:val('of_pixnome').trim(),pixCidade:val('of_pixcidade').trim(),status:'pendente',criadoEm:agoraIso()});
+  await S.db.doc('oficinas/'+oid).set({nome,responsavel:resp,telefone:tel,email:email||null,logo:logoTemp||null,telefoneOficina:val('of_telofi').trim(),documento:val('of_doc').trim(),endereco:val('of_end').trim(),pixChave:val('of_pixchave').trim(),pixNome:val('of_pixnome').trim(),pixCidade:val('of_pixcidade').trim(),status:'pendente',criadoEm:agoraIso()});
   if(!userId){ fechar(); toast('Oficina cadastrada. Agora mova os usuários dela em "Oficina" (menu) → Editar → campo "Oficina".'); return; }
   await sb.from('perfis').upsert({id:userId,data:{nome:resp||nome,email,papel:'gestor',oficinaId:oid,ativo:true,criadoEm:agoraIso()}});
   const {error:eReset}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
@@ -1648,6 +1657,10 @@ function formEditarOficina(id){
   <div class="full"><label>Nome da oficina</label><input id="eo_nome" value="${esc(o.nome)}"></div>
   <div><label>Responsável</label><input id="eo_resp" value="${esc(o.responsavel)}"></div>
   <div><label>Telefone / WhatsApp do responsável</label><input id="eo_tel" value="${esc(o.telefone)}" inputmode="tel" oninput="this.value=mascaraTel(this.value)"></div>
+  <div class="full" style="margin-top:6px"><b>Dados que aparecem na OS (tela e impressão)</b></div>
+  <div><label>Telefone da oficina</label><input id="eo_telofi" value="${esc(o.telefoneOficina)}" inputmode="tel" placeholder="Pode ser o mesmo do responsável" oninput="this.value=mascaraTel(this.value)"></div>
+  <div><label>CNPJ ou CPF</label><input id="eo_doc" value="${esc(o.documento)}" placeholder="00.000.000/0000-00"></div>
+  <div class="full"><label>Endereço</label><input id="eo_end" value="${esc(o.endereco)}" placeholder="Rua, número, bairro, cidade"></div>
   <div class="full"><label>Logo da oficina</label>
     <div id="eo_logo_prev" class="muted" style="margin:4px 0">${o.logo&&o.logo.url?`<img src="${o.logo.url}" style="height:44px;border-radius:6px;vertical-align:middle;background:#fff;padding:2px"> <span class="tag ok">Logo atual</span> <a href="#" onclick="logoTemp=null;document.getElementById('eo_logo_prev').innerHTML='Sem logo';return false">remover</a>`:'Sem logo ainda'}</div>
     <input type="file" accept="image/*" onchange="escolherLogoOficina(this,'eo_logo_prev')"></div>
@@ -1665,7 +1678,7 @@ function formEditarOficina(id){
   abrir(h);
 }
 async function salvarEdicaoOficina(id){
-  const d={nome:val('eo_nome'),responsavel:val('eo_resp'),telefone:val('eo_tel'),pixChave:val('eo_pixchave').trim(),pixNome:val('eo_pixnome').trim(),pixCidade:val('eo_pixcidade').trim()};
+  const d={nome:val('eo_nome'),responsavel:val('eo_resp'),telefone:val('eo_tel'),telefoneOficina:val('eo_telofi').trim(),documento:val('eo_doc').trim(),endereco:val('eo_end').trim(),pixChave:val('eo_pixchave').trim(),pixNome:val('eo_pixnome').trim(),pixCidade:val('eo_pixcidade').trim()};
   if(!d.nome){toast('Informe o nome da oficina');return;}
   if(logoTemp!==undefined) d.logo=logoTemp;
   await S.db.doc('oficinas/'+id).update(d); fechar(); toast('Oficina atualizada');
