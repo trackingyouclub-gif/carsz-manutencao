@@ -369,6 +369,7 @@ function navMec(){
   const donoOficina=!!(S.perfil&&S.perfil.papel==='gestor'&&!ehAdminGeral());
   let nav=[...NAV_MEC];
   if(ehChefe()||donoOficina) nav.push(['matencao','Atenção']);
+  if(ehChefe()||ehGestor()) nav.push(['mfat','Faturamento']);
   if(donoOficina) nav.push(['oficina','Oficina']);
   return nav;
 }
@@ -406,7 +407,7 @@ function render(){
   const m=document.getElementById('main');
   if(!S.cfg){ m.innerHTML='<div class="empty">Carregando dados…</div>'; return; }
   const keep=preservar(m);
-  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,mconc,mhist,matencao,oficinas:oficinasView})[S.view](m);
+  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,mconc,mhist,matencao,mfat,oficinas:oficinasView})[S.view](m);
   restaurar(keep);
   if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
   else {
@@ -995,6 +996,63 @@ function cardsFinanceiro(){
     <div class="card bad"><div class="v">${fmtBRL(r.aReceber)}</div><div class="l">Saldo a receber</div></div>
     <div class="card ok"><div class="v">${fmtBRL(r.pagas)}</div><div class="l">OS pagas</div></div>
   </div>`;
+}
+// ---- faturamento por período (mecânico chefe / gestão da oficina parceira) ----
+// "faturamento" = soma do valor total das OS concluídas da própria oficina (peças + mão de obra) —
+// é o total faturado, não o quanto já caiu no bolso; pra isso já existe "Saldo a receber" nos cards
+function inicioSemana(d){ const dt=new Date(d); dt.setHours(0,0,0,0); const dia=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-dia); return dt; }
+function chaveFaturamento(data,nivel){
+  const d=new Date(data);
+  if(nivel==='ano') return String(d.getFullYear());
+  if(nivel==='semana') return inicioSemana(d).toISOString().slice(0,10);
+  return d.toISOString().slice(0,7); // mês
+}
+function rotuloFaturamento(chave,nivel){
+  if(nivel==='ano') return chave;
+  if(nivel==='semana'){ const d=new Date(chave+'T12:00:00'); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; }
+  const [yy,mm]=chave.split('-'); return `${MESES_ABREV[+mm-1]}/${yy.slice(2)}`;
+}
+// lista as N últimas chaves de período terminando em agora (ex.: últimas 8 semanas, 12 meses, 5 anos)
+function periodosRecentes(nivel,n){
+  const now=new Date(); const out=[];
+  if(nivel==='semana'){ let d=inicioSemana(now); for(let i=0;i<n;i++){ out.unshift(d.toISOString().slice(0,10)); d=new Date(d.getFullYear(),d.getMonth(),d.getDate()-7); } }
+  else if(nivel==='ano'){ const y=now.getFullYear(); for(let i=n-1;i>=0;i--) out.push(String(y-i)); }
+  else { let y=now.getFullYear(), mo=now.getMonth(); for(let i=0;i<n;i++){ out.unshift(y+'-'+String(mo+1).padStart(2,'0')); mo--; if(mo<0){mo=11;y--;} } }
+  return out;
+}
+function faturamentoPorPeriodo(nivel){
+  const minhas=S.os.filter(o=>o.oficinaId===(S.perfil&&S.perfil.oficinaId)&&o.status==='Concluída');
+  const porChave={};
+  for(const o of minhas){ const data=o.data||o.concluidaEm; if(!data) continue; const k=chaveFaturamento(data,nivel); porChave[k]=(porChave[k]||0)+osTotal(o); }
+  return porChave;
+}
+function mfat(m){
+  if(!(ehChefe()||ehGestor())){ m.innerHTML='<div class="empty">Sem permissão para ver o faturamento.</div>'; return; }
+  const nivel=S.fatNivel||'mes';
+  const N={semana:8,mes:12,ano:5}[nivel];
+  const porChave=faturamentoPorPeriodo(nivel);
+  const chaves=periodosRecentes(nivel,N);
+  const atual=porChave[chaves[chaves.length-1]]||0;
+  const anterior=porChave[chaves[chaves.length-2]]||0;
+  const variacao=anterior>0?Math.round((atual-anterior)/anterior*100):null;
+  const max=Math.max(1,...chaves.map(k=>porChave[k]||0));
+  const totalPeriodo=chaves.reduce((s,k)=>s+(porChave[k]||0),0);
+  const rotuloAtual={semana:'esta semana',mes:'este mês',ano:'este ano'}[nivel];
+  const tabs=[['semana','Semanal'],['mes','Mensal'],['ano','Anual']];
+  let h=`<div class="bar"><h2>Faturamento</h2></div>
+  <p class="hint" style="margin:-4px 0 10px">Total faturado (OS concluídas) da sua oficina. Não é o quanto já caiu no bolso — pra isso veja "Saldo a receber" em OS concluídas.</p>
+  <div class="row" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${nivel===k?'pri':'sec'}" onclick="S.fatNivel='${k}';render()">${l}</button>`).join('')}</div>
+  <div class="cards" style="margin-bottom:16px">
+    <div class="card"><div class="v" style="font-size:22px">${fmtBRL(atual)}</div><div class="l">faturamento ${rotuloAtual}</div></div>
+    <div class="card"><div class="v" style="font-size:20px">${variacao==null?'—':(variacao>=0?'+':'')+variacao+'%'}</div><div class="l">vs. período anterior</div></div>
+    <div class="card"><div class="v" style="font-size:20px">${fmtBRL(totalPeriodo)}</div><div class="l">soma dos últimos ${N} períodos</div></div>
+  </div>
+  <h4>Histórico</h4>
+  <div class="barchart">${chaves.map(k=>{
+    const val=porChave[k]||0, pct=Math.round(val/max*100);
+    return `<div class="brow"><span class="blabel">${rotuloFaturamento(k,nivel)}</span><div class="btrack"><div class="bfill" style="width:${pct}%"></div></div><span class="bval">${fmtBRL(val)}</span></div>`;
+  }).join('')}</div>`;
+  m.innerHTML=h;
 }
 // ---- cobrança de clientes particulares do mecânico (fora da frota Carsz) ----
 const diasAtraso = o => Math.max(0,Math.floor((Date.now()-new Date(o.data||o.concluidaEm))/864e5));
