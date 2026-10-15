@@ -866,9 +866,19 @@ async function fotoExtra(inp){ const f=inp.files[0]; if(!f||!S.assets)return; co
 async function maoObra(valor){
   if(!podeFinalizarOs()){ toast('Somente o mecânico chefe ou a gestão podem informar a mão de obra'); render(); return; }
   const o=S.os.find(x=>x.id===S.osAtual); if(!o||o.status!=='Aberta')return;
-  if(valor<=0){ if(o.maoObra!==valor) await S.db.doc('os/'+o.id).update({maoObra:valor,maoObraEdit:editMo(o,valor)}); return; }
+  if(valor<=0){
+    if(o.maoObra!==valor){ try{ await S.db.doc('os/'+o.id).update({maoObra:valor,maoObraEdit:editMo(o,valor)}); }catch(e){ erroSalvar('salvar a mão de obra',e); } }
+    return;
+  }
   if(!(o.itens||[]).length&&!o.relato&&!confirm('OS sem peças nem relato. Concluir mesmo assim?')){ document.getElementById('os_mo').value=''; return; }
   await fecharOs(valor);
+}
+// mostra o erro de verdade (nunca falha "em silêncio"): toda escrita que pode ser bloqueada pelas
+// regras de segurança do banco (RLS) passa por aqui quando dá erro, com um alert bem visível —
+// pede pra tirar print porque é a forma mais rápida de eu identificar a causa exata depois
+function erroSalvar(acao,e){
+  console.error(acao,e);
+  alert(`Não foi possível ${acao}.\n\nMotivo: ${(e&&e.message)||'erro desconhecido'}\n\nTire um print desta mensagem e envie pra quem administra o sistema.`);
 }
 // encaminhar a OS de um cliente particular pra outra oficina continuar o serviço: ela passa a ser
 // dona da OS (oficinaId muda pra ela), vê tudo que já foi lançado, e pode concluir/cobrar o
@@ -902,14 +912,17 @@ function devolverOs(id){
 }
 async function reabrirOs(){
   if(!podeFinalizarOs()){ toast('Sem permissão para reabrir a OS'); return; }
-  const o=S.os.find(x=>x.id===S.osAtual); const outra=S.os.find(x=>x.veiculoId===o.veiculoId&&x.status==='Aberta'&&x.id!==o.id); if(outra){ toast('Já existe outra OS aberta desta placa — finalize-a antes'); return; } await S.db.doc('os/'+o.id).update({status:'Aberta',concluidaEm:null}); toast('OS reaberta'); }
+  const o=S.os.find(x=>x.id===S.osAtual); const outra=S.os.find(x=>x.veiculoId===o.veiculoId&&x.status==='Aberta'&&x.id!==o.id); if(outra){ toast('Já existe outra OS aberta desta placa — finalize-a antes'); return; }
+  try{ await S.db.doc('os/'+o.id).update({status:'Aberta',concluidaEm:null}); toast('OS reaberta'); }catch(e){ erroSalvar('reabrir a OS',e); } }
 async function fecharOs(mo){
   if(!podeFinalizarOs()){ toast('Sem permissão para concluir a OS'); return; }
   const o=S.os.find(x=>x.id===S.osAtual); const v=S.veic.find(x=>x.id===o.veiculoId);
   const custo=osTotal({...o,maoObra:mo});
-  await S.db.doc('os/'+o.id).update({maoObra:mo,maoObraEdit:editMo(o,mo),status:'Concluída',concluidaEm:agoraIso(),custo});
-  if(v&&v.status==='Em manutenção') await S.db.doc('veiculos/'+v.id).update({status:'Disponível'});
-  toast('OS concluída'); render();
+  try{
+    await S.db.doc('os/'+o.id).update({maoObra:mo,maoObraEdit:editMo(o,mo),status:'Concluída',concluidaEm:agoraIso(),custo});
+    if(v&&v.status==='Em manutenção') await S.db.doc('veiculos/'+v.id).update({status:'Disponível'});
+    toast('OS concluída'); render();
+  }catch(e){ erroSalvar('concluir a OS',e); }
 }
 function filtroFrotaSelect(){
   const ff=S.frotaFiltro||'todos';
