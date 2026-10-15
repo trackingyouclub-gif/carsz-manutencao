@@ -1169,34 +1169,46 @@ async function montarOsPdf(id){
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4'});
   const margin=16, pageW=210, lh=7; let y=20;
-  const linha=()=>{ doc.setDrawColor(200); doc.line(margin,y,pageW-margin,y); y+=5; };
-  const quebraSeNecessario=()=>{ if(y>274){ doc.addPage(); y=20; } };
+  const BRAND=[13,59,102]; // mesmo azul da marca usada no app (--brand), pra dar identidade ao papel
+  const linha=()=>{ doc.setDrawColor(215); doc.line(margin,y,pageW-margin,y); y+=5; };
+  const tituloSecao=(txt)=>{ doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(...BRAND); doc.text(txt,margin,y); doc.setTextColor(0); doc.setFont('helvetica','normal'); doc.setFontSize(12); y+=6.5; };
+  const quebraSeNecessario=(margemExtra)=>{ if(y>274-(margemExtra||0)){ doc.addPage(); y=20; } };
   // marca no PDF: oficina parceira usa o próprio nome/logo, a Oficina Matriz (Carsz) continua com "CARSZ"
   const marcaTxt=(S.oficina&&S.oficina.id!=='matriz')?S.oficina.nome:'CARSZ';
   const logoUrl=S.oficina&&S.oficina.logo&&S.oficina.logo.url;
   const logoDataUrl=logoUrl?await imgParaDataUrl(logoUrl):null;
   const ofDados=minhaOficinaDados();
-  const logoSize=24; // logo maior e mais em destaque no cabeçalho da OS impressa
-  doc.setFont('helvetica','bold'); doc.setFontSize(17);
-  if(logoDataUrl){
-    try{ doc.addImage(logoDataUrl,'JPEG',margin,14,logoSize,logoSize); }catch(e){ console.warn(e); }
-    doc.text(`${marcaTxt} · Ordem de Serviço`,margin+logoSize+6,26);
-    y=14+logoSize+5;
-  } else { doc.text(`${marcaTxt} · Ordem de Serviço`,margin,y); y+=8; }
-  // dados da oficina (endereço, telefone, documento) — vira o "cabeçalho" da OS impressa, igual um
-  // papel timbrado; só entra o que estiver cadastrado, nada aparece em branco
-  const infoOficinaTxt=[ofDados&&ofDados.endereco,ofDados&&ofDados.telefoneOficina?`Tel: ${ofDados.telefoneOficina}`:null,ofDados&&ofDados.documento?`CNPJ/CPF: ${ofDados.documento}`:null].filter(Boolean).join(' · ');
-  if(infoOficinaTxt){ doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(infoOficinaTxt,margin,y); doc.setTextColor(0); y+=5; }
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text(`Nº OS: ${o.id}`,margin,y); doc.setTextColor(0); y+=6;
-  linha();
-  doc.setFontSize(12);
+
+  // ---- cabeçalho: bem mais espaço pra logomarca, e o nome/endereço da oficina com hierarquia de
+  // fonte clara (nome grande, resto em cinza menor) — igual um papel timbrado ----
+  const logoSize=32;
+  const headerTextX=logoDataUrl?margin+logoSize+8:margin;
+  doc.setFontSize(9); doc.setTextColor(150); doc.text(`Nº OS: ${o.id}`,pageW-margin,14,{align:'right'}); doc.setTextColor(0);
+  if(logoDataUrl){ try{ doc.addImage(logoDataUrl,'JPEG',margin,14,logoSize,logoSize); }catch(e){ console.warn(e); } }
+  let hy=22;
+  doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(...BRAND);
+  doc.text(marcaTxt,headerTextX,hy); hy+=7;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(120);
+  doc.text('Ordem de Serviço',headerTextX,hy); hy+=6;
+  doc.setTextColor(0);
+  const infoOficina=[ofDados&&ofDados.endereco,ofDados&&ofDados.telefoneOficina?`Tel: ${ofDados.telefoneOficina}`:null,ofDados&&ofDados.documento?`CNPJ/CPF: ${ofDados.documento}`:null].filter(Boolean);
+  doc.setFontSize(9); doc.setTextColor(110);
+  for(const l of infoOficina){ doc.text(l,headerTextX,hy); hy+=4.5; }
+  doc.setTextColor(0); doc.setFontSize(12);
+  y=Math.max(hy+3, 14+logoSize+6);
+  doc.setFillColor(...BRAND); doc.rect(margin,y,pageW-margin*2,1,'F'); y+=8;
+
+  // ---- dados do veículo / cliente ----
+  tituloSecao('DADOS DO VEÍCULO');
   doc.text(`Placa: ${o.placa}`,margin,y); doc.text(`Km: ${fmtKm(o.km)}`,120,y); y+=lh;
   doc.text(`Veículo: ${v.modelo||'—'} ${v.ano||''}`,margin,y); y+=lh;
   doc.text(`Data do serviço: ${fmtD(o.data||o.concluidaEm)}`,margin,y); y+=lh;
-  if(o.mecanico){ doc.text(`Mecânico: ${o.mecanico}`,margin,y); y+=lh; }
   doc.text(`Oficina: ${o.oficina||(S.oficina&&S.oficina.nome)||''}`,margin,y); y+=lh;
   y+=1; linha();
-  doc.setFont('helvetica','bold'); doc.text('Peças e serviços',margin,y); y+=lh; doc.setFont('helvetica','normal');
+
+  // ---- peças e serviços ----
+  quebraSeNecessario(20);
+  tituloSecao('PEÇAS E SERVIÇOS');
   if((o.itens||[]).length){
     for(const i of o.itens){
       quebraSeNecessario();
@@ -1206,42 +1218,53 @@ async function montarOsPdf(id){
       if(i.obs){ doc.setFontSize(9); doc.setTextColor(110); quebraSeNecessario(); doc.text(String(i.obs),margin+4,y); doc.setFontSize(12); doc.setTextColor(0); y+=lh-2; }
     }
   } else { doc.text('Nenhuma peça registrada.',margin,y); y+=lh; }
-  y+=1; linha(); quebraSeNecessario();
+  y+=1; linha(); quebraSeNecessario(18);
   doc.setFont('helvetica','bold');
   doc.text('Subtotal peças:',margin,y); doc.text(fmtBRL(pecasTotal(o)),pageW-margin,y,{align:'right'}); y+=lh;
   if(podeMo){
     doc.setFont('helvetica','normal');
-    doc.text('Mão de obra:',margin,y); doc.text(fmtBRL(o.maoObra||0),pageW-margin,y,{align:'right'}); y+=lh;
-    doc.setFont('helvetica','bold'); doc.setFontSize(13);
-    doc.text('TOTAL:',margin,y); doc.text(fmtBRL(osTotal(o)),pageW-margin,y,{align:'right'}); y+=lh;
-    doc.setFontSize(12);
+    doc.text('Mão de obra:',margin,y); doc.text(fmtBRL(o.maoObra||0),pageW-margin,y,{align:'right'}); y+=lh+2;
+    quebraSeNecessario(12);
+    // total em destaque, com uma faixa clara atrás — é o número que mais importa no papel
+    doc.setFillColor(238,242,247); doc.rect(margin,y-6,pageW-margin*2,9.5,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(...BRAND);
+    doc.text('TOTAL:',margin+2,y); doc.text(fmtBRL(osTotal(o)),pageW-margin-2,y,{align:'right'});
+    doc.setTextColor(0); doc.setFontSize(12); y+=lh+3;
   }
   doc.setFont('helvetica','normal');
-  if(o.relato){ y+=2; quebraSeNecessario(); linha(); doc.setFont('helvetica','bold'); doc.text('Relato:',margin,y); y+=lh; doc.setFont('helvetica','normal');
-    const linhasRelato=doc.splitTextToSize(o.relato,pageW-margin*2); quebraSeNecessario();
+
+  // ---- relato ----
+  if(o.relato){ quebraSeNecessario(20); linha(); tituloSecao('RELATO');
+    const linhasRelato=doc.splitTextToSize(o.relato,pageW-margin*2); quebraSeNecessario(linhasRelato.length*5);
     doc.text(linhasRelato,margin,y); y+=linhasRelato.length*5+2;
   }
-  // Pix para pagamento: só entra no PDF se a oficina já tiver chave cadastrada
+
+  // ---- rodapé: mecânico responsável pelo serviço + dados de pagamento (Pix), se a oficina tiver
+  // chave cadastrada — fica por último, como fecho do documento ----
+  quebraSeNecessario(20); y+=2; linha();
+  tituloSecao('RESPONSÁVEL PELO SERVIÇO');
+  doc.text(`Mecânico: ${o.mecanico||'—'}`,margin,y); y+=lh;
+
   const ofPdf=ofDados;
   if(ofPdf&&ofPdf.pixChave){
     const valorPdf=podeMo?osTotal(o):pecasTotal(o);
     const pixPayload=montarPixPayload(ofPdf.pixChave,ofPdf.pixNome||ofPdf.nome||ofPdf.responsavel||'',ofPdf.pixCidade,valorPdf,('OS'+o.id).slice(0,25));
     const qrUrl=pixPayload?await qrCodeDataUrl(pixPayload,220):null;
     if(qrUrl){
-      if(y>230){ doc.addPage(); y=20; }
-      y+=2; linha();
-      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.text('Pagamento via Pix',margin,y); y+=6;
+      quebraSeNecessario(40); y+=3;
+      tituloSecao('PAGAMENTO VIA PIX');
       try{
-        doc.addImage(qrUrl,'PNG',margin,y,32,32);
+        doc.addImage(qrUrl,'PNG',margin,y-4,30,30);
         doc.setFont('helvetica','normal'); doc.setFontSize(9);
-        doc.text(`Valor: ${fmtBRL(valorPdf)}`,margin+38,y+6);
-        doc.text(`Chave: ${ofPdf.pixChave}`,margin+38,y+12);
-        if(ofPdf.pixNome) doc.text(`Favorecido: ${ofPdf.pixNome}`,margin+38,y+18);
-        doc.text('Escaneie com o app do seu banco para pagar',margin+38,y+24);
+        doc.text(`Valor: ${fmtBRL(valorPdf)}`,margin+36,y+2);
+        doc.text(`Chave: ${ofPdf.pixChave}`,margin+36,y+8);
+        if(ofPdf.pixNome) doc.text(`Favorecido: ${ofPdf.pixNome}`,margin+36,y+14);
+        doc.text('Escaneie com o app do seu banco para pagar',margin+36,y+20);
       }catch(e){ console.warn('qr pix no pdf indisponível:',e); }
-      doc.setFontSize(12); y+=36;
+      doc.setFontSize(12); y+=30;
     }
   }
+
   doc.setFontSize(8); doc.setTextColor(150);
   doc.text(`Gerado em ${fmtD(agoraIso())} · Carsz · Controle de Manutenção`,margin,290);
   const nomeArq=`OS-${o.placa}-${(o.data||o.concluidaEm||'').slice(0,10)}.pdf`;
