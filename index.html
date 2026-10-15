@@ -729,6 +729,7 @@ function osMecanico(m){
   m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}${encHtml}<div class="step"><div class="row"><span class="plate" style="font-size:20px">${esc(o.placa)}</span><b>${esc(v.modelo||'')}</b><span class="muted">${fmtKm(o.km)} · ${ehGestor()?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span><span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>
     ${podeEncaminhar?`<div class="row" style="margin-top:10px"><button class="pri" style="background:var(--warn);border-color:var(--warn);color:#fff" onclick="formEncaminharOs('${o.id}')">↪ Encaminhar p/ outra oficina</button>${ultimoEnc?`<button class="ghost" onclick="devolverOs('${o.id}')">↩ Devolver p/ ${esc(ultimoEnc.deNome)}</button>`:''}</div>`:''}
     ${(ehChefe()||ehGestor())?`<div class="row" style="margin-top:10px"><button class="sec" onclick="abrirPixOs('${o.id}')">💳 Gerar Pix para pagamento</button><span class="muted">Pra cobrar o cliente na hora, presencialmente — gera QR code com o valor desta OS.</span></div>`:''}
+    ${((ehChefe()||ehGestor())&&v&&!isFrota(v))?`<div class="row" style="margin-top:10px"><button class="pri" ${((+o.maoObra||0)>0)?'':'disabled'} onclick="cobrarOs('${o.id}')">💬 Cobrar cliente</button><span class="muted">${((+o.maoObra||0)>0)?'Envia o resumo + Pix por WhatsApp e abre o PDF da OS.':'Informe a mão de obra pra liberar a cobrança.'}</span></div>`:''}
     <div class="row" style="margin-top:10px"><button class="sec" onclick="sairDaOs()">⏏ Sair desta OS (continua aberta)</button><span class="muted">Tudo já está salvo. Ela fica em "OS abertas" para inserir a mão de obra depois, e você pode abrir OS de outra placa.</span></div></div>
   <div class="step"><h3>Peças e serviços</h3>
     <div class="sug"><input id="it_nome" placeholder="Digite a peça (ex: óleo, pastilha, pneu…)" autocomplete="off" value="${esc(novoItem.q)}" oninput="novoItem.q=this.value;novoItem.hl=0;sugRender()" onkeydown="sugKey(event)"><div class="list" id="sug_list" style="display:none"></div></div>
@@ -870,15 +871,25 @@ async function maoObra(valor){
     if(o.maoObra!==valor){ try{ await S.db.doc('os/'+o.id).update({maoObra:valor,maoObraEdit:editMo(o,valor)}); }catch(e){ erroSalvar('salvar a mão de obra',e); } }
     return;
   }
-  if(!(o.itens||[]).length&&!o.relato&&!confirm('OS sem peças nem relato. Concluir mesmo assim?')){ document.getElementById('os_mo').value=''; return; }
+  if(!(o.itens||[]).length&&!o.relato){
+    abrir(`<h3>Concluir OS sem peças nem relato?</h3><p class="muted">Essa OS não tem nenhuma peça nem relato registrado. Quer concluir assim mesmo?</p>
+      <div class="act"><button class="sec" onclick="fechar();const c=document.getElementById('os_mo');if(c)c.value='';">Cancelar</button><button class="pri" onclick="fechar();fecharOs(${valor})">Concluir assim mesmo</button></div>`);
+    return;
+  }
   await fecharOs(valor);
 }
 // mostra o erro de verdade (nunca falha "em silêncio"): toda escrita que pode ser bloqueada pelas
-// regras de segurança do banco (RLS) passa por aqui quando dá erro, com um alert bem visível —
-// pede pra tirar print porque é a forma mais rápida de eu identificar a causa exata depois
+// regras de segurança do banco (RLS) passa por aqui quando dá erro, com uma caixa bem visível —
+// usa o modal do próprio app (não alert/confirm do navegador) porque alguns apps que abrem links
+// embutidos (ex.: navegador interno do WhatsApp) bloqueiam os alertas nativos do navegador, fazendo
+// o erro desaparecer em silêncio — pede pra tirar print porque é a forma mais rápida de eu
+// identificar a causa exata depois
 function erroSalvar(acao,e){
   console.error(acao,e);
-  alert(`Não foi possível ${acao}.\n\nMotivo: ${(e&&e.message)||'erro desconhecido'}\n\nTire um print desta mensagem e envie pra quem administra o sistema.`);
+  abrir(`<h3 style="color:var(--bad)">⚠ Não foi possível ${esc(acao)}</h3>
+    <p>Motivo: <b>${esc((e&&e.message)||'erro desconhecido')}</b></p>
+    <p class="muted">Tire um print desta tela (com a mensagem acima) e envie pra quem administra o sistema.</p>
+    <div class="act"><button class="pri" onclick="fechar()">Entendi</button></div>`);
 }
 // encaminhar a OS de um cliente particular pra outra oficina continuar o serviço: ela passa a ser
 // dona da OS (oficinaId muda pra ela), vê tudo que já foi lançado, e pode concluir/cobrar o
@@ -911,12 +922,16 @@ function devolverOs(id){
   salvarEncaminhamento(id,ult.de,ult.deNome);
 }
 async function reabrirOs(){
+  toast('Reabrindo…');
   if(!podeFinalizarOs()){ toast('Sem permissão para reabrir a OS'); return; }
-  const o=S.os.find(x=>x.id===S.osAtual); const outra=S.os.find(x=>x.veiculoId===o.veiculoId&&x.status==='Aberta'&&x.id!==o.id); if(outra){ toast('Já existe outra OS aberta desta placa — finalize-a antes'); return; }
-  try{ await S.db.doc('os/'+o.id).update({status:'Aberta',concluidaEm:null}); toast('OS reaberta'); }catch(e){ erroSalvar('reabrir a OS',e); } }
+  const o=S.os.find(x=>x.id===S.osAtual); if(!o){ erroSalvar('reabrir a OS',{message:'OS não encontrada na tela — volte pra lista e abra a OS de novo'}); return; }
+  const outra=S.os.find(x=>x.veiculoId===o.veiculoId&&x.status==='Aberta'&&x.id!==o.id); if(outra){ toast('Já existe outra OS aberta desta placa — finalize-a antes'); return; }
+  try{ await S.db.doc('os/'+o.id).update({status:'Aberta',concluidaEm:null}); toast('OS reaberta'); render(); }catch(e){ erroSalvar('reabrir a OS',e); } }
 async function fecharOs(mo){
+  toast('Concluindo…');
   if(!podeFinalizarOs()){ toast('Sem permissão para concluir a OS'); return; }
-  const o=S.os.find(x=>x.id===S.osAtual); const v=S.veic.find(x=>x.id===o.veiculoId);
+  const o=S.os.find(x=>x.id===S.osAtual); if(!o){ erroSalvar('concluir a OS',{message:'OS não encontrada na tela — volte pra lista e abra a OS de novo'}); return; }
+  const v=S.veic.find(x=>x.id===o.veiculoId);
   const custo=osTotal({...o,maoObra:mo});
   try{
     await S.db.doc('os/'+o.id).update({maoObra:mo,maoObraEdit:editMo(o,mo),status:'Concluída',concluidaEm:agoraIso(),custo});
@@ -1065,23 +1080,48 @@ function copiarPix(btn,payload){
   try{ navigator.clipboard.writeText(payload); toast('Código Pix copiado'); }
   catch(e){ toast('Não foi possível copiar — selecione o texto e copie manualmente'); }
 }
+function msgCobranca(o,v){
+  const itensTxt=(o.itens||[]).map(i=>`• ${esc(i.nome)}${(+i.qtd||1)>1?' x'+i.qtd:''}`).join('\n');
+  return `Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}* (${v.modelo||''}):\n\n${itensTxt||'Serviço realizado.'}\n\n*Total: ${fmtBRL(osTotal(o))}*${pixTextoCobranca(o)}\n\nO PDF da OS vai aparecer a seguir para você anexar nesta conversa. Qualquer dúvida, estou à disposição.`;
+}
+// cobrar funciona do mesmo jeito pra OS de qualquer oficina — não depende de qual oficina é dona
+// da OS, só do cliente ter (ou cadastrar aqui) um WhatsApp
 async function cobrarOs(id){
   const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
   const v=S.veic.find(x=>x.id===o.veiculoId)||{};
-  let tel=(v.clienteTel||'').replace(/\D/g,''); let novoTel=null;
-  if(!tel){
-    const t=prompt('WhatsApp do cliente (com DDD), ex: 11987654321:',''); if(!t) return;
-    tel=t.replace(/\D/g,''); if(!tel){toast('Número inválido');return;} novoTel=tel;
-  }
+  const tel=(v.clienteTel||'').replace(/\D/g,'');
+  if(!tel){ abrirCadastroTelCliente(id); return; }
   const telCompleto=tel.length<=11?'55'+tel:tel;
-  const itensTxt=(o.itens||[]).map(i=>`• ${esc(i.nome)}${(+i.qtd||1)>1?' x'+i.qtd:''}`).join('\n');
-  const msg=`Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}* (${v.modelo||''}):\n\n${itensTxt||'Serviço realizado.'}\n\n*Total: ${fmtBRL(osTotal(o))}*${pixTextoCobranca(o)}\n\nO PDF da OS vai aparecer a seguir para você anexar nesta conversa. Qualquer dúvida, estou à disposição.`;
+  const msg=msgCobranca(o,v);
   // abrir o WhatsApp primeiro, ainda de forma síncrona (nenhum await antes desta linha): é isso que
   // faz o celular reconhecer como ação direta do usuário e abrir o aplicativo — qualquer await antes
   // quebra esse reconhecimento e o navegador cai na versão web do WhatsApp sem enviar nada
   window.open(`https://wa.me/${telCompleto}?text=${encodeURIComponent(msg)}`,'_blank');
-  if(novoTel) await S.db.doc('veiculos/'+v.id).update({clienteTel:novoTel});
   await imprimirOs(id);
+}
+// cliente sem WhatsApp cadastrado ainda (ex: não tinha celular na hora, ou nunca foi perguntado):
+// abre uma janela pra cadastrar na hora, sem travar a cobrança — depois de salvar, segue direto
+// pro envio. Usa o modal do próprio app (não prompt() do navegador), que alguns navegadores
+// embutidos (ex: abrir um link dentro do WhatsApp) bloqueiam
+function abrirCadastroTelCliente(osId){
+  abrir(`<h3>WhatsApp do cliente</h3><p class="muted">Esse cliente ainda não tem um WhatsApp cadastrado nesta placa. Informe pra continuar a cobrança.</p>
+    <label>WhatsApp (com DDD)</label><input id="ct_tel" placeholder="Ex: 11987654321" inputmode="numeric">
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="confirmarTelCliente('${osId}')">Salvar e cobrar</button></div>`);
+  setTimeout(()=>{const el=document.getElementById('ct_tel'); if(el) el.focus();},50);
+}
+async function confirmarTelCliente(osId){
+  const tel=(document.getElementById('ct_tel').value||'').replace(/\D/g,'');
+  if(!tel){ toast('Número inválido'); return; }
+  const o=S.os.find(x=>x.id===osId); if(!o){ fechar(); toast('OS não encontrada'); return; }
+  const v=S.veic.find(x=>x.id===o.veiculoId)||{};
+  fechar();
+  const telCompleto=tel.length<=11?'55'+tel:tel;
+  const msg=msgCobranca(o,v);
+  // mesma regra: abrir o WhatsApp antes de qualquer await, senão o celular não reconhece como
+  // ação direta do usuário
+  window.open(`https://wa.me/${telCompleto}?text=${encodeURIComponent(msg)}`,'_blank');
+  if(v.id){ try{ await S.db.doc('veiculos/'+v.id).update({clienteTel:tel}); v.clienteTel=tel; }catch(e){ erroSalvar('salvar o WhatsApp do cliente',e); } }
+  await imprimirOs(osId);
 }
 // baixa uma imagem (ex: logo de uma oficina) e converte para data URL, formato aceito pelo
 // addImage do jsPDF — se falhar (rede, CORS etc.), devolve null e o PDF segue sem a logo
