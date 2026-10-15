@@ -1172,12 +1172,26 @@ async function montarOsPdf(id){
   const BRAND=[13,59,102]; // mesmo azul da marca usada no app (--brand), pra dar identidade ao papel
   const linha=()=>{ doc.setDrawColor(215); doc.line(margin,y,pageW-margin,y); y+=5; };
   const tituloSecao=(txt)=>{ doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(...BRAND); doc.text(txt,margin,y); doc.setTextColor(0); doc.setFont('helvetica','normal'); doc.setFontSize(12); y+=6.5; };
-  const quebraSeNecessario=(margemExtra)=>{ if(y>274-(margemExtra||0)){ doc.addPage(); y=20; } };
+  const quebraSeNecessario=(margemExtra)=>{ if(y>274-(margemExtra||0)){ doc.addPage(); desenharMarcaDagua(); y=20; } };
   // marca no PDF: oficina parceira usa o próprio nome/logo, a Oficina Matriz (Carsz) continua com "CARSZ"
   const marcaTxt=(S.oficina&&S.oficina.id!=='matriz')?S.oficina.nome:'CARSZ';
   const logoUrl=S.oficina&&S.oficina.logo&&S.oficina.logo.url;
   const logoDataUrl=logoUrl?await imgParaDataUrl(logoUrl):null;
   const ofDados=minhaOficinaDados();
+
+  // ---- marca d'água: a logo em tamanho grande, bem suave, centralizada atrás de todo o conteúdo
+  // (em toda página, inclusive se a OS virar mais de uma folha) ----
+  const desenharMarcaDagua=()=>{
+    if(!logoDataUrl) return;
+    try{
+      doc.saveGraphicsState();
+      doc.setGState(new doc.GState({opacity:0.06}));
+      const wSize=150;
+      doc.addImage(logoDataUrl,'JPEG',(pageW-wSize)/2,(297-wSize)/2,wSize,wSize);
+      doc.restoreGraphicsState();
+    }catch(e){ console.warn('marca d\'água indisponível:',e); }
+  };
+  desenharMarcaDagua();
 
   // ---- cabeçalho: bem mais espaço pra logomarca, e o nome/endereço da oficina com hierarquia de
   // fonte clara (nome grande, resto em cinza menor) — igual um papel timbrado ----
