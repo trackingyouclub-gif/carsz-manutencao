@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{
   --bg:#f3f4f0; --panel:#ffffff; --ink:#1b1f24; --muted:#5d6570; --line:#d9dcd6;
@@ -1017,6 +1018,7 @@ function cardsFinanceiro(){
 // "faturamento" = soma do valor total das OS concluídas da própria oficina (peças + mão de obra) —
 // é o total faturado, não o quanto já caiu no bolso; pra isso já existe "Saldo a receber" nos cards
 function inicioSemana(d){ const dt=new Date(d); dt.setHours(0,0,0,0); const dia=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-dia); return dt; }
+function inicioMesIso(){ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1).toISOString().slice(0,10); }
 function chaveFaturamento(data,nivel){
   const d=new Date(data);
   if(nivel==='ano') return String(d.getFullYear());
@@ -1079,8 +1081,99 @@ function mfat(m){
     const v=porChave[k]||vazio;
     const pctPecas=Math.round(v.pecas/max*100), pctMo=Math.round(v.mo/max*100);
     return `<div class="brow"><span class="blabel">${rotuloFaturamento(k,nivel)}</span><div class="btrack" style="display:flex"><div class="bfill" style="width:${pctPecas}%;background:var(--ok);border-radius:4px 0 0 4px"></div><div class="bfill" style="width:${pctMo}%;background:var(--brand);border-radius:0 4px 4px 0"></div></div><span class="bval">${fmtBRL(v.total)}</span></div>`;
-  }).join('')}</div>`;
+  }).join('')}</div>
+  <h4 style="margin-top:22px">Backup de OS</h4>
+  <p class="hint" style="margin:-4px 0 10px">Baixa um .zip com o PDF de cada OS concluída no período, mais um resumo com os totais em peças e mão de obra. Você escolhe onde salvar o .zip depois de baixado — pode ser a Área de Trabalho.</p>
+  <div class="row" style="align-items:end;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+    <div><label class="muted" style="display:block;font-size:12px;margin-bottom:3px">De</label><input type="date" id="bkp_ini" value="${S.bkpIni||inicioMesIso()}" style="min-width:150px"></div>
+    <div><label class="muted" style="display:block;font-size:12px;margin-bottom:3px">Até</label><input type="date" id="bkp_fim" value="${S.bkpFim||hoje()}" style="min-width:150px"></div>
+    <button class="pri" id="bkp_btn" onclick="baixarBackupOs()">📦 Realizar backup</button>
+  </div>
+  <div class="muted" id="bkp_st" style="font-size:13px;min-height:18px"></div>`;
   m.innerHTML=h;
+}
+// ---- backup em .zip das OS concluídas de um período: um PDF por OS (reaproveita montarOsPdf,
+// o mesmo usado no botão "Imprimir") + um resumo com os totais, pra levar pra Área de Trabalho
+// ou qualquer pasta — o navegador não escreve direto numa pasta do sistema, então baixamos o .zip
+// e quem escolhe o destino é o próprio mecânico, ao extrair ----
+async function montarResumoBackupPdf(lista,ini,fim){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const margin=14, pageW=210; let y=20;
+  const BRAND=[13,59,102];
+  const xData=margin, xPlaca=margin+22, xMec=margin+48, xPecas=128, xMo=162, xTotal=196;
+  const marcaTxt=(S.oficina&&S.oficina.id!=='matriz')?S.oficina.nome:'CARSZ';
+  const cabecalho=()=>{
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(255);
+    doc.setFillColor(...BRAND); doc.rect(margin,y-4.5,pageW-margin*2,6.5,'F'); doc.setTextColor(255);
+    doc.text('Data',xData+1,y); doc.text('Placa',xPlaca+1,y); doc.text('Mecânico',xMec+1,y);
+    doc.text('Peças',xPecas,y,{align:'right'}); doc.text('Mão de obra',xMo,y,{align:'right'}); doc.text('Total',xTotal,y,{align:'right'});
+    doc.setTextColor(0); doc.setFont('helvetica','normal'); doc.setFontSize(9.5); y+=6.5;
+  };
+  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(...BRAND);
+  doc.text(marcaTxt,margin,y); y+=7;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(100);
+  doc.text(`Resumo de backup · OS concluídas de ${fmtD(ini)} a ${fmtD(fim)}`,margin,y); doc.setTextColor(0); y+=9;
+  cabecalho();
+  let totPecas=0, totMo=0, totGeral=0;
+  for(const o of lista){
+    if(y>278){ doc.addPage(); y=20; cabecalho(); }
+    const pecas=pecasTotal(o), mo=+o.maoObra||0, tot=pecas+mo;
+    totPecas+=pecas; totMo+=mo; totGeral+=tot;
+    doc.text(fmtD(o.data||o.concluidaEm),xData+1,y);
+    doc.text(String(o.placa||'—'),xPlaca+1,y);
+    doc.text(String(o.mecanico||'—').slice(0,20),xMec+1,y);
+    doc.text(fmtBRL(pecas),xPecas,y,{align:'right'});
+    doc.text(fmtBRL(mo),xMo,y,{align:'right'});
+    doc.text(fmtBRL(tot),xTotal,y,{align:'right'});
+    y+=6.5;
+  }
+  y+=1.5; doc.setDrawColor(150); doc.line(margin,y,pageW-margin,y); y+=6;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10.5);
+  doc.text(`${lista.length} OS no período`,margin,y);
+  doc.setTextColor(...BRAND);
+  doc.text(fmtBRL(totPecas),xPecas,y,{align:'right'});
+  doc.text(fmtBRL(totMo),xMo,y,{align:'right'});
+  doc.setFontSize(12); doc.text(fmtBRL(totGeral),xTotal,y,{align:'right'});
+  doc.setTextColor(150); doc.setFontSize(8); doc.setFont('helvetica','normal');
+  doc.text(`Gerado em ${fmtD(agoraIso())} · Carsz · Controle de Manutenção`,margin,290);
+  return doc;
+}
+async function baixarBackupOs(){
+  const elIni=document.getElementById('bkp_ini'), elFim=document.getElementById('bkp_fim');
+  const ini=elIni&&elIni.value, fim=elFim&&elFim.value;
+  const st=document.getElementById('bkp_st'), btn=document.getElementById('bkp_btn');
+  if(!ini||!fim){ toast('Escolha o período do backup'); return; }
+  if(ini>fim){ toast('A data inicial não pode ser depois da data final'); return; }
+  S.bkpIni=ini; S.bkpFim=fim;
+  const lista=S.os.filter(o=>o.oficinaId===(S.perfil&&S.perfil.oficinaId)&&o.status==='Concluída'&&(o.data||o.concluidaEm||'').slice(0,10)>=ini&&(o.data||o.concluidaEm||'').slice(0,10)<=fim)
+    .sort((a,b)=>(a.data||a.concluidaEm||'').localeCompare(b.data||b.concluidaEm||''));
+  if(!lista.length){ toast('Nenhuma OS concluída nesse período'); return; }
+  if(!window.JSZip||!window.jspdf){ toast('Gerador de backup ainda carregando, tente de novo em instantes'); return; }
+  if(btn) btn.disabled=true;
+  try{
+    if(st) st.textContent=`Gerando resumo…`;
+    const zip=new JSZip();
+    const pasta=zip.folder(`OS ${ini} a ${fim}`);
+    const resumo=await montarResumoBackupPdf(lista,ini,fim);
+    pasta.file('00-Resumo.pdf',resumo.output('arraybuffer'));
+    for(let i=0;i<lista.length;i++){
+      const o=lista[i];
+      if(st) st.textContent=`Gerando PDF ${i+1} de ${lista.length}…`;
+      const r=await montarOsPdf(o.id);
+      if(r) pasta.file(r.nomeArq,r.doc.output('arraybuffer'));
+    }
+    if(st) st.textContent='Compactando .zip…';
+    const blob=await zip.generateAsync({type:'blob'});
+    const nomeOficina=(S.oficina&&S.oficina.nome?S.oficina.nome:'oficina').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w-]+/g,'_');
+    const nomeZip=`Backup-OS-${nomeOficina}-${ini}_a_${fim}.zip`;
+    const u=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=u; a.download=nomeZip; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+    if(st) st.textContent=`Backup gerado: ${lista.length} OS.`;
+    toast(`Backup gerado com ${lista.length} OS`);
+  }catch(e){ erroSalvar('gerar o backup',e); if(st) st.textContent=''; }
+  if(btn) btn.disabled=false;
 }
 // ---- cobrança de clientes particulares do mecânico (fora da frota Carsz) ----
 const diasAtraso = o => Math.max(0,Math.floor((Date.now()-new Date(o.data||o.concluidaEm))/864e5));
