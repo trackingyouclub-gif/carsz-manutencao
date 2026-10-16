@@ -162,6 +162,7 @@ h4{margin:18px 0 8px;font:600 15px "IBM Plex Sans"}
   <h1 id="ttl">CARSZ · Manutenção da frota</h1>
   <span class="sub" id="subttl">Controle de revisões, custos e sinistros</span>
   <span id="status">Conectando…</span>
+  <button class="lnk" id="qrBtn" onclick="abrirQrAcesso()" title="Abrir esta oficina no celular">📱</button>
   <button class="lnk" id="modeBtn" onclick="toggleMode()">Modo mecânico</button>
 </header>
 <nav id="nav"></nav>
@@ -383,7 +384,8 @@ function render(){
   document.getElementById('ttl').textContent=S.mec?'CARSZ · Oficina':'CARSZ · Manutenção da frota';
   document.getElementById('subttl').textContent=S.mec?(S.mecNome?'Mecânico: '+S.mecNome:'Registro rápido de serviços'):'Controle de revisões, custos e sinistros';
   const mb=document.getElementById('modeBtn');
-  if(!S.user){ document.getElementById('nav').innerHTML=''; mb.style.display='none'; const mm=document.getElementById('main'); if(!document.getElementById('lg_user')){ const k=preservar(mm); loginMec(mm); restaurar(k); } return; }
+  const qb=document.getElementById('qrBtn');
+  if(!S.user){ document.getElementById('nav').innerHTML=''; mb.style.display='none'; qb.style.display='none'; const mm=document.getElementById('main'); if(!document.getElementById('lg_user')){ const k=preservar(mm); loginMec(mm); restaurar(k); } return; }
   mb.style.display='';
   // "gestor" aqui = administrador geral do negócio (vê Painel/Relatórios/Frota/Sinistros/
   // Configurações e o botão de trocar "Modo gestão"/"Modo mecânico"). O responsável de uma oficina
@@ -392,6 +394,7 @@ function render(){
   if(!gestor&&!S.mec){ S.mec=true; S.view='mnova'; }
   if(gestor){ mb.textContent=S.mec?'Modo gestão':'Modo mecânico'; mb.onclick=toggleMode; }
   else { mb.textContent='Sair'; mb.onclick=sairMec; }
+  qb.style.display=S.mec?'':'none';
   const nomeOficina=S.oficina?S.oficina.nome:(ehSuperadmin()?'Administração geral':'');
   document.getElementById('subttl').textContent=S.mec?('Mecânico: '+S.mecNome+(nomeOficina?' · '+nomeOficina:'')+(gestor?' · ':'')):('Logado como '+(S.perfil?S.perfil.nome:'')+(nomeOficina?' · '+nomeOficina:''));
   if(gestor&&S.mec){ const sub=document.getElementById('subttl'); sub.innerHTML+='<a href="#" onclick="sairMec();return false" style="color:inherit">sair</a>'; }
@@ -537,6 +540,19 @@ function loginMec(m){
   </div>`;
   if(window.QRCode) new QRCode(document.getElementById('qr_login'),{text:link,width:180,height:180,correctLevel:QRCode.CorrectLevel.M});
   setTimeout(()=>{const e=document.getElementById('lg_user'); if(e) e.focus();},50);
+}
+function abrirQrAcesso(){
+  const link=LINK_MEC;
+  abrir(`<h3>Abrir esta oficina no celular</h3><div style="text-align:center">
+    <div id="qr_acesso" style="display:inline-block;padding:14px;background:#fff;border-radius:10px;margin:8px 0"></div>
+    <p class="muted" style="margin:8px 0 0">Aponte a câmera do celular para o código pra continuar o atendimento por lá — útil pra tirar fotos ou trocar de aparelho sem perder o login.</p>
+    <div class="act" style="justify-content:center;margin-top:10px"><button class="sec" onclick="copiarLink('${link}')">📋 Copiar link</button><button class="sec" onclick="fechar()">Fechar</button></div>
+  </div>`);
+  setTimeout(()=>{ const el=document.getElementById('qr_acesso'); if(el&&window.QRCode) new QRCode(el,{text:link,width:200,height:200,correctLevel:QRCode.CorrectLevel.M}); },30);
+}
+function copiarLink(link){
+  try{ navigator.clipboard.writeText(link); toast('Link copiado'); }
+  catch(e){ toast('Não foi possível copiar — abra o link e copie manualmente'); }
 }
 async function loginParaEmail(u){
   u=(u||'').trim();
