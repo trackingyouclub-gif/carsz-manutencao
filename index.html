@@ -590,7 +590,10 @@ function osAbertaDe(v){
   return ext?{...ext,mecanico:'',itens:ext.itens||[]}:null;
 }
 const kmMinimo = v => +((v&&v.km)||0);
-function kmRuim(){ if(ehGestor()) return false; const v=S.veic.find(x=>x.placa===normPlaca(nova.placa)); return !!(v&&+nova.km>0&&+nova.km<kmMinimo(v)); }
+// agendamento: o km digitado aqui é só informativo (o carro pode nem ter sido inspecionado ainda),
+// então não trava o botão por km "menor que o último registro" — essa checagem de verdade acontece
+// só quando o atendimento começa (iniciarAgendamento)
+function kmRuim(){ if(ehGestor()||nova.agendamento) return false; const v=S.veic.find(x=>x.placa===normPlaca(nova.placa)); return !!(v&&+nova.km>0&&+nova.km<kmMinimo(v)); }
 function infoPlaca(){
   const p=normPlaca(nova.placa); if(p.length<7) return '';
   const v=S.veic.find(x=>x.placa===p);
@@ -768,7 +771,7 @@ function bloqueado(){ return !!osAbertaDe(S.veic.find(x=>x.placa===normPlaca(nov
 function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||(!nova.agendamento&&!(+nova.km>0))||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
   const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
 }
-function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return nova.agendamento?'Km é opcional pra agendar — só é obrigatório quando o cliente voltar para ser atendido.':'Informe o km atual para abrir a OS.'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`; return ''; }
+function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return nova.agendamento?'Km é opcional pra agendar — só é obrigatório quando o cliente voltar para ser atendido.':'Informe o km atual para abrir a OS.'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return nova.agendamento?`Km informado é menor que o último registro desta placa (${fmtKm(kmMinimo(v))}) — sem problema pra agendar, é só uma referência; o km real é conferido quando o cliente voltar.`:(ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`); return ''; }
 async function redimensionar(file,max=1280){
   const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(file);});
   const r=Math.min(1,max/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.round(img.width*r); c.height=Math.round(img.height*r);
@@ -801,7 +804,7 @@ async function criarOs(){
   const agendada=!!nova.agendamento;
   const km=+nova.km||0; if(!agendada&&!(km>0)){toast('Informe o km atual — obrigatório');return;}
   let v=S.veic.find(x=>x.placa===placa);
-  if(v&&km>0&&km<kmMinimo(v)&&!ehGestor()){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
+  if(v&&km>0&&km<kmMinimo(v)&&!ehGestor()&&!agendada){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
   if(osAbertaDe(v)){ toast('Veículo com OS aberta — finalize a mão de obra antes'); render(); return; }
   // placa nova aberta pelo mecânico: por padrão é cliente particular dele (fora da frota Carsz e fora
   // dos relatórios/painel) — a gestão reclassifica como frota própria em Frota > Completar cadastro
