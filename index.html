@@ -581,13 +581,22 @@ function sugPlaca(){
 }
 // também olha o histórico compartilhado de outras oficinas, pra não deixar duas oficinas
 // atenderem o mesmo carro (frota Carsz) ao mesmo tempo sem saber uma da outra
-function osAbertaDe(v){
+// só a OS aberta da PRÓPRIA oficina bloqueia abrir uma OS nova pro mesmo carro (evita duas OS
+// simultâneas dentro da mesma oficina). Uma OS aberta em OUTRA oficina não bloqueia mais — cada
+// oficina pode atender o mesmo carro (frota Carsz) ao mesmo tempo; ver osAbertaExterna, que só avisa
+function osAbertaPropria(v){
   if(!v) return null;
-  const propria=S.os.find(o=>o.veiculoId===v.id&&o.status==='Aberta');
-  if(propria) return propria;
+  return S.os.find(o=>o.veiculoId===v.id&&o.status==='Aberta')||null;
+}
+// OS aberta em outra oficina, só pra aviso informativo (nunca bloqueia)
+function osAbertaExterna(v){
+  if(!v) return null;
   const ext=S.histCompartilhado.find(h=>h.placa===v.placa&&h.status==='Aberta');
   return ext?{...ext,mecanico:'',itens:ext.itens||[]}:null;
 }
+// mantido pelo nome antigo onde só interessa "tem alguma OS aberta, de quem for" (ex.: indicador na
+// lista de sugestão de placa) — nunca usar isto para decidir se bloqueia a criação de OS nova
+function osAbertaDe(v){ return osAbertaPropria(v)||osAbertaExterna(v); }
 const kmMinimo = v => +((v&&v.km)||0);
 // agendamento: o km digitado aqui é só informativo (o carro pode nem ter sido inspecionado ainda),
 // então não trava o botão por km "menor que o último registro" — essa checagem de verdade acontece
@@ -607,13 +616,16 @@ function infoPlaca(){
     const avisoBox=al.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Esta placa já tem histórico em outra oficina</b> (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}):<ul style="margin:6px 0 0;padding-left:18px">${al.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:`<div class="lastinfo ok">Esta placa já tem histórico em outra oficina (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}) — sem pendências vencidas.</div>`;
     return avisoBox+base;
   }
-  const ab=osAbertaDe(v);
+  const ab=osAbertaPropria(v);
   if(ab){ const dias=Math.max(0,Math.round((Date.now()-new Date(ab.data))/864e5));
-    return `<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad)"><b>Bloqueado: este veículo já tem uma OS aberta</b> desde ${fmtD(ab.data)} (há ${dias} dias, ${fmtKm(ab.km)}, ${esc(ab.mecanico||'')}, ${(ab.itens||[]).length} itens).<br>Ela precisa ser finalizada com o valor da mão de obra antes de abrir outra.</div><button class="big sec" onclick="S.osAtual='${ab.id}';render()">Abrir a OS pendente para finalizar</button>`; }
+    return `<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad)"><b>Bloqueado: este veículo já tem uma OS aberta na sua oficina</b> desde ${fmtD(ab.data)} (há ${dias} dias, ${fmtKm(ab.km)}, ${esc(ab.mecanico||'')}, ${(ab.itens||[]).length} itens).<br>Ela precisa ser finalizada com o valor da mão de obra antes de abrir outra.</div><button class="big sec" onclick="S.osAtual='${ab.id}';render()">Abrir a OS pendente para finalizar</button>`; }
+  // OS aberta em OUTRA oficina não bloqueia mais — só avisa, pra cada oficina saber da outra
+  const extAberta=osAbertaExterna(v);
+  const avisoExterna=extAberta?`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn);border-left:4px solid var(--warn)"><b>⚠ Este veículo está com OS aberta em outra oficina</b> desde ${fmtD(extAberta.data)} (${fmtKm(extAberta.km)}${extAberta.oficina?', '+esc(extAberta.oficina):''}). Pode abrir a OS aqui mesmo assim — cada oficina atende separado.</div>`:'';
   const al=alertasVeic(v,+nova.km>0?+nova.km:null).filter(a=>a.lvl==='bad'||a.lvl==='warn');
   const crit=al.filter(a=>destaque(a.p));
   const ul=osDoVeic(v.id)[0];
-  return `<div class="lastinfo ok">Veículo reconhecido: <b>${esc(v.modelo)} ${esc(v.ano||'')}</b> · último km ${fmtKm(v.km)} · ${osDoVeic(v.id).length} intervenções${ul?` · última em ${fmtD(ul.data)} (${(ul.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'})`:''}${al.filter(a=>!destaque(a.p)).length?'<br>Pendências: '+al.filter(a=>!destaque(a.p)).map(a=>esc(a.p.nome)+' ('+a.txt+')').join(', '):''}</div>${crit.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Itens sensíveis desta placa:</b><ul style="margin:6px 0 0;padding-left:18px">${crit.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:''}`;
+  return avisoExterna+`<div class="lastinfo ok">Veículo reconhecido: <b>${esc(v.modelo)} ${esc(v.ano||'')}</b> · último km ${fmtKm(v.km)} · ${osDoVeic(v.id).length} intervenções${ul?` · última em ${fmtD(ul.data)} (${(ul.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'})`:''}${al.filter(a=>!destaque(a.p)).length?'<br>Pendências: '+al.filter(a=>!destaque(a.p)).map(a=>esc(a.p.nome)+' ('+a.txt+')').join(', '):''}</div>${crit.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Itens sensíveis desta placa:</b><ul style="margin:6px 0 0;padding-left:18px">${crit.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:''}`;
 }
 const mascaraCpf=v=>v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
 const mascaraTel=v=>{const d=v.replace(/\D/g,'').slice(0,11);return d.length>10?d.replace(/(\d{2})(\d{5})(\d{4})/,'($1) $2-$3'):d.replace(/(\d{2})(\d{4})(\d{0,4})/,'($1) $2-$3').replace(/-$/,'');};
@@ -766,7 +778,7 @@ async function salvarMec(id,oficinaId){
   }
   fechar(); toast('Usuário salvo');
 }
-function bloqueado(){ return !!osAbertaDe(S.veic.find(x=>x.placa===normPlaca(nova.placa))); }
+function bloqueado(){ return !!osAbertaPropria(S.veic.find(x=>x.placa===normPlaca(nova.placa))); }
 function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||(!nova.agendamento&&!(+nova.km>0))||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
   const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
 }
@@ -804,7 +816,7 @@ async function criarOs(){
   const km=+nova.km||0; if(!agendada&&!(km>0)){toast('Informe o km atual — obrigatório');return;}
   let v=S.veic.find(x=>x.placa===placa);
   if(v&&km>0&&km<kmMinimo(v)&&!ehGestor()&&!agendada){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
-  if(osAbertaDe(v)){ toast('Veículo com OS aberta — finalize a mão de obra antes'); render(); return; }
+  if(osAbertaPropria(v)){ toast('Veículo com OS aberta na sua oficina — finalize a mão de obra antes'); render(); return; }
   // placa nova aberta pelo mecânico: por padrão é cliente particular dele (fora da frota Carsz e fora
   // dos relatórios/painel) — a gestão reclassifica como frota própria em Frota > Completar cadastro
   // se for, de fato, um carro da locadora
