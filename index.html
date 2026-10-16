@@ -930,22 +930,27 @@ function osMecanico(m){
     <div id="it_list">${itensHtml(o)}</div>
   </div>
   <div class="step">
-    <div style="background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px"><label>Mão de obra (R$)</label><input id="os_mo" class="xl" style="font-size:24px;padding:8px" type="${podeMo?'number':'text'}" step="0.01" inputmode="decimal" value="${podeMo?(o.maoObra||''):(o.maoObra?'••••••':'')}" onchange="maoObra(+this.value||0)" ${(o.status!=='Aberta'||!podeMo)?'disabled':''}><div class="hint">${podeMo?'Ao informar a mão de obra a OS é concluída.':'Valor visível apenas para o mecânico chefe e a gestão.'}</div>${(podeMo&&o.maoObraEdit)?`<div class="muted" style="font-size:12px">${tagMo(o)} antes: ${fmtBRL(o.maoObraEdit.original)} · ${fmtD(o.maoObraEdit.em)} por ${esc(o.maoObraEdit.por||'')}</div>`:''}</div>
+    <div style="background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px"><label>Mão de obra</label>
+      <div class="row" style="gap:8px;flex-wrap:nowrap">
+        <span style="font-size:20px;font-weight:700;color:var(--muted)">R$</span>
+        <input id="os_mo" style="font-size:24px;font-weight:700;padding:8px;flex:1;min-width:0" inputmode="numeric" placeholder="0,00" value="${podeMo?(o.maoObra?(+o.maoObra).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):''):(o.maoObra?'••••••':'')}" oninput="maoObraMask(this)" onchange="maoObra(maoObraValor(this))" ${(o.status!=='Aberta'||!podeMo)?'disabled':''}>
+        ${(o.status==='Aberta'&&podeMo)?`<button class="pri" style="white-space:nowrap" onclick="maoObra(maoObraValor(document.getElementById('os_mo')))">Concluir</button>`:''}
+      </div>
+      <div class="hint">${podeMo?'Ao informar a mão de obra a OS é concluída.':'Valor visível apenas para o mecânico chefe e a gestão.'}</div>${(podeMo&&o.maoObraEdit)?`<div class="muted" style="font-size:12px">${tagMo(o)} antes: ${fmtBRL(o.maoObraEdit.original)} · ${fmtD(o.maoObraEdit.em)} por ${esc(o.maoObraEdit.por||'')}</div>`:''}</div>
     ${podeMo?`<div class="calc" style="margin-top:10px;background:var(--ok-bg);border:1px solid var(--ok);text-align:center">
       <div class="row" style="justify-content:center;gap:16px;font-size:13px"><span>Peças: <b>${fmtBRL(pecasTotal(o))}</b></span><span>Mão de obra: <b>${fmtBRL(+o.maoObra||0)}</b></span></div>
       <div style="font-size:26px;font-weight:700;color:var(--ok);margin-top:4px">Total: ${fmtBRL(osTotal(o))}</div>
     </div>`:`<div class="calc" style="margin-top:10px"><span class="muted">Parcial (peças): <b>${fmtBRL(pecasTotal(o))}</b> — a mão de obra e o total só aparecem pro mecânico chefe e a gestão.</span></div>`}
     <div class="row" style="margin-top:14px"><h3 style="margin:0">Relato da intervenção</h3><span class="sp"></span><button class="ghost" onclick="formLembrete()">🔔 Lembrete futuro</button></div><textarea id="os_rel" placeholder="O que foi verificado, o que foi feito, recomendações…" onchange="salvarCampoOs('relato',this.value)">${esc(o.relato)}</textarea>
-    <div class="ph" id="os_fotos">${[o.fotoPlaca,o.fotoKm,...(o.fotos||[])].filter(Boolean).map(f=>`<span style="position:relative;display:inline-block"><img src="${blob(f)}" onclick="lightbox('${f}')">${S.assets?`<button class="ghost danger" title="Apagar foto" style="position:absolute;top:-6px;right:-6px;background:var(--panel);border:1px solid var(--line);border-radius:50%;width:22px;height:22px;padding:0;line-height:1" onclick="apagarFoto('${o.id}','${f}')">✕</button>`:''}</span>`).join('')}<label class="sec" style="display:inline-flex;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:6px;cursor:pointer">📷 + foto<input type="file" accept="image/*" capture="environment" style="display:none" onchange="fotoExtra(this)"></label></div>
+    <div class="ph" id="os_fotos">${[o.fotoPlaca,o.fotoKm,...(o.fotos||[])].filter(Boolean).map(f=>`<span style="position:relative;display:inline-block"><img src="${blob(f)}" onclick="lightbox('${f}')">${S.assets?`<button class="ghost danger" title="Apagar foto" style="position:absolute;top:-6px;right:-6px;background:var(--panel);border:1px solid var(--line);border-radius:50%;width:22px;height:22px;padding:0;line-height:1" onclick="apagarFoto('${o.id}','${f}')">✕</button>`:''}</span>`).join('')}</div>
     ${(o.status==='Concluída'&&ehGestor())?`<div class="row" style="margin-top:8px;align-items:center"><label style="margin:0">Data de conclusão</label><input type="date" style="width:150px" value="${(o.concluidaEm||o.data||'').slice(0,10)}" onchange="salvarCampoOs('concluidaEm',this.value+'T12:00:00.000Z')"><span class="hint" style="margin:0">Ajuste para lançar OS antigas na linha do tempo correta.</span></div>`:''}
     <div class="act">${o.status==='Aberta'?`<span class="muted">OS aberta · parcial ${fmtBRL(pecasTotal(o))} — fica aberta até a mão de obra ser informada.</span>${((+o.maoObra||0)>0&&podeMo)?`<button class="pri" onclick="fecharOs(+o.maoObra)">Concluir OS · ${fmtBRL(osTotal(o))}</button>`:''}`:podeMo?`<span class="muted">Concluída em ${fmtD(o.concluidaEm)} · total ${fmtBRL(osTotal(o))}. Para alterar itens ou relato, reabra.</span><button class="pri" onclick="reabrirOs()">Reabrir para editar</button>`:`<span class="muted">Concluída em ${fmtD(o.concluidaEm)} · peças ${fmtBRL(pecasTotal(o))}.</span>`}${(ehChefe()||ehGestor())?`<button class="ghost danger" onclick="excluirOsMec('${o.id}')">Excluir OS</button>`:''}<span class="sp"></span><button class="warnbtn" onclick="sairDaOs()">Sair desta OS</button></div>
   </div>
-  <div class="step"><h3 style="margin-top:0">Outras ações</h3>
+  ${(ehChefe()||ehGestor())?`<div class="step"><h3 style="margin-top:0">Outras ações</h3>
     ${podeEncaminhar?`<div class="row" style="margin-top:10px"><button class="pri" style="background:var(--warn);border-color:var(--warn);color:#fff" onclick="formEncaminharOs('${o.id}')">↪ Encaminhar p/ outra oficina</button>${ultimoEnc?`<button class="ghost" onclick="devolverOs('${o.id}')">↩ Devolver p/ ${esc(ultimoEnc.deNome)}</button>`:''}</div>`:''}
-    ${(ehChefe()||ehGestor())?`<div class="row" style="margin-top:10px"><button class="pix" onclick="abrirPixOs('${o.id}')">💳 Gerar Pix para pagamento</button><span class="muted">Pra cobrar o cliente na hora, presencialmente — gera QR code com o valor desta OS.</span></div>`:''}
-    ${((ehChefe()||ehGestor())&&v&&!isFrota(v))?`<div class="row" style="margin-top:10px"><button class="whats" ${((+o.maoObra||0)>0)?'':'disabled'} onclick="cobrarOs('${o.id}')">💬 Cobrar cliente</button><button class="sec" onclick="imprimirOs('${o.id}')">🖨 Imprimir / enviar PDF</button><span class="muted">${((+o.maoObra||0)>0)?'"Cobrar" manda o resumo + Pix por WhatsApp. O PDF da OS é um envio separado, pelo botão "Imprimir".':'Informe a mão de obra pra liberar a cobrança.'}</span></div>`:''}
-    <div class="row" style="margin-top:10px"><button class="warnbtn" onclick="sairDaOs()">⏏ Sair desta OS (continua aberta)</button><span class="muted">Tudo já está salvo. Ela fica em "OS abertas" para inserir a mão de obra depois, e você pode abrir OS de outra placa.</span></div>
-  </div>
+    <div class="row" style="margin-top:10px"><button class="pix" onclick="abrirPixOs('${o.id}')">💳 Gerar Pix para pagamento</button><span class="muted">Pra cobrar o cliente na hora, presencialmente — gera QR code com o valor desta OS.</span></div>
+    ${(v&&!isFrota(v))?`<div class="row" style="margin-top:10px"><button class="whats" ${((+o.maoObra||0)>0)?'':'disabled'} onclick="cobrarOs('${o.id}')">💬 Cobrar cliente</button><button class="sec" onclick="imprimirOs('${o.id}')">🖨 Imprimir / enviar PDF</button><span class="muted">${((+o.maoObra||0)>0)?'"Cobrar" manda o resumo + Pix por WhatsApp. O PDF da OS é um envio separado, pelo botão "Imprimir".':'Informe a mão de obra pra liberar a cobrança.'}</span></div>`:''}
+  </div>`:''}
   <div class="step"><h3>Histórico desta placa</h3>${hist.length?timelineHtmlFiltrada(v,o.id):'<div class="muted">Primeira intervenção registrada deste veículo.</div>'}</div>`;
 }
 function novaOsPlaca(p){ nova={placa:p,km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''}; S.osAtual=null; S.filtro=''; S.view='mnova'; render(); const k=document.getElementById('n_km'); if(k) k.focus(); }
@@ -1064,7 +1069,19 @@ async function apagarFotosLote(modo){
   if(st) st.textContent='Pronto.'; toast(`${n} foto(s) apagadas`); mostrarUsoFotos();
 }
 async function mostrarUsoFotos(){ const el=document.getElementById('foto_uso'); if(!el||!S.assets) return; try{ const r=await S.assets.list(); const n=r.assets.length, mb=(r.assets.reduce((s,a)=>s+(a.sizeBytes||0),0)/1048576).toFixed(1); el.textContent=`${n} foto(s) armazenadas · ${mb} MB${r.usage&&r.usage.limitBytes?' de '+(r.usage.limitBytes/1048576).toFixed(0)+' MB':''}`; }catch(e){ el.textContent='Não foi possível ler o uso de armazenamento.'; } }
-async function fotoExtra(inp){ const f=inp.files[0]; if(!f||!S.assets)return; const b=await redimensionar(f); try{ const r=await S.assets.upload(b,{type:'image/jpeg'}); const o=S.os.find(x=>x.id===S.osAtual); await S.db.doc('os/'+o.id).update({fotos:[...(o.fotos||[]),r.id]}); toast('Foto salva'); }catch(e){toast('Falha ao salvar foto');} }
+// máscara de moeda do campo de mão de obra: digita só números, formata como "1.234,56" enquanto
+// digita (centavos primeiro, igual maquininha de cartão) — maoObraValor() faz o caminho inverso
+// pra mandar pro banco como número de verdade
+function maoObraMask(el){
+  let digits=(el.value||'').replace(/\D/g,'');
+  if(!digits) digits='0';
+  const n=(+digits)/100;
+  el.value=n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function maoObraValor(el){
+  const digits=(el&&el.value||'').replace(/\D/g,'');
+  return digits?(+digits)/100:0;
+}
 async function maoObra(valor){
   if(!podeFinalizarOs()){ toast('Somente o mecânico chefe ou a gestão podem informar a mão de obra'); render(); return; }
   const o=S.os.find(x=>x.id===S.osAtual); if(!o||o.status!=='Aberta')return;
