@@ -490,9 +490,8 @@ function render(){
   if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
   else {
     const na=S.os.filter(o=>o.status==='Aberta').length; const b=document.querySelector('nav [data-v=mabertas]'); if(b) b.innerHTML='OS abertas'+(na?`<span class="n">${na}</span>`:'');
-    // badge de Agendamentos só conta o que já é hoje ou já passou (precisa de atenção agora) — os
-    // futuros não entram na contagem pra não deixar o número sempre "cheio" sem necessidade
-    const naAg=S.os.filter(o=>o.status==='Agendada'&&o.oficinaId===(S.perfil&&S.perfil.oficinaId)&&o.agendamento<=hoje()).length;
+    // badge de Agendamentos: total de agendamentos pendentes da oficina, igual ao badge de OS abertas
+    const naAg=S.os.filter(o=>o.status==='Agendada'&&o.oficinaId===(S.perfil&&S.perfil.oficinaId)).length;
     const bAg=document.querySelector('nav [data-v=magenda]'); if(bAg) bAg.innerHTML='Agendamentos'+(naAg?`<span class="n">${naAg}</span>`:'');
     checarAvisosAgendamento();
     // mesmo filtro usado na tela matencao(): frota só conta placa já atendida por esta oficina
