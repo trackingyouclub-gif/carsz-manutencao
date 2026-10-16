@@ -569,7 +569,7 @@ function mnova(m){
     <div class="hint" style="margin-top:8px">Você recebe um aviso automático antes da data combinada — se cair numa segunda-feira, o aviso já aparece na sexta anterior (não dá pra avisar no domingo, a oficina está fechada).</div>`:''}
   </div>
   <div class="step">
-    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||!(+nova.km>0)||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
+    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||(!nova.agendamento&&!(+nova.km>0))||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
   </div>`;
 }
 function sugPlaca(){
@@ -765,10 +765,10 @@ async function salvarMec(id,oficinaId){
   fechar(); toast('Usuário salvo');
 }
 function bloqueado(){ return !!osAbertaDe(S.veic.find(x=>x.placa===normPlaca(nova.placa))); }
-function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||!(+nova.km>0)||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
+function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||(!nova.agendamento&&!(+nova.km>0))||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
   const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
 }
-function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return 'Informe o km atual para abrir a OS.'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`; return ''; }
+function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return nova.agendamento?'Km é opcional pra agendar — só é obrigatório quando o cliente voltar para ser atendido.':'Informe o km atual para abrir a OS.'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`; return ''; }
 async function redimensionar(file,max=1280){
   const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(file);});
   const r=Math.min(1,max/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.round(img.width*r); c.height=Math.round(img.height*r);
@@ -795,9 +795,13 @@ async function foto(inp,tipo){
 }
 async function criarOs(){
   const placa=normPlaca(nova.placa); if(placa.length<7){toast('Placa inválida');return;}
-  const km=+nova.km||0; if(!(km>0)){toast('Informe o km atual — obrigatório');return;}
+  // agendamento: o carro pode nem ter sido inspecionado ainda (cliente só passou e marcou outro
+  // dia) — km vira opcional aqui, e só volta a ser obrigatório quando o atendimento começar de
+  // verdade, em "Cliente chegou" (iniciarAgendamento)
+  const agendada=!!nova.agendamento;
+  const km=+nova.km||0; if(!agendada&&!(km>0)){toast('Informe o km atual — obrigatório');return;}
   let v=S.veic.find(x=>x.placa===placa);
-  if(v&&km<kmMinimo(v)&&!ehGestor()){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
+  if(v&&km>0&&km<kmMinimo(v)&&!ehGestor()){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
   if(osAbertaDe(v)){ toast('Veículo com OS aberta — finalize a mão de obra antes'); render(); return; }
   // placa nova aberta pelo mecânico: por padrão é cliente particular dele (fora da frota Carsz e fora
   // dos relatórios/painel) — a gestão reclassifica como frota própria em Frota > Completar cadastro
@@ -814,7 +818,6 @@ async function criarOs(){
   // cliente não pode ser atendido agora: a OS nasce "Agendada" (não "Aberta"), com a data combinada
   // guardada separado — ela só vira atendimento de verdade quando o cliente voltar (ver
   // iniciarAgendamento), e até lá fica fora de OS abertas, Faturamento e Relatórios
-  const agendada=!!nova.agendamento;
   // oficinaId identifica quem atendeu — decide quem pode ver valor/mão de obra desta OS (ver
   // regras de segurança no banco); oficina (texto livre) é só um rótulo informativo, igual já era
   const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:mecanicoFinal,oficinaId:oficinaIdFinal,status:agendada?'Agendada':'Aberta',agendamento:agendada?nova.agendamento:null,fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:oficinaNomeFinal,relato:agendada?(nova.agendaObs||''):''};
@@ -1087,8 +1090,22 @@ function magenda(m){
   }).join(''):'<div class="empty">Nenhum agendamento pendente.</div>'}`;
 }
 async function iniciarAgendamento(id){
-  try{ await S.db.doc('os/'+id).update({status:'Aberta',data:agoraIso()}); S.osAtual=id; S.view='mnova'; toast('Atendimento iniciado'); render(); }
-  catch(e){ erroSalvar('iniciar o atendimento',e); }
+  const o=S.os.find(x=>x.id===id); if(!o){toast('Agendamento não encontrado');return;}
+  const v=S.veic.find(x=>x.id===o.veiculoId);
+  let km=+o.km||0;
+  // km era opcional na hora de agendar (o carro pode nem ter sido inspecionado ainda) — agora que
+  // o cliente realmente voltou, é a hora certa de pedir, se ainda não tiver
+  if(!(km>0)){
+    const kmStr=prompt('Km atual do veículo — obrigatório pra iniciar o atendimento:',v&&v.km?String(v.km):'');
+    if(kmStr===null) return;
+    km=+String(kmStr).replace(/\D/g,'')||0;
+    if(!(km>0)){ toast('Km inválido'); return; }
+  }
+  try{
+    await S.db.doc('os/'+id).update({status:'Aberta',data:agoraIso(),km});
+    if(v&&km>(+v.km||0)) await S.db.doc('veiculos/'+v.id).update({km});
+    S.osAtual=id; S.view='mnova'; toast('Atendimento iniciado'); render();
+  }catch(e){ erroSalvar('iniciar o atendimento',e); }
 }
 async function cancelarAgendamento(id){
   if(!(ehChefe()||ehGestor())){ toast('Somente o mecânico chefe ou a gestão pode cancelar um agendamento'); return; }
