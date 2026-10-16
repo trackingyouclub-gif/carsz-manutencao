@@ -273,6 +273,14 @@ const fmtBRL = v => (+v||0).toLocaleString('pt-BR',{style:'currency',currency:'B
 const fmtKm = v => (+v||0).toLocaleString('pt-BR')+' km';
 const fmtD = d => d ? String(d).slice(0,10).split('-').reverse().join('/') : '—';
 const hoje = () => new Date().toISOString().slice(0,10);
+const amanha = () => new Date(Date.now()+864e5).toISOString().slice(0,10);
+// dia útil anterior a uma data (pula sáb/dom) — usado pra avisar o mecânico com antecedência sem
+// cair num dia que a oficina normalmente não abre: agendamento numa segunda avisa já na sexta
+function diaUtilAnterior(dataIso){
+  const d=new Date(dataIso+'T12:00:00'); d.setDate(d.getDate()-1);
+  while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()-1);
+  return d;
+}
 const agoraIso = () => new Date().toISOString();
 const idade = v => new Date().getFullYear() - (parseInt(v.ano)||new Date().getFullYear());
 const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -329,13 +337,16 @@ const peca = id => catalogo().find(p=>p.id===id)||{id,nome:id};
 // histórico técnico de uma placa vindo de OUTRAS oficinas, mesmo sem nenhum veículo cadastrado
 // ainda aqui — é geral pra toda a base (qualquer placa, frota ou cliente particular), não só frota
 function historicoPorPlaca(placa){
-  return S.histCompartilhado.filter(h=>h.placa===placa).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  // "Agendada" não é uma intervenção de verdade ainda — nunca conta como histórico técnico
+  return S.histCompartilhado.filter(h=>h.placa===placa&&h.status!=='Agendada').sort((a,b)=>(b.data||'').localeCompare(a.data||''));
 }
 function osDoVeic(vId){
   const v=S.veic.find(x=>x.id===vId);
-  const proprias=S.os.filter(o=>o.veiculoId===vId);
+  // "Agendada" ainda não é uma intervenção de verdade (o carro nem voltou pra ser atendido) — fica
+  // de fora do histórico/contagens/alertas, senão contaria como serviço feito sem ter sido feito
+  const proprias=S.os.filter(o=>o.veiculoId===vId&&o.status!=='Agendada');
   const idsProprias=new Set(proprias.map(o=>o.id));
-  const externas=v?historicoPorPlaca(v.placa).filter(h=>!idsProprias.has(h.id)):[];
+  const externas=v?historicoPorPlaca(v.placa).filter(h=>!idsProprias.has(h.id)&&h.status!=='Agendada'):[];
   return [...proprias,...externas].sort((a,b)=>(b.data||'').localeCompare(a.data||''));
 }
 function ultimaTroca(vId,pecaId){
@@ -373,7 +384,7 @@ function statusVeic(v){ const al=alertasVeic(v); return al.some(a=>a.lvl==='bad'
 const NAV_ADM=[['painel','Painel'],['rel','Relatórios'],['frota','Frota'],['os','Ordens de serviço'],['sin','Sinistros'],['pecas','Peças'],['oficina','Oficina'],['cfg','Configurações']];
 // aba "Oficinas" (rede de oficinas parceiras) só aparece para o administrador geral
 function navAdm(){ return ehSuperadmin()?[...NAV_ADM,['oficinas','Oficinas']]:NAV_ADM; }
-const NAV_MEC=[['mnova','Nova OS'],['mabertas','OS abertas'],['mconc','OS concluídas'],['mhist','Histórico por placa']];
+const NAV_MEC=[['mnova','Nova OS'],['mabertas','OS abertas'],['magenda','Agendamentos'],['mconc','OS concluídas'],['mhist','Histórico por placa']];
 // "Atenção" é uma cópia dos alertas do painel do administrador (manutenções vencidas/próximas),
 // só da frota Carsz — visível pro mecânico chefe e pro responsável de oficina parceira, não pro
 // ajudante. "Oficina" (gerenciar a própria equipe) só aparece pro responsável de oficina parceira
@@ -408,6 +419,35 @@ function toggleMode(){ S.mec=!S.mec; location.hash=S.mec?'#mecanico':''; S.view=
 // operacionais (Nova OS, OS abertas…) e as de gestão (Atenção, Relatórios, Faturamento, Oficina)
 function toggleGestaoOficina(){ S.oficMgestao=!S.oficMgestao; S.view=S.oficMgestao?'mrel':'mnova'; render(); }
 async function sairMec(){ await sb.auth.signOut(); S.user=null; S.perfil=null; S.mecNome=''; S.osAtual=null; S.view='mnova'; render(); }
+// ---- aviso automático de agendamento próximo: dispara no máximo uma vez por dia (guardado no
+// localStorage deste aparelho), avisando com antecedência — pula fim de semana, então um
+// agendamento de segunda já avisa na sexta anterior (ver diaUtilAnterior) ----
+let avisoAgendaChecadoNestaSessao=false;
+function checarAvisosAgendamento(){
+  if(avisoAgendaChecadoNestaSessao) return;
+  const oficId=S.perfil&&S.perfil.oficinaId; if(!oficId) return;
+  const hj=hoje();
+  const chaveLS='avisoAgenda_'+oficId+'_'+hj;
+  let jaMostrado=false; try{ jaMostrado=localStorage.getItem(chaveLS)==='1'; }catch(e){}
+  if(jaMostrado){ avisoAgendaChecadoNestaSessao=true; return; }
+  const hjD=new Date(hj+'T12:00:00');
+  const pendentes=S.os.filter(o=>o.status==='Agendada'&&o.oficinaId===oficId&&o.agendamento).filter(o=>{
+    const dataAg=new Date(o.agendamento+'T12:00:00');
+    if(dataAg<hjD) return false; // já passou — some do aviso, mas continua aparecendo em Agendamentos
+    return hjD>=diaUtilAnterior(o.agendamento);
+  }).sort((a,b)=>a.agendamento.localeCompare(b.agendamento));
+  if(!pendentes.length) return; // sem nada pra avisar ainda — tenta de novo no próximo render até ter
+  avisoAgendaChecadoNestaSessao=true;
+  try{ localStorage.setItem(chaveLS,'1'); }catch(e){}
+  abrir(`<h3>🗓 Agendamento${pendentes.length>1?'s':''} chegando</h3>
+    <p class="muted">Confirme com o cliente ou prepare peças antes da data.</p>
+    ${pendentes.map(o=>{
+      const v=S.veic.find(x=>x.id===o.veiculoId);
+      const ehHoje=o.agendamento===hj;
+      return `<div class="lastinfo" style="margin-bottom:8px"><span class="plate">${esc(o.placa)}</span>${v?` <b>${esc(v.modelo||'')}</b>`:''} — agendado para <b>${fmtD(o.agendamento)}</b>${ehHoje?' <span class="tag warn">é hoje</span>':''}${o.relato?`<br><span class="muted">${esc(o.relato)}</span>`:''}</div>`;
+    }).join('')}
+    <div class="act"><button class="sec" onclick="fechar();S.view='magenda';render()">Ver Agendamentos</button><button class="pri" onclick="fechar()">Entendi</button></div>`);
+}
 function render(){
   document.body.classList.toggle('mec',S.mec);
   document.body.classList.toggle('ofgestao',!!(S.mec&&podeAlternarGestaoOficina()&&S.oficMgestao));
@@ -445,11 +485,16 @@ function render(){
   const m=document.getElementById('main');
   if(!S.cfg){ m.innerHTML='<div class="empty">Carregando dados…</div>'; return; }
   const keep=preservar(m);
-  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,mconc,mhist,matencao,mfat,mrel:mrelView,oficinas:oficinasView})[S.view](m);
+  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,magenda,mconc,mhist,matencao,mfat,mrel:mrelView,oficinas:oficinasView})[S.view](m);
   restaurar(keep);
   if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
   else {
     const na=S.os.filter(o=>o.status==='Aberta').length; const b=document.querySelector('nav [data-v=mabertas]'); if(b) b.innerHTML='OS abertas'+(na?`<span class="n">${na}</span>`:'');
+    // badge de Agendamentos só conta o que já é hoje ou já passou (precisa de atenção agora) — os
+    // futuros não entram na contagem pra não deixar o número sempre "cheio" sem necessidade
+    const naAg=S.os.filter(o=>o.status==='Agendada'&&o.oficinaId===(S.perfil&&S.perfil.oficinaId)&&o.agendamento<=hoje()).length;
+    const bAg=document.querySelector('nav [data-v=magenda]'); if(bAg) bAg.innerHTML='Agendamentos'+(naAg?`<span class="n">${naAg}</span>`:'');
+    checarAvisosAgendamento();
     // mesmo filtro usado na tela matencao(): frota só conta placa já atendida por esta oficina
     // parceira; clientes particulares (já visíveis aqui) contam sempre
     const souParceiraNav=!!(S.perfil&&S.perfil.oficinaId&&S.perfil.oficinaId!=='matriz');
@@ -488,7 +533,7 @@ function timelineHtml(v, opts={}){
 }
 
 // ============ MODO MECÂNICO ============
-let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:''};
+let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:''};
 function mnova(m){
   if(S.osAtual){ osMecanico(m); return; }
   const v=S.veic.find(x=>x.placa===normPlaca(nova.placa));
@@ -514,7 +559,17 @@ function mnova(m){
     ${nova.lendo?'<div class="muted"><span class="spin"></span> Lendo placa e km na foto…</div>':''}
     <div id="n_info">${infoPlaca()}</div>
     <div id="n_kmaviso" class="hint" style="color:var(--bad)">${avisoKm()}</div>
-    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||!(+nova.km>0)||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>Abrir ordem de serviço</button>
+  </div>
+  <div class="step">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0"><input type="checkbox" id="n_temagenda" ${nova.agendamento?'checked':''} onchange="nova.agendamento=this.checked?amanha():'';render()" style="width:auto"> Cliente não pode ser atendido agora — agendar para outro dia</label>
+    ${nova.agendamento?`<div class="grid" style="max-width:460px;margin-top:10px">
+      <div><label>Agendar para</label><input type="date" min="${amanha()}" value="${esc(nova.agendamento)}" onchange="nova.agendamento=this.value;render()"></div>
+      <div><label>Observação (opcional)</label><input id="n_agobs" value="${esc(nova.agendaObs)}" placeholder="ex: aguardando peça, cliente volta de manhã" oninput="nova.agendaObs=this.value"></div>
+    </div>
+    <div class="hint" style="margin-top:8px">Você recebe um aviso automático antes da data combinada — se cair numa segunda-feira, o aviso já aparece na sexta anterior (não dá pra avisar no domingo, a oficina está fechada).</div>`:''}
+  </div>
+  <div class="step">
+    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||!(+nova.km>0)||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
   </div>`;
 }
 function sugPlaca(){
@@ -756,12 +811,18 @@ async function criarOs(){
   if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'',frotaPropria:false,oficinaId:oficinaIdFinal,km,status:'Em manutenção',criadoPor:mecanicoFinal,pendente:true}); v={id:ref.id,placa,km}; }
   else if(km>(+v.km||0)) await S.db.doc('veiculos/'+v.id).update({km});
   const dataOs=(ehGestor()&&nova.data)?new Date(nova.data+'T12:00:00').toISOString():agoraIso();
+  // cliente não pode ser atendido agora: a OS nasce "Agendada" (não "Aberta"), com a data combinada
+  // guardada separado — ela só vira atendimento de verdade quando o cliente voltar (ver
+  // iniciarAgendamento), e até lá fica fora de OS abertas, Faturamento e Relatórios
+  const agendada=!!nova.agendamento;
   // oficinaId identifica quem atendeu — decide quem pode ver valor/mão de obra desta OS (ver
   // regras de segurança no banco); oficina (texto livre) é só um rótulo informativo, igual já era
-  const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:mecanicoFinal,oficinaId:oficinaIdFinal,status:'Aberta',fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:oficinaNomeFinal,relato:''};
+  const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:mecanicoFinal,oficinaId:oficinaIdFinal,status:agendada?'Agendada':'Aberta',agendamento:agendada?nova.agendamento:null,fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:oficinaNomeFinal,relato:agendada?(nova.agendaObs||''):''};
   const ref=await S.db.collection('os').add(d);
-  nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:''};
-  S.osAtual=ref.id; toast('OS aberta'); render();
+  nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:''};
+  if(agendada){ S.osAtual=null; S.view='magenda'; toast('Agendado para '+fmtD(d.agendamento)); }
+  else { S.osAtual=ref.id; toast('OS aberta'); }
+  render();
 }
 // ---- tela da OS (mecânico) ----
 let novoItem={q:'',hl:0};
@@ -799,7 +860,7 @@ function osMecanico(m){
   </div>
   <div class="step"><h3>Histórico desta placa</h3>${hist.length?timelineHtmlFiltrada(v,o.id):'<div class="muted">Primeira intervenção registrada deste veículo.</div>'}</div>`;
 }
-function novaOsPlaca(p){ nova={placa:p,km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:''}; S.osAtual=null; S.filtro=''; S.view='mnova'; render(); const k=document.getElementById('n_km'); if(k) k.focus(); }
+function novaOsPlaca(p){ nova={placa:p,km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:''}; S.osAtual=null; S.filtro=''; S.view='mnova'; render(); const k=document.getElementById('n_km'); if(k) k.focus(); }
 async function jaTrocado(pecaId){
   const o=S.os.find(x=>x.id===S.osAtual); const p=peca(pecaId);
   const kmStr=prompt(`${p.nome}: em que km foi feita a troca? (entre a última registrada e ${fmtKm(o.km)})`, o.km);
@@ -811,7 +872,7 @@ async function jaTrocado(pecaId){
   toast(`${p.nome}: troca registrada a ${fmtKm(km)} · próxima aos ${fmtKm(km+(p.km||0))}`);
 }
 async function ignorarAlerta(pecaId){ const o=S.os.find(x=>x.id===S.osAtual); await S.db.doc('os/'+o.id).update({ignorados:[...(o.ignorados||[]),pecaId]}); toast('Ok — o alerta volta na próxima OS'); }
-function sairDaOs(){ S.osAtual=null; novoItem={q:'',hl:0}; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:''}; S.view='mnova'; toast('OS guardada — continua aberta'); render(); }
+function sairDaOs(){ S.osAtual=null; novoItem={q:'',hl:0}; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:''}; S.view='mnova'; toast('OS guardada — continua aberta'); render(); }
 function timelineHtmlFiltrada(v,skipId){ const bak=S.os; S.os=S.os.filter(x=>x.id!==skipId); const h=timelineHtml(v); S.os=bak; return h; }
 function itensHtml(o){ if(!(o.itens||[]).length) return '<div class="muted" style="padding:10px 0">Nenhuma peça adicionada ainda.</div>';
   const ab=(S.os.find(x=>x.id===S.osAtual)||{}).status==='Aberta';
@@ -1005,6 +1066,35 @@ function mabertas(m){
   m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${cardsFinanceiro()}${alertaCobrancaBanner()}`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`;
   }).join(''):'<div class="empty">Nenhuma OS aberta nessa seleção.</div>');
+}
+// ---- agendamentos: clientes que não puderam ser atendidos na hora e marcaram outro dia. A OS já
+// nasce com placa/km (o carro está ali, na hora do agendamento), mas fica parada em "Agendada" —
+// sem itens, sem mão de obra, fora de OS abertas/Faturamento/Relatórios — até o cliente voltar ----
+function magenda(m){
+  const minhas=S.os.filter(o=>o.status==='Agendada'&&o.oficinaId===(S.perfil&&S.perfil.oficinaId)).sort((a,b)=>(a.agendamento||'').localeCompare(b.agendamento||''));
+  const podeCancelar=ehChefe()||ehGestor();
+  const hj=hoje();
+  m.innerHTML=`<div class="bar"><h2>Agendamentos</h2></div>
+  <p class="hint" style="margin:-4px 0 10px">Clientes que não puderam ser atendidos na hora e marcaram outro dia. Um aviso aparece sozinho pro mecânico, com antecedência (se a data cair numa segunda, o aviso já chega na sexta anterior).</p>
+  ${minhas.length?minhas.map(o=>{
+    const v=S.veic.find(x=>x.id===o.veiculoId);
+    const atrasado=o.agendamento<hj;
+    return `<div class="osrow" style="cursor:default"><span class="plate" style="font-size:18px">${esc(o.placa)}</span>${v?` <b>${esc(v.modelo||'')}</b>`:''}
+      <div><div><b>${fmtD(o.agendamento)}</b>${atrasado?' <span class="tag bad">data já passou</span>':(o.agendamento===hj?' <span class="tag warn">hoje</span>':'')}</div>${o.relato?`<div class="muted">${esc(o.relato)}</div>`:''}</div>
+      <span class="sp"></span>
+      <div class="row"><button class="pri" onclick="iniciarAgendamento('${o.id}')">Cliente chegou</button>${podeCancelar?`<button class="ghost danger" onclick="cancelarAgendamento('${o.id}')">Cancelar</button>`:''}</div>
+    </div>`;
+  }).join(''):'<div class="empty">Nenhum agendamento pendente.</div>'}`;
+}
+async function iniciarAgendamento(id){
+  try{ await S.db.doc('os/'+id).update({status:'Aberta',data:agoraIso()}); S.osAtual=id; S.view='mnova'; toast('Atendimento iniciado'); render(); }
+  catch(e){ erroSalvar('iniciar o atendimento',e); }
+}
+async function cancelarAgendamento(id){
+  if(!(ehChefe()||ehGestor())){ toast('Somente o mecânico chefe ou a gestão pode cancelar um agendamento'); return; }
+  if(!confirm('Cancelar este agendamento? Isso não pode ser desfeito.')) return;
+  try{ await S.db.doc('os/'+id).delete(); toast('Agendamento cancelado'); render(); }
+  catch(e){ erroSalvar('cancelar o agendamento',e); }
 }
 function mconc(m){
   const f=normPlaca(S.filtro); const podeMo=podeFinalizarOs();
