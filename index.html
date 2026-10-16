@@ -532,7 +532,7 @@ function timelineHtml(v, opts={}){
 }
 
 // ============ MODO MECÂNICO ============
-let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:''};
+let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''};
 function mnova(m){
   if(S.osAtual){ osMecanico(m); return; }
   const v=S.veic.find(x=>x.placa===normPlaca(nova.placa));
@@ -566,6 +566,14 @@ function mnova(m){
       <div><label>Observação (opcional)</label><input id="n_agobs" value="${esc(nova.agendaObs)}" placeholder="ex: aguardando peça, cliente volta de manhã" oninput="nova.agendaObs=this.value"></div>
     </div>
     <div class="hint" style="margin-top:8px">Você recebe um aviso automático antes da data combinada — se cair numa segunda-feira, o aviso já aparece na sexta anterior (não dá pra avisar no domingo, a oficina está fechada).</div>`:''}
+  </div>
+  <div class="step">
+    <h3 style="margin-top:0">Cliente (opcional)</h3>
+    <div class="grid" style="max-width:460px">
+      <div><label>Nome do cliente</label><input id="n_clinome" value="${esc(nova.clienteNome)}" placeholder="opcional" oninput="nova.clienteNome=this.value"></div>
+      <div><label>WhatsApp do cliente</label><input id="n_clitel" value="${esc(nova.clienteTel)}" placeholder="opcional, ex: 11987654321" inputmode="numeric" oninput="nova.clienteTel=this.value"></div>
+    </div>
+    <div class="hint">Se informado, fica salvo na placa e dá pra abrir o WhatsApp direto da tela da OS depois, pra avisar o cliente sobre o andamento.</div>
   </div>
   <div class="step">
     <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||(!nova.agendamento&&!(+nova.km>0))||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
@@ -828,6 +836,12 @@ async function criarOs(){
   const mecanicoFinal=(ehAdminGeral()&&nova.mecanicoNome)?nova.mecanicoNome:S.mecNome;
   if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'',frotaPropria:false,oficinaId:oficinaIdFinal,km,status:'Em manutenção',criadoPor:mecanicoFinal,pendente:true}); v={id:ref.id,placa,km}; }
   else if(km>(+v.km||0)) await S.db.doc('veiculos/'+v.id).update({km});
+  // nome/telefone do cliente são opcionais e ficam gravados na placa (reaproveitados em cobranças
+  // futuras e no botão de WhatsApp direto da OS) — um campo deixado em branco aqui nunca apaga um
+  // valor já salvo antes
+  const cliUpd={}; if(nova.clienteNome&&nova.clienteNome!==v.clienteNome) cliUpd.clienteNome=nova.clienteNome;
+  if(nova.clienteTel){ const telNum=nova.clienteTel.replace(/\D/g,''); if(telNum&&telNum!==v.clienteTel) cliUpd.clienteTel=telNum; }
+  if(Object.keys(cliUpd).length){ try{ await S.db.doc('veiculos/'+v.id).update(cliUpd); Object.assign(v,cliUpd); }catch(e){ erroSalvar('salvar dados do cliente',e); } }
   const dataOs=(ehGestor()&&nova.data)?new Date(nova.data+'T12:00:00').toISOString():agoraIso();
   // cliente não pode ser atendido agora: a OS nasce "Agendada" (não "Aberta"), com a data combinada
   // guardada separado — ela só vira atendimento de verdade quando o cliente voltar (ver
@@ -836,7 +850,7 @@ async function criarOs(){
   // regras de segurança no banco); oficina (texto livre) é só um rótulo informativo, igual já era
   const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:mecanicoFinal,oficinaId:oficinaIdFinal,status:agendada?'Agendada':'Aberta',agendamento:agendada?nova.agendamento:null,fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:oficinaNomeFinal,relato:agendada?(nova.agendaObs||''):''};
   const ref=await S.db.collection('os').add(d);
-  nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:''};
+  nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''};
   if(agendada){ S.osAtual=null; S.view='magenda'; toast('Agendado para '+fmtD(d.agendamento)); }
   else { S.osAtual=ref.id; toast('OS aberta'); }
   render();
@@ -857,6 +871,7 @@ function osMecanico(m){
   const podeEncaminhar=(ehChefe()||ehGestor())&&o.status==='Aberta'&&v&&!isFrota(v);
   const encHtml=encs.length?`<div class="step"><h3 style="margin-top:0">↪ Encaminhamentos entre oficinas</h3>${encs.map(e=>`<div class="muted" style="margin-bottom:4px"><b>${esc(e.deNome)}</b> → <b>${esc(e.paraNome)}</b> · ${fmtD(e.em)} · por ${esc(e.por||'')}${e.nota?` — "${esc(e.nota)}"`:''}</div>`).join('')}</div>`:'';
   m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}${encHtml}<div class="step"><div class="row"><span class="plate" style="font-size:20px">${esc(o.placa)}</span><b>${esc(v.modelo||'')}</b><span class="muted">${fmtKm(o.km)} · ${ehGestor()?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span><span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>
+    ${(v.clienteNome||v.clienteTel)?`<div class="row" style="margin-top:6px">${v.clienteNome?`<span class="muted">Cliente: <b>${esc(v.clienteNome)}</b></span>`:''}${v.clienteTel?`<button class="ghost" onclick="abrirWhatsClienteOs('${o.id}')">💬 WhatsApp do cliente</button>`:'<span class="hint">Sem WhatsApp cadastrado nesta placa.</span>'}</div>`:''}
     ${podeEncaminhar?`<div class="row" style="margin-top:10px"><button class="pri" style="background:var(--warn);border-color:var(--warn);color:#fff" onclick="formEncaminharOs('${o.id}')">↪ Encaminhar p/ outra oficina</button>${ultimoEnc?`<button class="ghost" onclick="devolverOs('${o.id}')">↩ Devolver p/ ${esc(ultimoEnc.deNome)}</button>`:''}</div>`:''}
     ${(ehChefe()||ehGestor())?`<div class="row" style="margin-top:10px"><button class="sec" onclick="abrirPixOs('${o.id}')">💳 Gerar Pix para pagamento</button><span class="muted">Pra cobrar o cliente na hora, presencialmente — gera QR code com o valor desta OS.</span></div>`:''}
     ${((ehChefe()||ehGestor())&&v&&!isFrota(v))?`<div class="row" style="margin-top:10px"><button class="pri" ${((+o.maoObra||0)>0)?'':'disabled'} onclick="cobrarOs('${o.id}')">💬 Cobrar cliente</button><button class="sec" onclick="imprimirOs('${o.id}')">🖨 Imprimir / enviar PDF</button><span class="muted">${((+o.maoObra||0)>0)?'"Cobrar" manda o resumo + Pix por WhatsApp. O PDF da OS é um envio separado, pelo botão "Imprimir".':'Informe a mão de obra pra liberar a cobrança.'}</span></div>`:''}
@@ -877,7 +892,7 @@ function osMecanico(m){
   </div>
   <div class="step"><h3>Histórico desta placa</h3>${hist.length?timelineHtmlFiltrada(v,o.id):'<div class="muted">Primeira intervenção registrada deste veículo.</div>'}</div>`;
 }
-function novaOsPlaca(p){ nova={placa:p,km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:''}; S.osAtual=null; S.filtro=''; S.view='mnova'; render(); const k=document.getElementById('n_km'); if(k) k.focus(); }
+function novaOsPlaca(p){ nova={placa:p,km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''}; S.osAtual=null; S.filtro=''; S.view='mnova'; render(); const k=document.getElementById('n_km'); if(k) k.focus(); }
 async function jaTrocado(pecaId){
   const o=S.os.find(x=>x.id===S.osAtual); const p=peca(pecaId);
   const kmStr=prompt(`${p.nome}: em que km foi feita a troca? (entre a última registrada e ${fmtKm(o.km)})`, o.km);
@@ -889,7 +904,7 @@ async function jaTrocado(pecaId){
   toast(`${p.nome}: troca registrada a ${fmtKm(km)} · próxima aos ${fmtKm(km+(p.km||0))}`);
 }
 async function ignorarAlerta(pecaId){ const o=S.os.find(x=>x.id===S.osAtual); await S.db.doc('os/'+o.id).update({ignorados:[...(o.ignorados||[]),pecaId]}); toast('Ok — o alerta volta na próxima OS'); }
-function sairDaOs(){ S.osAtual=null; novoItem={q:'',hl:0}; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:''}; S.view='mnova'; toast('OS guardada — continua aberta'); render(); }
+function sairDaOs(){ S.osAtual=null; novoItem={q:'',hl:0}; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''}; S.view='mnova'; toast('OS guardada — continua aberta'); render(); }
 function timelineHtmlFiltrada(v,skipId){ const bak=S.os; S.os=S.os.filter(x=>x.id!==skipId); const h=timelineHtml(v); S.os=bak; return h; }
 function itensHtml(o){ if(!(o.itens||[]).length) return '<div class="muted" style="padding:10px 0">Nenhuma peça adicionada ainda.</div>';
   const ab=(S.os.find(x=>x.id===S.osAtual)||{}).status==='Aberta';
@@ -1482,6 +1497,16 @@ function msgCobranca(o,v){
   }).join('\n'):'• Nenhuma peça nesta OS';
   const pecasT=pecasTotal(o), mo=+o.maoObra||0;
   return `Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}*${v.modelo?' ('+v.modelo+')':''}:\nKm atual: ${fmtKm(o.km)}\n\n🔧 *Peças e serviços:*\n${itensTxt}${pecasT>0?`\n*Subtotal peças: ${fmtBRL(pecasT)}*`:''}\n\n👨‍🔧 *Mão de obra: ${fmtBRL(mo)}*\n\n💰 *Total: ${fmtBRL(osTotal(o))}*${pixTextoCobranca(o)}\n\nQualquer dúvida, estou à disposição!`;
+}
+// WhatsApp direto da tela da OS, sem mensagem de cobrança — só pra falar com o cliente sobre o
+// andamento do serviço (ex: avisar que já ficou pronto). Abre a conversa em branco, o mecânico
+// escreve o que quiser. Diferente de cobrarOs(), que manda o resumo + Pix fechando a conta.
+function abrirWhatsClienteOs(id){
+  const o=S.os.find(x=>x.id===id); if(!o){toast('OS não encontrada');return;}
+  const v=S.veic.find(x=>x.id===o.veiculoId)||{};
+  const tel=(v.clienteTel||'').replace(/\D/g,''); if(!tel){toast('Cliente sem WhatsApp cadastrado nesta placa');return;}
+  const telCompleto=tel.length<=11?'55'+tel:tel;
+  window.open(`https://wa.me/${telCompleto}`,'_blank');
 }
 // cobrar funciona do mesmo jeito pra OS de qualquer oficina — não depende de qual oficina é dona
 // da OS, só do cliente ter (ou cadastrar aqui) um WhatsApp
