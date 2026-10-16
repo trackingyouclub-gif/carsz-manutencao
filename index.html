@@ -15,6 +15,7 @@
   --bg:#f3f4f0; --panel:#ffffff; --ink:#1b1f24; --muted:#5d6570; --line:#d9dcd6;
   --brand:#2563eb; --brand-ink:#ffffff; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
   --ok-bg:#dcfce7; --warn-bg:#fef3c7; --bad-bg:#fde2e2; --soft:#eef0f2; --mec:#0d9488; --gestao:#7c3aed;
+  --whats:#1fae5a; --pix:#db2777;
   --btn-sh:0 1px 0 rgba(255,255,255,.5) inset,0 2px 0 rgba(0,0,0,.12),0 3px 6px rgba(0,0,0,.16);
   --btn-sh-sm:0 1px 0 rgba(255,255,255,.5) inset,0 1px 0 rgba(0,0,0,.1),0 2px 4px rgba(0,0,0,.12);
 }
@@ -23,6 +24,7 @@
     --bg:#15181c; --panel:#1e2228; --ink:#e8eaed; --muted:#9aa3ad; --line:#333a42;
     --brand:#3b82f6; --brand-ink:#ffffff; --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
     --ok-bg:#153a2a; --warn-bg:#3a2d10; --bad-bg:#3a1b1b; --soft:#262b32; --mec:#14b8a6; --gestao:#9d5fe0;
+    --whats:#30d874; --pix:#ec4899;
     --btn-sh:0 1px 0 rgba(255,255,255,.08) inset,0 2px 0 rgba(0,0,0,.35),0 3px 6px rgba(0,0,0,.4);
     --btn-sh-sm:0 1px 0 rgba(255,255,255,.06) inset,0 1px 0 rgba(0,0,0,.3),0 2px 4px rgba(0,0,0,.35);
   }
@@ -31,6 +33,7 @@
   --bg:#15181c; --panel:#1e2228; --ink:#e8eaed; --muted:#9aa3ad; --line:#333a42;
   --brand:#3b82f6; --brand-ink:#ffffff; --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
   --ok-bg:#153a2a; --warn-bg:#3a2d10; --bad-bg:#3a1b1b; --soft:#262b32; --mec:#14b8a6; --gestao:#9d5fe0;
+  --whats:#30d874; --pix:#ec4899;
   --btn-sh:0 1px 0 rgba(255,255,255,.08) inset,0 2px 0 rgba(0,0,0,.35),0 3px 6px rgba(0,0,0,.4);
   --btn-sh-sm:0 1px 0 rgba(255,255,255,.06) inset,0 1px 0 rgba(0,0,0,.3),0 2px 4px rgba(0,0,0,.35);
 }
@@ -59,10 +62,10 @@ body.mec main{max-width:720px}
 .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
 .bar h2{margin:0;font:600 18px "IBM Plex Sans"}
 .sp{flex:1}
-button.pri,button.sec,button.ghost,button.big{border-radius:8px;padding:11px 18px;min-height:44px;font:600 14px "IBM Plex Sans";cursor:pointer;border:1px solid transparent;transition:transform .06s ease,box-shadow .06s ease,background .12s ease,filter .12s ease}
-button.pri,button.big{box-shadow:var(--btn-sh)}
-button.pri:hover,button.big:hover{filter:brightness(1.08)}
-button.pri:active,button.big:active{transform:translateY(2px);box-shadow:none}
+button.pri,button.sec,button.ghost,button.big,button.whats,button.pix,button.warnbtn{border-radius:8px;padding:11px 18px;min-height:44px;font:600 14px "IBM Plex Sans";cursor:pointer;border:1px solid transparent;transition:transform .06s ease,box-shadow .06s ease,background .12s ease,filter .12s ease}
+button.pri,button.big,button.whats,button.pix{box-shadow:var(--btn-sh)}
+button.pri:hover,button.big:hover,button.whats:hover,button.pix:hover{filter:brightness(1.08)}
+button.pri:active,button.big:active,button.whats:active,button.pix:active{transform:translateY(2px);box-shadow:none}
 button.pri{background:var(--brand);color:var(--brand-ink)}
 body.mec button.pri{background:var(--mec)}
 body.ofgestao button.pri{background:var(--gestao)}
@@ -74,7 +77,16 @@ button.ghost:hover{background:var(--line);color:var(--ink)}
 button.ghost:active{transform:translateY(1px)}
 button.danger{color:var(--bad)}
 button.ghost.danger:hover{background:var(--bad-bg);color:var(--bad)}
+/* botões de intenção: qualquer ação que abre o WhatsApp é verde; Pix é rosa/magenta (não se confunde
+   com mais nada); "sair" usa o mesmo âmbar já usado na tag de "OS Aberta", avisando que ainda está em andamento */
+button.whats{background:var(--whats);color:#fff}
+button.pix{background:var(--pix);color:#fff}
+button.warnbtn{background:var(--warn-bg);color:var(--warn);border-color:var(--warn);box-shadow:none}
+button.warnbtn:hover{filter:brightness(1.1)}
+button.warnbtn:active{transform:translateY(1px)}
 button.big{width:100%;padding:18px;font-size:18px;font-weight:700;background:var(--mec);color:#fff;border-radius:10px;margin-bottom:10px}
+body.mec button.big{background:var(--mec)}
+body.ofgestao button.big{background:var(--gestao)}
 button.big.sec{background:var(--panel);color:var(--ink);border-color:var(--line)}
 button:disabled{opacity:.5;cursor:default;filter:none!important;box-shadow:none!important;transform:none!important}
 @media (max-width:600px){button.pri,button.sec,button.ghost{padding:12px 16px}}
@@ -895,17 +907,17 @@ function osMecanico(m){
   const podeEncaminhar=(ehChefe()||ehGestor())&&o.status==='Aberta'&&v&&!isFrota(v);
   const encHtml=encs.length?`<div class="step"><h3 style="margin-top:0">↪ Encaminhamentos entre oficinas</h3>${encs.map(e=>`<div class="muted" style="margin-bottom:4px"><b>${esc(e.deNome)}</b> → <b>${esc(e.paraNome)}</b> · ${fmtD(e.em)} · por ${esc(e.por||'')}${e.nota?` — "${esc(e.nota)}"`:''}</div>`).join('')}</div>`:'';
   m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}${encHtml}<div class="step"><div class="row"><span class="plate" style="font-size:20px">${esc(o.placa)}</span><b>${esc(v.modelo||'')}</b><span class="muted">${fmtKm(o.km)} · ${ehGestor()?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span><span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>
-    ${(v.clienteNome||v.clienteTel)?`<div class="row" style="margin-top:6px">${v.clienteNome?`<span class="muted">Cliente: <b>${esc(v.clienteNome)}</b></span>`:''}${v.clienteTel?`<button class="ghost" onclick="abrirWhatsClienteOs('${o.id}')">💬 WhatsApp do cliente</button>`:'<span class="hint">Sem WhatsApp cadastrado nesta placa.</span>'}</div>`:''}
+    ${(v.clienteNome||v.clienteTel)?`<div class="row" style="margin-top:6px">${v.clienteNome?`<span class="muted">Cliente: <b>${esc(v.clienteNome)}</b></span>`:''}${v.clienteTel?`<button class="whats" onclick="abrirWhatsClienteOs('${o.id}')">💬 WhatsApp do cliente</button>`:'<span class="hint">Sem WhatsApp cadastrado nesta placa.</span>'}</div>`:''}
     ${podeEncaminhar?`<div class="row" style="margin-top:10px"><button class="pri" style="background:var(--warn);border-color:var(--warn);color:#fff" onclick="formEncaminharOs('${o.id}')">↪ Encaminhar p/ outra oficina</button>${ultimoEnc?`<button class="ghost" onclick="devolverOs('${o.id}')">↩ Devolver p/ ${esc(ultimoEnc.deNome)}</button>`:''}</div>`:''}
-    ${(ehChefe()||ehGestor())?`<div class="row" style="margin-top:10px"><button class="sec" onclick="abrirPixOs('${o.id}')">💳 Gerar Pix para pagamento</button><span class="muted">Pra cobrar o cliente na hora, presencialmente — gera QR code com o valor desta OS.</span></div>`:''}
-    ${((ehChefe()||ehGestor())&&v&&!isFrota(v))?`<div class="row" style="margin-top:10px"><button class="pri" ${((+o.maoObra||0)>0)?'':'disabled'} onclick="cobrarOs('${o.id}')">💬 Cobrar cliente</button><button class="sec" onclick="imprimirOs('${o.id}')">🖨 Imprimir / enviar PDF</button><span class="muted">${((+o.maoObra||0)>0)?'"Cobrar" manda o resumo + Pix por WhatsApp. O PDF da OS é um envio separado, pelo botão "Imprimir".':'Informe a mão de obra pra liberar a cobrança.'}</span></div>`:''}
-    <div class="row" style="margin-top:10px"><button class="sec" onclick="sairDaOs()">⏏ Sair desta OS (continua aberta)</button><span class="muted">Tudo já está salvo. Ela fica em "OS abertas" para inserir a mão de obra depois, e você pode abrir OS de outra placa.</span></div></div>
+    ${(ehChefe()||ehGestor())?`<div class="row" style="margin-top:10px"><button class="pix" onclick="abrirPixOs('${o.id}')">💳 Gerar Pix para pagamento</button><span class="muted">Pra cobrar o cliente na hora, presencialmente — gera QR code com o valor desta OS.</span></div>`:''}
+    ${((ehChefe()||ehGestor())&&v&&!isFrota(v))?`<div class="row" style="margin-top:10px"><button class="whats" ${((+o.maoObra||0)>0)?'':'disabled'} onclick="cobrarOs('${o.id}')">💬 Cobrar cliente</button><button class="sec" onclick="imprimirOs('${o.id}')">🖨 Imprimir / enviar PDF</button><span class="muted">${((+o.maoObra||0)>0)?'"Cobrar" manda o resumo + Pix por WhatsApp. O PDF da OS é um envio separado, pelo botão "Imprimir".':'Informe a mão de obra pra liberar a cobrança.'}</span></div>`:''}
+    <div class="row" style="margin-top:10px"><button class="warnbtn" onclick="sairDaOs()">⏏ Sair desta OS (continua aberta)</button><span class="muted">Tudo já está salvo. Ela fica em "OS abertas" para inserir a mão de obra depois, e você pode abrir OS de outra placa.</span></div></div>
   <div class="step"><h3>Peças e serviços</h3>
     <div class="sug"><input id="it_nome" placeholder="Digite a peça (ex: óleo, pastilha, pneu…)" autocomplete="off" value="${esc(novoItem.q)}" oninput="novoItem.q=this.value;novoItem.hl=0;sugRender()" onkeydown="sugKey(event)"><div class="list" id="sug_list" style="display:none"></div></div>
     <div id="it_last"></div>
     <div class="grid" style="margin-top:8px"><div><label>Qtd</label><input id="it_qtd" type="number" inputmode="numeric" value="1"></div><div><label>Valor unit. (R$, opcional)</label><input id="it_custo" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></div>
     <div class="full"><label>Obs. da peça (marca, código…)</label><input id="it_obs"></div></div>
-    ${novoItem.editIdx!=null?`<div class="row" style="margin-bottom:8px"><button class="big" style="margin:0" onclick="addItem()">Salvar alteração do item</button><button class="sec" onclick="cancelarEdit()">Cancelar</button></div>`:`<button class="big sec" onclick="addItem()">+ Adicionar à OS</button>`}
+    ${novoItem.editIdx!=null?`<div class="row" style="margin-bottom:8px"><button class="big" style="margin:0" onclick="addItem()">Salvar alteração do item</button><button class="sec" onclick="cancelarEdit()">Cancelar</button></div>`:`<button class="big" onclick="addItem()">+ Adicionar à OS</button>`}
     <div id="it_list">${itensHtml(o)}</div>
   </div>
   <div class="step"><div class="row"><h3 style="margin:0">Relato da intervenção</h3><span class="sp"></span><button class="ghost" onclick="formLembrete()">🔔 Lembrete futuro</button></div><textarea id="os_rel" placeholder="O que foi verificado, o que foi feito, recomendações…" onchange="salvarCampoOs('relato',this.value)">${esc(o.relato)}</textarea>
@@ -943,7 +955,7 @@ function editItem(idx){
   document.getElementById('it_qtd').value=i.qtd||1; document.getElementById('it_custo').value=i.custo||''; document.getElementById('it_obs').value=i.obs||'';
   document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'}); document.getElementById('it_qtd').focus();
 }
-function cancelarEdit(){ novoItem={q:'',hl:0}; render(); ['it_qtd','it_custo','it_obs'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=id==='it_qtd'?'1':'';}); }
+function cancelarEdit(){ novoItem={q:'',hl:0}; render(); ['it_nome','it_qtd','it_custo','it_obs'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=id==='it_qtd'?'1':'';}); }
 function sugList(){ const q=slug(novoItem.q); if(!q||q==='x') return []; const v=S.veic.find(x=>x.id===(S.os.find(o=>o.id===S.osAtual)||{}).veiculoId);
   return catalogo().filter(p=>slug(p.nome).includes(q)).sort((a,b)=>(b.usos||0)-(a.usos||0)).slice(0,8).map(p=>{const u=v?ultimaTroca(v.id,p.id):null;return {...p,u};}); }
 function sugRender(){
@@ -976,11 +988,11 @@ async function addItem(){
     if(mudou) item.editado={em:agoraIso(),por:S.mecNome,vezes:(ant.editado?ant.editado.vezes:0)+1,original:orig}; else if(ant.editado) item.editado=ant.editado;
     itens[novoItem.editIdx]=item; } else itens.push(item);
   await S.db.doc('os/'+o.id).update({itens});
-  if(editando){ novoItem={q:'',hl:0}; ['it_qtd','it_custo','it_obs'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=id==='it_qtd'?'1':'';}); toast('Item atualizado'); render(); return; }
+  if(editando){ novoItem={q:'',hl:0}; ['it_nome','it_qtd','it_custo','it_obs'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=id==='it_qtd'?'1':'';}); toast('Item atualizado'); render(); return; }
   // alimenta o catálogo
   const ex=S.pecas.find(x=>x.id===p.id)||{}; const cat=peca(p.id);
   await S.db.doc('pecas/'+p.id).set({nome:p.nome,km:cat.km||0,dias:cat.dias||0,critico:!!cat.critico,usos:(ex.usos||0)+1,ultimo:hoje(),ultCusto:item.custo||ex.ultCusto||0});
-  const cp=peca(p.id); novoItem={q:'',hl:0}; toast(cp.km?`Adicionado · próxima troca prevista aos ${fmtKm((+o.km||0)+cp.km)}`:'Adicionado'); render(); ['it_qtd','it_custo','it_obs'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=id==='it_qtd'?'1':'';});
+  const cp=peca(p.id); novoItem={q:'',hl:0}; toast(cp.km?`Adicionado · próxima troca prevista aos ${fmtKm((+o.km||0)+cp.km)}`:'Adicionado'); render(); ['it_nome','it_qtd','it_custo','it_obs'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=id==='it_qtd'?'1':'';});
 }
 async function delItem(idx){ if(!confirm('Remover este item?'))return; novoItem={q:'',hl:0}; const o=S.os.find(x=>x.id===S.osAtual); const itens=[...o.itens]; itens.splice(idx,1); await S.db.doc('os/'+o.id).update({itens}); }
 async function salvarCampoOs(k,v){ const o=S.os.find(x=>x.id===S.osAtual); if(!o||o[k]===v)return; await S.db.doc('os/'+o.id).update({[k]:v}); }
