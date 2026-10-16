@@ -14,33 +14,36 @@
 :root{
   --bg:#f3f4f0; --panel:#ffffff; --ink:#1b1f24; --muted:#5d6570; --line:#d9dcd6;
   --brand:#0d3b66; --brand-ink:#ffffff; --ok:#1f7a4d; --warn:#c77700; --bad:#b3261e;
-  --ok-bg:#e3f3ea; --warn-bg:#fff1d6; --bad-bg:#fbe3e1; --soft:#e9ebe6; --mec:#1f6f43;
+  --ok-bg:#e3f3ea; --warn-bg:#fff1d6; --bad-bg:#fbe3e1; --soft:#e9ebe6; --mec:#1f6f43; --gestao:#6a3fa0;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#15181c; --panel:#1e2228; --ink:#e8eaed; --muted:#9aa3ad; --line:#333a42;
     --brand:#3f7fc2; --brand-ink:#ffffff; --ok:#5fcf8f; --warn:#f0b34a; --bad:#f2837a;
-    --ok-bg:#1d3328; --warn-bg:#3b2f14; --bad-bg:#3d1f1c; --soft:#272c33; --mec:#2e8f5a;
+    --ok-bg:#1d3328; --warn-bg:#3b2f14; --bad-bg:#3d1f1c; --soft:#272c33; --mec:#2e8f5a; --gestao:#9b72d6;
   }
 }
 :root[data-theme="dark"]{
   --bg:#15181c; --panel:#1e2228; --ink:#e8eaed; --muted:#9aa3ad; --line:#333a42;
   --brand:#3f7fc2; --brand-ink:#ffffff; --ok:#5fcf8f; --warn:#f0b34a; --bad:#f2837a;
-  --ok-bg:#1d3328; --warn-bg:#3b2f14; --bad-bg:#3d1f1c; --soft:#272c33; --mec:#2e8f5a;
+  --ok-bg:#1d3328; --warn-bg:#3b2f14; --bad-bg:#3d1f1c; --soft:#272c33; --mec:#2e8f5a; --gestao:#9b72d6;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,sans-serif}
 header{background:var(--brand);color:var(--brand-ink);padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 header #hdrLogo{height:32px;width:32px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;display:none}
 body.mec header{background:var(--mec)}
+body.ofgestao header{background:var(--gestao)}
 header h1{margin:0;font:700 21px/1 "IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;letter-spacing:.3px}
 header .sub{opacity:.8;font-size:13px}
 #status{margin-left:auto;font-size:12px;opacity:.85}
 header .lnk{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:6px;padding:6px 10px;font:500 13px "IBM Plex Sans";cursor:pointer}
+header .lnk.on{background:#fff;color:var(--gestao);font-weight:700}
 nav{display:flex;gap:2px;background:var(--panel);border-bottom:1px solid var(--line);padding:0 12px;overflow-x:auto}
 nav button{background:none;border:0;border-bottom:3px solid transparent;padding:12px 14px;font:500 14px "IBM Plex Sans";color:var(--muted);cursor:pointer;white-space:nowrap}
 nav button.on{color:var(--ink);border-bottom-color:var(--brand)}
 body.mec nav button.on{border-bottom-color:var(--mec)}
+body.ofgestao nav button.on{border-bottom-color:var(--gestao)}
 nav button .n{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--bad);color:#fff;font-size:12px;margin-left:6px}
 main{padding:18px 20px;max-width:1200px;margin:0 auto}
 body.mec main{max-width:720px}
@@ -50,6 +53,7 @@ body.mec main{max-width:720px}
 button.pri,button.sec,button.ghost,button.big{border-radius:6px;padding:8px 14px;font:500 14px "IBM Plex Sans";cursor:pointer;border:1px solid transparent}
 button.pri{background:var(--brand);color:var(--brand-ink)}
 body.mec button.pri{background:var(--mec)}
+body.ofgestao button.pri{background:var(--gestao)}
 button.sec{background:var(--panel);color:var(--ink);border-color:var(--line)}
 button.ghost{background:none;color:var(--muted);padding:4px 8px}
 button.danger{color:var(--bad)}
@@ -406,6 +410,7 @@ function toggleGestaoOficina(){ S.oficMgestao=!S.oficMgestao; S.view=S.oficMgest
 async function sairMec(){ await sb.auth.signOut(); S.user=null; S.perfil=null; S.mecNome=''; S.osAtual=null; S.view='mnova'; render(); }
 function render(){
   document.body.classList.toggle('mec',S.mec);
+  document.body.classList.toggle('ofgestao',!!(S.mec&&podeAlternarGestaoOficina()&&S.oficMgestao));
   document.getElementById('ttl').textContent=S.mec?'CARSZ · Oficina':'CARSZ · Manutenção da frota';
   document.getElementById('subttl').textContent=S.mec?(S.mecNome?'Mecânico: '+S.mecNome:'Registro rápido de serviços'):'Controle de revisões, custos e sinistros';
   const mb=document.getElementById('modeBtn');
@@ -423,8 +428,8 @@ function render(){
   qb.style.display=S.mec?'':'none';
   // botão de gestão da própria oficina: só pro chefe/gestor de oficina (não o administrador geral,
   // que tem o seu alternador na linha acima) — ajudante nunca vê este botão
-  if(S.mec&&podeAlternarGestaoOficina()){ gb.style.display=''; gb.textContent=S.oficMgestao?'Modo mecânico':'Modo gestão'; }
-  else { gb.style.display='none'; }
+  if(S.mec&&podeAlternarGestaoOficina()){ gb.style.display=''; gb.textContent=S.oficMgestao?'Modo mecânico':'Modo gestão'; gb.classList.toggle('on',!!S.oficMgestao); }
+  else { gb.style.display='none'; gb.classList.remove('on'); }
   const nomeOficina=S.oficina?S.oficina.nome:(ehSuperadmin()?'Administração geral':'');
   document.getElementById('subttl').textContent=S.mec?('Mecânico: '+S.mecNome+(nomeOficina?' · '+nomeOficina:'')+(gestor?' · ':'')):('Logado como '+(S.perfil?S.perfil.nome:'')+(nomeOficina?' · '+nomeOficina:''));
   if(gestor&&S.mec){ const sub=document.getElementById('subttl'); sub.innerHTML+='<a href="#" onclick="sairMec();return false" style="color:inherit">sair</a>'; }
