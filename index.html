@@ -834,20 +834,26 @@ async function carregarSessao(session){
   if(!ehAdminGeral()){ S.mec=true; S.view='mnova'; }
   render();
 }
+// equipe visível/gerenciável por quem está logado nesta aba: o administrador geral (superadmin
+// ou gestão da Oficina Matriz) continua vendo todo mundo (uso raro — o normal pra ele é gerenciar
+// por "Oficinas" > Editar), mas o chefe/gestor de uma oficina parceira só vê e só cria cargo
+// dentro da PRÓPRIA oficina — nunca a equipe de outra oficina parceira
+function minhaEquipe(){ return ehAdminGeral()?S.mecs:S.mecs.filter(x=>(x.oficinaId||'')===(S.perfil.oficinaId||'')); }
 function oficinaView(m){
   const link=LINK_MEC;
   // mecânico chefe (não gestor/dono) tem acesso a esta aba só pra criar/gerenciar cargos de
   // auxiliar administrativo e mecânico ajudante, descentralizando esse cadastro sem dar a ele
   // poder sobre contas de chefe/gestor
   const souChefeSoh = ehChefe()&&!ehGestor();
+  const equipe=minhaEquipe();
   let h=`<div class="bar"><h2>Oficina</h2></div><div class="grid" style="align-items:start">
   <div class="card" style="text-align:center"><h4 style="margin-top:0">Acesso pelo celular</h4><div id="qr" style="display:inline-block;padding:12px;background:#fff;border-radius:8px"></div><p class="muted">O mecânico aponta a câmera do celular para o QR code, entra com e-mail e senha e cai direto na tela de abrir OS.</p><input readonly value="${esc(link)}" onclick="this.select()" style="font-size:12px"></div>
   <div class="card"><h4 style="margin-top:0">Usuários</h4><div class="tbl"><table style="min-width:0"><tr><th>Nome</th><th>Contato</th><th>Papel</th><th>Último acesso</th><th></th></tr>`;
-  for(const x of S.mecs){
+  for(const x of equipe){
     const podeGerenciar = !souChefeSoh||x.id===S.perfil.id||x.papel==='ajudante'||x.papel==='auxiliar';
     h+=`<tr><td>${esc(x.nome)}<div class="muted">${esc(x.cpf||'')}</div></td><td class="muted">${esc(x.email||'')}${x.telefone?'<br>'+esc(x.telefone):''}</td><td><span class="tag ${x.papel==='gestor'?'ok':(x.papel==='chefe'||x.papel==='mecanico')?'warn':'neu'}">${esc(papelLabel(x.papel))}</span>${x.ativo===false?' <span class="tag bad">Inativo</span>':''}</td><td class="muted">${x.ultimoAcesso?fmtD(x.ultimoAcesso):'—'}</td><td>${podeGerenciar?`<button class="ghost" onclick="formMec('${x.id}')">Editar</button>`:''}${(podeGerenciar&&x.email)?` <button class="ghost" onclick="reenviarSenhaMec('${x.id}')">✉ Reenviar senha</button>`:''}</td></tr>`;
   }
-  if(!S.mecs.length) h+='<tr><td colspan="5" class="muted">Nenhum usuário.</td></tr>';
+  if(!equipe.length) h+='<tr><td colspan="5" class="muted">Nenhum usuário.</td></tr>';
   h+=`</table></div><div class="act"><button class="pri" onclick="formMec()">+ ${souChefeSoh?'Criar cargo':'Cadastrar usuário'}</button></div></div></div>`;
   m.innerHTML=h;
   if(window.QRCode){ new QRCode(document.getElementById('qr'),{text:link,width:220,height:220,correctLevel:QRCode.CorrectLevel.M}); }
@@ -859,6 +865,8 @@ function formMec(id,oficinaId){
   const souChefeSoh = ehChefe()&&!ehGestor();
   const x=id?S.mecs.find(m=>m.id===id):{ativo:true,papel:'ajudante'};
   if(id&&!x){toast('Usuário não encontrado');return;}
+  // chefe/gestor de oficina parceira só gerencia a própria equipe — nunca a de outra oficina
+  if(id&&!ehAdminGeral()&&x.oficinaId!==S.perfil.oficinaId){toast('Usuário não pertence à sua oficina');return;}
   if(souChefeSoh&&id&&x.id!==S.perfil.id&&x.papel!=='ajudante'&&x.papel!=='auxiliar'){toast('Você só pode gerenciar cargos de auxiliar administrativo ou mecânico ajudante');return;}
   // só o administrador geral pode trocar a oficina de um usuário já existente (ou escolher, na
   // criação, uma oficina diferente da própria) — é o jeito de "mover" alguém que já tem login
@@ -904,6 +912,7 @@ async function salvarMec(id,oficinaId){
     fechar(); avisoAcessoMec(nome,tel,email,!eReset); return;
   } else {
     const ex=S.mecs.find(m=>m.id===id)||{};
+    if(!ehAdminGeral()&&ex.oficinaId!==S.perfil.oficinaId){toast('Usuário não pertence à sua oficina');return;}
     if(souChefeSoh&&ex.id!==S.perfil.id&&ex.papel!=='ajudante'&&ex.papel!=='auxiliar'){toast('Você só pode gerenciar cargos de auxiliar administrativo ou mecânico ajudante');return;}
     const d={...ex,nome,cpf,telefone:tel,papel,ativo};
     if(ehSuperadmin()) d.oficinaId=oficinaEscolhida||ex.oficinaId||null;
@@ -926,6 +935,7 @@ function avisoAcessoMec(nome,tel,email,emailOk){
 // chefe só pode reenviar pra auxiliar/ajudante (ou pra si mesmo)
 async function reenviarSenhaMec(id){
   const x=S.mecs.find(m=>m.id===id); if(!x||!x.email){toast('Usuário sem e-mail cadastrado');return;}
+  if(!ehAdminGeral()&&x.oficinaId!==S.perfil.oficinaId){toast('Usuário não pertence à sua oficina');return;}
   if(ehChefe()&&!ehGestor()&&x.id!==S.perfil.id&&x.papel!=='ajudante'&&x.papel!=='auxiliar'){toast('Você só pode reenviar senha de auxiliar administrativo ou mecânico ajudante');return;}
   const {error}=await sb.auth.resetPasswordForEmail(x.email,{redirectTo:location.origin+location.pathname});
   avisoAcessoMec(x.nome,x.telefone,x.email,!error);
