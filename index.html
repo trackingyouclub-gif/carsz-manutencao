@@ -1782,6 +1782,13 @@ async function montarOsPdf(id){
   doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(120);
   doc.text('Ordem de Serviço',headerTextX,hy); hy+=6;
   doc.setTextColor(0);
+  // placa do serviço ainda em andamento — avisa já no cabeçalho que o valor é parcial, pra não
+  // confundir o cliente com um "fechamento" que ainda pode mudar até a conclusão
+  if(o.status==='Aberta'){
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(217,119,6);
+    doc.text('⚠ SERVIÇO EM ANDAMENTO — valores parciais, sujeitos a alteração',headerTextX,hy); hy+=5.5;
+    doc.setFont('helvetica','normal'); doc.setFontSize(12); doc.setTextColor(0);
+  }
   const infoOficina=[ofDados&&ofDados.endereco,ofDados&&ofDados.telefoneOficina?`Tel: ${ofDados.telefoneOficina}`:null,ofDados&&ofDados.documento?`CNPJ/CPF: ${ofDados.documento}`:null].filter(Boolean);
   doc.setFontSize(9); doc.setTextColor(110);
   for(const l of infoOficina){ doc.text(l,headerTextX,hy); hy+=4.5; }
@@ -1810,16 +1817,19 @@ async function montarOsPdf(id){
     }
   } else { doc.text('Nenhuma peça registrada.',margin,y); y+=lh; }
   y+=1; linha(); quebraSeNecessario(18);
+  const emAndamento=o.status==='Aberta';
   doc.setFont('helvetica','bold');
   doc.text('Subtotal peças:',margin,y); doc.text(fmtBRL(pecasTotal(o)),pageW-margin,y,{align:'right'}); y+=lh;
   if(podeMo){
     doc.setFont('helvetica','normal');
-    doc.text('Mão de obra:',margin,y); doc.text(fmtBRL(o.maoObra||0),pageW-margin,y,{align:'right'}); y+=lh+2;
+    doc.text(emAndamento&&!o.maoObra?'Mão de obra: ainda não informada':'Mão de obra:',margin,y); if(!(emAndamento&&!o.maoObra)) doc.text(fmtBRL(o.maoObra||0),pageW-margin,y,{align:'right'}); y+=lh+2;
     quebraSeNecessario(12);
-    // total em destaque, com uma faixa clara atrás — é o número que mais importa no papel
-    doc.setFillColor(238,242,247); doc.rect(margin,y-6,pageW-margin*2,9.5,'F');
-    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(...BRAND);
-    doc.text('TOTAL:',margin+2,y); doc.text(fmtBRL(osTotal(o)),pageW-margin-2,y,{align:'right'});
+    // total em destaque, com uma faixa clara atrás — é o número que mais importa no papel; em
+    // andamento usa cor de alerta e deixa claro que é parcial, não o fechamento da OS
+    doc.setFillColor(...(emAndamento?[254,243,199]:[238,242,247]));
+    doc.rect(margin,y-6,pageW-margin*2,9.5,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(...(emAndamento?[180,83,9]:BRAND));
+    doc.text(emAndamento?'TOTAL PARCIAL:':'TOTAL:',margin+2,y); doc.text(fmtBRL(osTotal(o)),pageW-margin-2,y,{align:'right'});
     doc.setTextColor(0); doc.setFontSize(12); y+=lh+3;
   }
   doc.setFont('helvetica','normal');
@@ -1853,6 +1863,7 @@ async function montarOsPdf(id){
     }
   }
 
+  if(emAndamento){ doc.setFontSize(8); doc.setTextColor(180,83,9); doc.text('Serviço ainda em andamento — valores parciais, sujeitos a alteração até a conclusão.',margin,284); }
   doc.setFontSize(8); doc.setTextColor(150);
   doc.text(`Gerado em ${fmtD(agoraIso())} · Carsz · Controle de Manutenção`,margin,290);
   const nomeArq=`OS-${o.placa}-${(o.data||o.concluidaEm||'').slice(0,10)}.pdf`;
