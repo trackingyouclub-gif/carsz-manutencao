@@ -1000,7 +1000,7 @@ function osMecanico(m){
   ${(ehChefe()||ehGestor())?`<div class="step"><h3 style="margin-top:0">Outras ações</h3>
     ${podeEncaminhar?`<div class="row" style="margin-top:10px"><button class="pri" style="background:var(--warn);border-color:var(--warn);color:#fff" onclick="formEncaminharOs('${o.id}')">↪ Encaminhar p/ outra oficina</button>${ultimoEnc?`<button class="ghost" onclick="devolverOs('${o.id}')">↩ Devolver p/ ${esc(ultimoEnc.deNome)}</button>`:''}</div>`:''}
     <div class="row" style="margin-top:10px"><button class="pix" onclick="abrirPixOs('${o.id}')">💳 Gerar Pix para pagamento</button><span class="muted">Pra cobrar o cliente na hora, presencialmente — gera QR code com o valor desta OS.</span></div>
-    ${(v&&!isFrota(v))?`<div class="row" style="margin-top:10px"><button class="whats" ${((+o.maoObra||0)>0)?'':'disabled'} onclick="cobrarOs('${o.id}')">💬 Cobrar cliente</button><button class="sec" onclick="imprimirOs('${o.id}')">🖨 Imprimir / enviar PDF</button><span class="muted">${((+o.maoObra||0)>0)?'"Cobrar" manda o resumo + Pix por WhatsApp. O PDF da OS é um envio separado, pelo botão "Imprimir".':'Informe a mão de obra pra liberar a cobrança.'}</span></div>`:''}
+    <div class="row" style="margin-top:10px"><button class="sec" onclick="imprimirOsDireto('${o.id}')" title="Abre o diálogo de impressão do navegador, pra escolher a impressora">🖨 Imprimir</button><button class="sec" onclick="imprimirOs('${o.id}')" title="Compartilhar por WhatsApp/e-mail ou baixar o PDF">📤 Enviar PDF</button>${(v&&!isFrota(v))?`<button class="whats" ${((+o.maoObra||0)>0)?'':'disabled'} onclick="cobrarOs('${o.id}')">💬 Cobrar cliente</button><span class="muted">${((+o.maoObra||0)>0)?'"Cobrar" manda o resumo + Pix por WhatsApp.':'Informe a mão de obra pra liberar a cobrança do cliente.'}</span>`:'<span class="muted">Funciona mesmo com a OS aberta — vale como comprovante parcial.</span>'}</div>
   </div>`:''}
   <div class="step"><h3>Histórico desta placa</h3>${hist.length?timelineHtmlFiltrada(v,o.id):'<div class="muted">Primeira intervenção registrada deste veículo.</div>'}</div>`;
 }
@@ -1326,7 +1326,7 @@ function mconc(m){
      // mesma lógica de pagamento, mas para OS da frota Carsz (a locadora paga o mecânico pelo
      // serviço) — sem cobrança por WhatsApp, só o sinalizador com a data gravada ao marcar
      const pagamentoFrota=(v&&isFrota(v)&&ehChefe())?`<button class="${o.pago?'pago-ok':'pago-pend'}" title="${o.pago?'Pago pela locadora em '+fmtD(o.pagoEm)+' — clique para desfazer':'Marcar esta OS como paga pela locadora'}" onclick="event.stopPropagation();togglePago('${o.id}')">${o.pago?'✓ Pago em '+fmtD(o.pagoEm):'Marcar como pago'}</button>`:'';
-     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate lg">${esc(o.placa)}</span>${v&&v.clienteNome?` <b class="cliente-badge">${esc(v.clienteNome)}</b>`:''}${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data||o.concluidaEm)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();visualizarOs('${o.id}')" title="Ver como fica o PDF antes de baixar/enviar">👁 Visualizar</button><button onclick="event.stopPropagation();imprimirOs('${o.id}')">🖨 Imprimir</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
+     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate lg">${esc(o.placa)}</span>${v&&v.clienteNome?` <b class="cliente-badge">${esc(v.clienteNome)}</b>`:''}${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data||o.concluidaEm)} · ${fmtKm(o.km)} · ${(o.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'}${(o.itens||[]).length>3?'…':''} · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><div class="osactions"><b>${fmtBRL(podeMo?osTotal(o):pecasTotal(o))}</b><button onclick="event.stopPropagation();visualizarOs('${o.id}')" title="Ver como fica o PDF antes de baixar/enviar">👁 Visualizar</button><button onclick="event.stopPropagation();imprimirOsDireto('${o.id}')" title="Abre o diálogo de impressão do navegador, pra escolher a impressora">🖨 Imprimir</button><button onclick="event.stopPropagation();imprimirOs('${o.id}')" title="Compartilhar por WhatsApp/e-mail ou baixar o PDF">📤 Enviar</button>${cobranca}${pagamentoFrota}<span class="tag ok">Abrir</span></div></div>`;
    }).join(''):'<div class="empty">Nenhuma OS concluída nessa seleção.</div>');
 }
 // ---- resumo financeiro (mecânico chefe / gestão) ----
@@ -1869,6 +1869,13 @@ async function imprimirOs(id){
   }
   doc.save(nomeArq);
   toast('PDF baixado — anexe no WhatsApp pelo seletor de arquivos');
+}
+// ---- botão "Imprimir" propriamente dito: vai direto pro diálogo de impressão do navegador (onde
+// dá pra escolher a impressora), sem passar pela caixa de compartilhar — essa (📤 "Enviar") é quem
+// usa o share/download, útil pra mandar por WhatsApp/e-mail, mas não deixa escolher impressora ----
+async function imprimirOsDireto(id){
+  const r=await montarOsPdf(id); if(!r) return;
+  imprimirDireto(r.doc.output('bloburl'));
 }
 // ---- mostra como o PDF vai ficar antes de baixar/enviar, num modal com o PDF embutido ----
 // os botões ficam ACIMA do PDF (não abaixo): o visualizador de PDF dentro do iframe captura o
