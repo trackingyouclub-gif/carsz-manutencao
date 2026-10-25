@@ -344,6 +344,9 @@ const idade = v => new Date().getFullYear() - (parseInt(v.ano)||new Date().getFu
 const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast = m => { const t=document.getElementById('toast'); t.textContent=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2400); };
 const val = id => (document.getElementById(id)||{value:''}).value.trim();
+// deixa o campo em maiúsculas enquanto digita (padrão pra nome/obs de peça na OS), sem perder a
+// posição do cursor — reescrever o .value sempre joga o cursor pro final se não reposicionar
+function upperInput(el){ const s=el.selectionStart,e=el.selectionEnd; el.value=el.value.toUpperCase(); try{ el.setSelectionRange(s,e); }catch(err){} }
 const opt = (arr,sel) => arr.map(o=>`<option value="${esc(o)}" ${o===sel?'selected':''}>${esc(o)}</option>`).join('');
 const normPlaca = p => String(p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 // distância de edição simples, só pra pegar erro de digitação (1-2 caracteres) entre a placa
@@ -973,10 +976,10 @@ function osMecanico(m){
   m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}${encHtml}<div class="step"><div class="row"><span class="plate lg">${esc(o.placa)}</span>${v.clienteNome?` <b class="cliente-badge">${esc(v.clienteNome)}</b>`:''}<b>${esc(v.modelo||'')}</b>${!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico — fora dos relatórios/painel da Carsz">cliente</span>':' <span class="tag ok" title="Frota Carsz — entra nos relatórios/painel">frota</span>'}<span class="muted">${fmtKm(o.km)} · ${(ehChefe()||ehGestor())?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span>${(ehChefe()||ehGestor())?`<button class="ghost" onclick="formCorrigirPlacaKm()" title="Corrigir placa ou km desta OS, se foram digitados errado">✎ placa/km</button><button class="ghost" onclick="alternarFrotaVeic()" title="${isFrota(v)?'Mover esta placa para cliente particular do mecânico':'Mover esta placa para a frota Carsz'}">${isFrota(v)?'↷ virar cliente':'↷ virar frota'}</button>`:''}<span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>${(o.placaEditadoPor||o.kmEditadoPor)?`<div class="row" style="margin-top:2px">${notaEdicaoCampo(o,'placa','Placa')}${notaEdicaoCampo(o,'km','Km')}</div>`:''}
   </div>
   <div class="step zona-clara"><h3>Peças e serviços</h3>
-    <div class="sug"><input id="it_nome" placeholder="Digite a peça (ex: óleo, pastilha, pneu…)" autocomplete="off" value="${esc(novoItem.q)}" oninput="novoItem.q=this.value;novoItem.hl=0;sugRender()" onkeydown="sugKey(event)"><div class="list" id="sug_list" style="display:none"></div></div>
+    <div class="sug"><input id="it_nome" placeholder="Digite a peça (ex: óleo, pastilha, pneu…)" autocomplete="off" autocapitalize="characters" value="${esc(novoItem.q)}" oninput="upperInput(this);novoItem.q=this.value;novoItem.hl=0;sugRender()" onkeydown="sugKey(event)"><div class="list" id="sug_list" style="display:none"></div></div>
     <div id="it_last"></div>
     <div class="grid" style="margin-top:8px"><div><label>Qtd</label><input id="it_qtd" type="number" inputmode="numeric" value="1"></div><div><label>Valor unit. (R$, opcional)</label><input id="it_custo" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></div>
-    <div class="full"><label>Obs. da peça (marca, código…)</label><input id="it_obs"></div></div>
+    <div class="full"><label>Obs. da peça (marca, código…)</label><input id="it_obs" autocapitalize="characters" oninput="upperInput(this)"></div></div>
     ${novoItem.editIdx!=null?`<div class="row" style="margin-bottom:8px"><button class="big" style="margin:0" onclick="addItem()">Salvar alteração do item</button><button class="sec" onclick="cancelarEdit()">Cancelar</button></div>`:`<button class="big" onclick="addItem()">+ Adicionar à OS</button>`}
     <div id="it_list">${itensHtml(o)}</div>
   </div>
@@ -1043,7 +1046,10 @@ function sugRender(){
 }
 function sugKey(e){ const n=sugList().length+1; if(e.key==='ArrowDown'){novoItem.hl=(novoItem.hl+1)%n;sugRender();e.preventDefault();} else if(e.key==='ArrowUp'){novoItem.hl=(novoItem.hl-1+n)%n;sugRender();e.preventDefault();} else if(e.key==='Enter'){const arr=sugList();pickSug(arr[novoItem.hl]?arr[novoItem.hl].id:null);e.preventDefault();} }
 function pickSug(id){
-  const p=id?peca(id):{id:slug(novoItem.q),nome:novoItem.q.trim()};
+  // copia o objeto (nunca mutar o catálogo compartilhado direto) só pra maiusculizar o nome que
+  // vai aparecer nesta OS — o catálogo em si mantém o nome original
+  const p=id?{...peca(id)}:{id:slug(novoItem.q),nome:novoItem.q.trim()};
+  p.nome=(p.nome||'').toUpperCase();
   novoItem.q=p.nome; novoItem.sel=p; document.getElementById('it_nome').value=p.nome; document.getElementById('sug_list').style.display='none';
   const o=S.os.find(x=>x.id===S.osAtual); const u=ultimaTroca(o.veiculoId,p.id);
   const el=document.getElementById('it_last');
