@@ -596,7 +596,7 @@ function mnova(m){
   const v=S.veic.find(x=>x.placa===normPlaca(nova.placa));
   const kmAtual=v?(+v.km||0):null;
   m.innerHTML=`<div class="step"><h3>Identifique o veículo</h3><p class="muted" style="margin:0 0 10px">Fotografe ou digite. A placa é a chave do histórico: o sistema reconhece o carro e continua as manutenções anteriores.</p>
-    ${ehGestor()?`<div style="max-width:220px;margin-bottom:10px"><label>Data da manutenção</label><input type="date" value="${esc(nova.data||hoje())}" onchange="nova.data=this.value"><div class="hint">Use uma data passada para lançar OS antigas e completar o histórico.</div></div>`:''}
+    ${(ehChefe()||ehGestor())?`<div style="max-width:220px;margin-bottom:10px"><label>Data da manutenção</label><input type="date" value="${esc(nova.data||hoje())}" onchange="nova.data=this.value"><div class="hint">Use uma data passada para lançar OS antigas e completar o histórico.</div></div>`:''}
     ${ehAdminGeral()?`<div class="grid" style="max-width:460px;margin-bottom:10px">
       <div><label>Atendida por</label><select id="n_oficina" onchange="nova.oficinaId=this.value;nova.mecanicoNome='';render()">
         <option value="">${esc((S.oficina&&S.oficina.nome)||'Minha oficina')} (eu)</option>
@@ -634,7 +634,7 @@ function mnova(m){
     <div class="hint">Se informado, fica salvo na placa e dá pra abrir o WhatsApp direto da tela da OS depois, pra avisar o cliente sobre o andamento.</div>
   </div>
   <div class="step">
-    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||(!nova.agendamento&&!(+nova.km>0))||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
+    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
   </div>`;
 }
 function sugPlaca(){
@@ -672,7 +672,7 @@ function infoPlaca(){
   const p=normPlaca(nova.placa); if(p.length<7) return '';
   const v=S.veic.find(x=>x.placa===p);
   if(!v){
-    const base=`<div class="lastinfo">Placa não cadastrada — será criada agora. <input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px"></div>`;
+    const base=`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn);border-left:4px solid var(--warn)"><b>⚠ Placa não encontrada na frota.</b> Será criada agora como veículo novo (cliente particular do mecânico, fora dos relatórios da Carsz). <b>Se este carro é da frota/locadora, confira se digitou a placa certa antes de continuar</b> — se estiver certa, avise a gestão pra cadastrar como "Frota Carsz".<input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px"></div>`;
     const hist=historicoPorPlaca(p);
     if(!hist.length) return base;
     // placa nova por aqui, mas já tem histórico técnico vindo de outra oficina — mostra pendências
@@ -845,10 +845,10 @@ async function salvarMec(id,oficinaId){
   fechar(); toast('Usuário salvo');
 }
 function bloqueado(){ return !!osAbertaPropria(S.veic.find(x=>x.placa===normPlaca(nova.placa))); }
-function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||(!nova.agendamento&&!(+nova.km>0))||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
+function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
   const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
 }
-function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return nova.agendamento?'Km é opcional pra agendar — só é obrigatório quando o cliente voltar para ser atendido.':'Informe o km atual para abrir a OS.'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return nova.agendamento?`Km informado é menor que o último registro desta placa (${fmtKm(kmMinimo(v))}) — sem problema pra agendar, é só uma referência; o km real é conferido quando o cliente voltar.`:(ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`); return ''; }
+function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return 'Km não informado — pode abrir a OS assim mesmo e corrigir depois em "✎ Corrigir placa/km desta OS".'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return nova.agendamento?`Km informado é menor que o último registro desta placa (${fmtKm(kmMinimo(v))}) — sem problema pra agendar, é só uma referência; o km real é conferido quando o cliente voltar.`:(ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`); return ''; }
 async function redimensionar(file,max=1280){
   const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(file);});
   const r=Math.min(1,max/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.round(img.width*r); c.height=Math.round(img.height*r);
@@ -879,7 +879,9 @@ async function criarOs(){
   // dia) — km vira opcional aqui, e só volta a ser obrigatório quando o atendimento começar de
   // verdade, em "Cliente chegou" (iniciarAgendamento)
   const agendada=!!nova.agendamento;
-  const km=+nova.km||0; if(!agendada&&!(km>0)){toast('Informe o km atual — obrigatório');return;}
+  // km não é mais obrigatório pra abrir a OS (pode ser corrigido depois, com placa, em "✎ Corrigir
+  // placa/km desta OS") — mas se for informado, continua valendo a checagem de km mínimo abaixo
+  const km=+nova.km||0;
   let v=S.veic.find(x=>x.placa===placa);
   if(v&&km>0&&km<kmMinimo(v)&&!ehGestor()&&!agendada){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
   if(osAbertaPropria(v)){ toast('Veículo com OS aberta na sua oficina — finalize a mão de obra antes'); render(); return; }
@@ -900,7 +902,7 @@ async function criarOs(){
   const cliUpd={}; if(nova.clienteNome&&nova.clienteNome!==v.clienteNome) cliUpd.clienteNome=nova.clienteNome;
   if(nova.clienteTel){ const telNum=nova.clienteTel.replace(/\D/g,''); if(telNum&&telNum!==v.clienteTel) cliUpd.clienteTel=telNum; }
   if(Object.keys(cliUpd).length){ try{ await S.db.doc('veiculos/'+v.id).update(cliUpd); Object.assign(v,cliUpd); }catch(e){ erroSalvar('salvar dados do cliente',e); } }
-  const dataOs=(ehGestor()&&nova.data)?new Date(nova.data+'T12:00:00').toISOString():agoraIso();
+  const dataOs=((ehChefe()||ehGestor())&&nova.data)?new Date(nova.data+'T12:00:00').toISOString():agoraIso();
   // cliente não pode ser atendido agora: a OS nasce "Agendada" (não "Aberta"), com a data combinada
   // guardada separado — ela só vira atendimento de verdade quando o cliente voltar (ver
   // iniciarAgendamento), e até lá fica fora de OS abertas, Faturamento e Relatórios
@@ -928,7 +930,7 @@ function osMecanico(m){
   const ultimoEnc=encs[encs.length-1];
   const podeEncaminhar=(ehChefe()||ehGestor())&&o.status==='Aberta'&&v&&!isFrota(v);
   const encHtml=encs.length?`<div class="step"><h3 style="margin-top:0">↪ Encaminhamentos entre oficinas</h3>${encs.map(e=>`<div class="muted" style="margin-bottom:4px"><b>${esc(e.deNome)}</b> → <b>${esc(e.paraNome)}</b> · ${fmtD(e.em)} · por ${esc(e.por||'')}${e.nota?` — "${esc(e.nota)}"`:''}</div>`).join('')}</div>`:'';
-  m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}${encHtml}<div class="step"><div class="row"><span class="plate lg">${esc(o.placa)}</span>${v.clienteNome?` <b class="cliente-badge">${esc(v.clienteNome)}</b>`:''}<b>${esc(v.modelo||'')}</b><span class="muted">${fmtKm(o.km)} · ${ehGestor()?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span><span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>
+  m.innerHTML=`${lembretes.length?`<div class="step" style="border-color:var(--brand);background:var(--soft)"><h3>🔔 Lembretes desta placa</h3>${lembretes.map(l=>`<div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="sp">${esc(l.texto)}<div class="muted" style="font-size:12px">registrado por ${esc(l.criadoPor||'')} em ${fmtD(l.criadoEm)}</div></span><button class="ghost" onclick="removerLembrete('${v.id}','${l.id}')">Concluído</button></div>`).join('')}</div>`:''}${crit.length?`<div class="step" style="border-color:var(--bad);background:var(--bad-bg)"><h3 style="color:var(--bad)">⚠ Itens a verificar nesta placa</h3><p class="muted" style="margin:0 0 8px">O sistema pergunta: este item já foi substituído desde a última OS?</p>${crit.map(a=>`<div class="row" style="margin-bottom:6px"><span class="sp"><b>${esc(a.p.nome)}</b> — ${a.txt}</span>${o.status==='Aberta'?`<div class="row"><button class="pri" onclick="novoItem={q:'',hl:0};pickSug('${a.p.id}');document.getElementById('it_nome').scrollIntoView({behavior:'smooth',block:'center'})">Trocar nesta OS</button><button class="sec" onclick="jaTrocado('${a.p.id}')">Já foi trocado</button><button class="ghost" onclick="ignorarAlerta('${a.p.id}')">Ainda não</button></div>`:''}</div>`).join('')}</div>`:''}${encHtml}<div class="step"><div class="row"><span class="plate lg">${esc(o.placa)}</span>${v.clienteNome?` <b class="cliente-badge">${esc(v.clienteNome)}</b>`:''}<b>${esc(v.modelo||'')}</b><span class="muted">${fmtKm(o.km)} · ${(ehChefe()||ehGestor())?`<input type="date" style="width:150px;display:inline-block" value="${(o.data||'').slice(0,10)}" onchange="salvarCampoOs('data',this.value+'T12:00:00.000Z')">`:fmtD(o.data)}</span>${(ehChefe()||ehGestor())?`<button class="ghost" onclick="formCorrigirPlacaKm()" title="Corrigir placa ou km desta OS, se foram digitados errado">✎ placa/km</button>`:''}<span class="sp"></span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${o.status}</span></div>${(o.placaEditadoPor||o.kmEditadoPor)?`<div class="row" style="margin-top:2px">${notaEdicaoCampo(o,'placa','Placa')}${notaEdicaoCampo(o,'km','Km')}</div>`:''}
   </div>
   <div class="step zona-clara"><h3>Peças e serviços</h3>
     <div class="sug"><input id="it_nome" placeholder="Digite a peça (ex: óleo, pastilha, pneu…)" autocomplete="off" value="${esc(novoItem.q)}" oninput="novoItem.q=this.value;novoItem.hl=0;sugRender()" onkeydown="sugKey(event)"><div class="list" id="sug_list" style="display:none"></div></div>
@@ -952,7 +954,7 @@ function osMecanico(m){
     </div>`:`<div class="calc" style="margin-top:10px"><span class="muted">Parcial (peças): <b>${fmtBRL(pecasTotal(o))}</b> — a mão de obra e o total só aparecem pro mecânico chefe e a gestão.</span></div>`}
     <div class="row" style="margin-top:14px"><h3 style="margin:0">Relato da intervenção</h3><span class="sp"></span><button class="ghost" onclick="formLembrete()">🔔 Lembrete futuro</button></div><textarea id="os_rel" placeholder="O que foi verificado, o que foi feito, recomendações…" onchange="salvarCampoOs('relato',this.value)">${esc(o.relato)}</textarea>
     <div class="ph" id="os_fotos">${[o.fotoPlaca,o.fotoKm,...(o.fotos||[])].filter(Boolean).map(f=>`<span style="position:relative;display:inline-block"><img src="${blob(f)}" onclick="lightbox('${f}')">${S.assets?`<button class="ghost danger" title="Apagar foto" style="position:absolute;top:-6px;right:-6px;background:var(--panel);border:1px solid var(--line);border-radius:50%;width:22px;height:22px;padding:0;line-height:1" onclick="apagarFoto('${o.id}','${f}')">✕</button>`:''}</span>`).join('')}</div>
-    ${(o.status==='Concluída'&&ehGestor())?`<div class="row" style="margin-top:8px;align-items:center"><label style="margin:0">Data de conclusão</label><input type="date" style="width:150px" value="${(o.concluidaEm||o.data||'').slice(0,10)}" onchange="salvarCampoOs('concluidaEm',this.value+'T12:00:00.000Z')"><span class="hint" style="margin:0">Ajuste para lançar OS antigas na linha do tempo correta.</span></div>`:''}
+    ${(o.status==='Concluída'&&(ehChefe()||ehGestor()))?`<div class="row" style="margin-top:8px;align-items:center"><label style="margin:0">Data de conclusão</label><input type="date" style="width:150px" value="${(o.concluidaEm||o.data||'').slice(0,10)}" onchange="salvarCampoOs('concluidaEm',this.value+'T12:00:00.000Z')"><span class="hint" style="margin:0">Ajuste para lançar OS antigas na linha do tempo correta.</span></div>`:''}
     <div class="act">${o.status==='Aberta'?`<span class="muted">OS aberta · parcial ${fmtBRL(pecasTotal(o))} — informe a mão de obra acima para concluir.</span>`:podeMo?`<span class="muted">Concluída em ${fmtD(o.concluidaEm)} · total ${fmtBRL(osTotal(o))}. Para alterar itens ou relato, reabra.</span><button class="pri" onclick="reabrirOs()">Reabrir para editar</button>`:`<span class="muted">Concluída em ${fmtD(o.concluidaEm)} · peças ${fmtBRL(pecasTotal(o))}.</span>`}${(ehChefe()||ehGestor())?`<button class="ghost danger" onclick="excluirOsMec('${o.id}')">Excluir OS</button>`:''}<span class="sp"></span><button class="warnbtn" onclick="sairDaOs()">Sair desta OS</button></div>
   </div>
   ${(ehChefe()||ehGestor())?`<div class="step"><h3 style="margin-top:0">Outras ações</h3>
@@ -1030,6 +1032,31 @@ async function addItem(){
 }
 async function delItem(idx){ if(!confirm('Remover este item?'))return; novoItem={q:'',hl:0}; const o=S.os.find(x=>x.id===S.osAtual); const itens=[...o.itens]; itens.splice(idx,1); await S.db.doc('os/'+o.id).update({itens}); }
 async function salvarCampoOs(k,v){ const o=S.os.find(x=>x.id===S.osAtual); if(!o||o[k]===v)return; await S.db.doc('os/'+o.id).update({[k]:v}); }
+// ---- corrigir placa/km de uma OS já aberta, pra quando foi digitado errado na abertura (placa e
+// km não são mais obrigatórios pra abrir a OS) — fica registrado quem corrigiu e quando, pra não
+// virar uma porta pra mudar os dados sem rastro ----
+function notaEdicaoCampo(o,campo,rotulo){ const por=o[campo+'EditadoPor'], em=o[campo+'EditadoEm']; return por?`<div class="muted" style="font-size:11px">${rotulo} alterado por ${esc(por)} em ${fmtD(em)}</div>`:''; }
+function formCorrigirPlacaKm(){
+  const o=S.os.find(x=>x.id===S.osAtual); if(!o) return;
+  abrir(`<h3>Corrigir placa / km desta OS</h3>
+    <div class="hint">Use só quando a placa ou o km foram digitados errado na abertura desta OS. A correção fica registrada.</div>
+    <div class="grid" style="max-width:360px">
+      <div><label>Placa</label><input id="fx_placa" value="${esc(o.placa)}" maxlength="8" autocapitalize="characters">${notaEdicaoCampo(o,'placa','Placa')}</div>
+      <div><label>Km</label><input id="fx_km" type="number" inputmode="numeric" value="${o.km||''}">${notaEdicaoCampo(o,'km','Km')}</div>
+    </div>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarCorrecaoPlacaKm()">Salvar correção</button></div>`);
+}
+async function salvarCorrecaoPlacaKm(){
+  const o=S.os.find(x=>x.id===S.osAtual); if(!o) return;
+  const placa=normPlaca(val('fx_placa')); const km=+val('fx_km')||0;
+  if(placa.length<7){ toast('Placa inválida'); return; }
+  const quem=S.mecNome||'', agora=agoraIso(); const upd={};
+  if(placa!==o.placa){ upd.placa=placa; upd.placaEditadoPor=quem; upd.placaEditadoEm=agora; }
+  if(km!==(+o.km||0)){ upd.km=km; upd.kmEditadoPor=quem; upd.kmEditadoEm=agora; }
+  if(!Object.keys(upd).length){ fechar(); return; }
+  try{ await S.db.doc('os/'+o.id).update(upd); toast('Corrigido'); fechar(); render(); }
+  catch(e){ erroSalvar('corrigir placa/km desta OS',e); }
+}
 // ---- lembrete futuro: fica salvo no veículo e aparece na próxima vez que a placa voltar ----
 function formLembrete(){
   const o=S.os.find(x=>x.id===S.osAtual); if(!o) return;
@@ -1743,19 +1770,16 @@ async function montarOsPdf(id){
     doc.text(linhasRelato,margin,y); y+=linhasRelato.length*5+2;
   }
 
-  // ---- rodapé: mecânico responsável pelo serviço + dados de pagamento (Pix), se a oficina tiver
-  // chave cadastrada — fica por último, como fecho do documento ----
-  quebraSeNecessario(20); y+=2; linha();
-  tituloSecao('RESPONSÁVEL PELO SERVIÇO');
-  doc.text(`Mecânico: ${o.mecanico||'—'}`,margin,y); y+=lh;
-
+  // ---- rodapé: dados de pagamento (Pix), se a oficina tiver chave cadastrada — fica por último,
+  // como fecho do documento. O nome do mecânico responsável não aparece mais no papel impresso
+  // (fica só registrado internamente no sistema, nas listas de OS) ----
   const ofPdf=ofDados;
   if(ofPdf&&ofPdf.pixChave){
     const valorPdf=podeMo?osTotal(o):pecasTotal(o);
     const pixPayload=montarPixPayload(ofPdf.pixChave,ofPdf.pixNome||ofPdf.nome||ofPdf.responsavel||'',ofPdf.pixCidade,valorPdf,('OS'+o.id).slice(0,25));
     const qrUrl=pixPayload?await qrCodeDataUrl(pixPayload,220):null;
     if(qrUrl){
-      quebraSeNecessario(40); y+=3;
+      quebraSeNecessario(40); y+=2; linha(); y+=1;
       tituloSecao('PAGAMENTO VIA PIX');
       try{
         doc.addImage(qrUrl,'PNG',margin,y-4,30,30);
@@ -1796,10 +1820,21 @@ async function visualizarOs(id){
   const url=r.doc.output('bloburl');
   abrir(`<div class="act" style="margin-top:0;align-items:center">
     <h3 style="margin:0;flex:1">Pré-visualização da OS</h3>
-    <button class="pri" onclick="imprimirOs('${id}')">🖨 Baixar / Enviar</button>
+    <button class="sec" onclick="imprimirDireto('${url}')">🖨 Imprimir (escolher impressora)</button>
+    <button class="pri" onclick="imprimirOs('${id}')">⬇ Baixar / Enviar</button>
     <button class="sec" onclick="try{URL.revokeObjectURL('${url}')}catch(e){}fechar()">✕ Fechar</button>
   </div>
-  <iframe src="${url}" style="width:100%;height:62vh;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:10px"></iframe>`);
+  <iframe id="os_pdf_frame" src="${url}" style="width:100%;height:62vh;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:10px"></iframe>`);
+}
+// ---- abre o diálogo de impressão do navegador direto no PDF, pra escolher a impressora (em vez
+// de precisar baixar o arquivo primeiro e abrir noutro programa) — usa uma aba nova porque o
+// visualizador de PDF embutido no iframe nem sempre responde a print() de dentro da própria página ----
+function imprimirDireto(url){
+  const w=window.open(url,'_blank');
+  if(!w){ toast('O navegador bloqueou a nova aba — permita pop-ups pra este site, ou use "Baixar / Enviar"'); return; }
+  const tentarImprimir=()=>{ try{ w.focus(); w.print(); }catch(e){} };
+  try{ w.addEventListener('load',tentarImprimir); }catch(e){}
+  setTimeout(tentarImprimir,600);
 }
 function mhist(m){
   const p=normPlaca(S.filtro); const v=S.veic.find(x=>x.placa===p);
