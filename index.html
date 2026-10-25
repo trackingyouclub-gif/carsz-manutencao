@@ -346,6 +346,19 @@ const toast = m => { const t=document.getElementById('toast'); t.textContent=m; 
 const val = id => (document.getElementById(id)||{value:''}).value.trim();
 const opt = (arr,sel) => arr.map(o=>`<option value="${esc(o)}" ${o===sel?'selected':''}>${esc(o)}</option>`).join('');
 const normPlaca = p => String(p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+// distância de edição simples, só pra pegar erro de digitação (1-2 caracteres) entre a placa
+// digitada e placas já cadastradas como frota — pra avisar antes de criar um veículo novo por engano
+function levDist(a,b){
+  if(Math.abs(a.length-b.length)>2) return 99;
+  const dp=[]; for(let i=0;i<=a.length;i++){ dp[i]=[i]; }
+  for(let j=1;j<=b.length;j++) dp[0][j]=j;
+  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++) dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[a.length][b.length];
+}
+function placasFrotaParecidas(p){ return S.veic.filter(isFrota).map(v=>({v,d:levDist(p,v.placa)})).filter(x=>x.d>0&&x.d<=2).sort((a,b)=>a.d-b.d).slice(0,3); }
+// placa digitada não existe no cadastro: só deixa abrir como veículo novo/cliente particular depois
+// de confirmar explicitamente que não é um erro de digitação de uma placa que já é da frota Carsz
+function precisaConfirmarNovo(){ const p=normPlaca(nova.placa); return p.length>=7&&!S.veic.find(x=>x.placa===p); }
 const blob = id => sb.storage.from(BUCKET).getPublicUrl(id).data.publicUrl;
 const osTotal = o => (o.itens||[]).reduce((s,i)=>s+(+i.custo||0)*(+i.qtd||1),0)+(+o.maoObra||0);
 const pecasTotal = o => (o.itens||[]).reduce((s,i)=>s+(+i.custo||0)*(+i.qtd||1),0);
@@ -590,7 +603,7 @@ function timelineHtml(v, opts={}){
 }
 
 // ============ MODO MECÂNICO ============
-let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''};
+let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:'',confirmaNaoFrota:false};
 function mnova(m){
   if(S.osAtual){ osMecanico(m); return; }
   const v=S.veic.find(x=>x.placa===normPlaca(nova.placa));
@@ -609,7 +622,7 @@ function mnova(m){
     <div class="hint">Pra lançar uma manutenção que já aconteceu, atendida por outra oficina/mecânico — a OS já nasce atribuída a quem realmente atendeu, sem precisar mover depois.</div>`:''}
     <div class="shot">
       <div><label class="btn ${nova.fotoPlaca?'done':''}"><input type="file" accept="image/*" capture="environment" onchange="foto(this,'placa')">${nova.fotoPlaca?`<img src="${nova.fotoPlaca.url}">`:'📷<span>Fotografar placa</span>'}</label>
-        <label style="margin-top:8px">ou digite a placa</label><div class="sug"><input class="xl" id="n_placa" value="${esc(nova.placa)}" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" oninput="nova.placa=this.value;chkPlaca();sugPlaca()" onfocus="sugPlaca()" onblur="setTimeout(()=>{const l=document.getElementById('sug_placa');if(l)l.style.display='none'},150)"><div class="list" id="sug_placa" style="display:none"></div></div></div>
+        <label style="margin-top:8px">ou digite a placa</label><div class="sug"><input class="xl" id="n_placa" value="${esc(nova.placa)}" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" oninput="nova.placa=this.value;nova.confirmaNaoFrota=false;chkPlaca();sugPlaca()" onfocus="sugPlaca()" onblur="setTimeout(()=>{const l=document.getElementById('sug_placa');if(l)l.style.display='none'},150)"><div class="list" id="sug_placa" style="display:none"></div></div></div>
       <div><label class="btn ${nova.fotoKm?'done':''}"><input type="file" accept="image/*" capture="environment" onchange="foto(this,'km')">${nova.fotoKm?`<img src="${nova.fotoKm.url}">`:'📷<span>Fotografar hodômetro</span>'}</label>
         <label style="margin-top:8px">ou digite o km</label><input class="xl" id="n_km" type="number" inputmode="numeric" min="1" value="${esc(nova.km)}" placeholder="obrigatório" oninput="nova.km=this.value;chkPlaca()"></div>
     </div>
@@ -634,7 +647,7 @@ function mnova(m){
     <div class="hint">Se informado, fica salvo na placa e dá pra abrir o WhatsApp direto da tela da OS depois, pra avisar o cliente sobre o andamento.</div>
   </div>
   <div class="step">
-    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
+    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||kmRuim()||nova.lendo||bloqueado()||(precisaConfirmarNovo()&&!nova.confirmaNaoFrota))?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
   </div>`;
 }
 function sugPlaca(){
@@ -643,7 +656,7 @@ function sugPlaca(){
   const arr=S.veic.filter(v=>p?v.placa.includes(p):true).sort((a,b)=>a.placa.localeCompare(b.placa)).slice(0,6);
   if(!arr.length||(arr.length===1&&arr[0].placa===p)){l.style.display='none';return;}
   l.style.display='block';
-  l.innerHTML=arr.map(v=>`<div onmousedown="nova.placa='${v.placa}';document.getElementById('n_placa').value='${v.placa}';chkPlaca();"><span class="plate">${v.placa}</span> ${esc(v.modelo)}<small>${osDoVeic(v.id).length} intervenções · último km ${fmtKm(v.km)}${osAbertaDe(v)?' · <b>OS aberta</b>':''}</small></div>`).join('');
+  l.innerHTML=arr.map(v=>`<div onmousedown="nova.placa='${v.placa}';document.getElementById('n_placa').value='${v.placa}';nova.confirmaNaoFrota=false;chkPlaca();"><span class="plate">${v.placa}</span> ${esc(v.modelo)}<small>${osDoVeic(v.id).length} intervenções · último km ${fmtKm(v.km)}${osAbertaDe(v)?' · <b>OS aberta</b>':''}</small></div>`).join('');
 }
 // também olha o histórico compartilhado de outras oficinas, pra não deixar duas oficinas
 // atenderem o mesmo carro (frota Carsz) ao mesmo tempo sem saber uma da outra
@@ -672,15 +685,21 @@ function infoPlaca(){
   const p=normPlaca(nova.placa); if(p.length<7) return '';
   const v=S.veic.find(x=>x.placa===p);
   if(!v){
-    const base=`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn);border-left:4px solid var(--warn)"><b>⚠ Placa não encontrada na frota.</b> Será criada agora como veículo novo (cliente particular do mecânico, fora dos relatórios da Carsz). <b>Se este carro é da frota/locadora, confira se digitou a placa certa antes de continuar</b> — se estiver certa, avise a gestão pra cadastrar como "Frota Carsz".<input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px"></div>`;
+    // placa parecida com uma que já é da frota (1-2 caracteres de diferença) — bem provável erro de
+    // digitação; trava a abertura até escolher a placa certa ou confirmar que não é erro nenhum
+    const parecidas=placasFrotaParecidas(p);
+    const avisoParecida=parecidas.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Confira a placa</b> — ${parecidas.length>1?'estas placas':'esta placa'} da frota Carsz ${parecidas.length>1?'são':'é'} muito parecida${parecidas.length>1?'s':''} com "${esc(p)}": ${parecidas.map(x=>`<button class="ghost" style="margin:2px" onmousedown="nova.placa='${x.v.placa}';document.getElementById('n_placa').value='${x.v.placa}';nova.confirmaNaoFrota=false;chkPlaca();">${esc(x.v.placa)} · ${esc(x.v.modelo||'')}</button>`).join(' ')}<br>Se for erro de digitação, clique na placa certa acima. Se não for, confirme abaixo antes de continuar.</div>`:'';
+    const base=`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn);border-left:4px solid var(--warn)"><b>⚠ Placa não encontrada na frota.</b> Será criada agora como veículo novo (cliente particular do mecânico, fora dos relatórios da Carsz). <b>Se este carro é da frota/locadora, confira se digitou a placa certa antes de continuar</b> — se estiver certa, avise a gestão pra cadastrar como "Frota Carsz".<input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px">
+      <label style="display:flex;align-items:flex-start;gap:6px;margin-top:10px;font-weight:600;cursor:pointer"><input type="checkbox" id="n_confnovo" ${nova.confirmaNaoFrota?'checked':''} onchange="nova.confirmaNaoFrota=this.checked;chkPlaca()" style="width:auto;margin-top:3px"> Confirmo que esta placa NÃO é um carro da frota Carsz/locadora — é cliente particular do mecânico.</label>
+    </div>`;
     const hist=historicoPorPlaca(p);
-    if(!hist.length) return base;
+    if(!hist.length) return avisoParecida+base;
     // placa nova por aqui, mas já tem histórico técnico vindo de outra oficina — mostra pendências
     // mesmo antes do veículo existir no cadastro local (histórico é geral pra toda a base)
     const al=alertasVeic({placa:p},+nova.km>0?+nova.km:null,hist).filter(a=>a.lvl==='bad'||a.lvl==='warn');
     const ul=hist[0];
     const avisoBox=al.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Esta placa já tem histórico em outra oficina</b> (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}):<ul style="margin:6px 0 0;padding-left:18px">${al.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:`<div class="lastinfo ok">Esta placa já tem histórico em outra oficina (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}) — sem pendências vencidas.</div>`;
-    return avisoBox+base;
+    return avisoParecida+avisoBox+base;
   }
   const ab=osAbertaPropria(v);
   if(ab){ const dias=Math.max(0,Math.round((Date.now()-new Date(ab.data))/864e5));
@@ -845,7 +864,7 @@ async function salvarMec(id,oficinaId){
   fechar(); toast('Usuário salvo');
 }
 function bloqueado(){ return !!osAbertaPropria(S.veic.find(x=>x.placa===normPlaca(nova.placa))); }
-function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
+function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||nova.lendo||bloqueado()||(precisaConfirmarNovo()&&!nova.confirmaNaoFrota); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
   const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
 }
 function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return 'Km não informado — pode abrir a OS assim mesmo e corrigir depois em "✎ Corrigir placa/km desta OS".'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return nova.agendamento?`Km informado é menor que o último registro desta placa (${fmtKm(kmMinimo(v))}) — sem problema pra agendar, é só uma referência; o km real é conferido quando o cliente voltar.`:(ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`); return ''; }
@@ -875,6 +894,9 @@ async function foto(inp,tipo){
 }
 async function criarOs(){
   const placa=normPlaca(nova.placa); if(placa.length<7){toast('Placa inválida');return;}
+  // segunda trava, igual à do botão: nunca cria veículo novo (cliente particular) sem confirmação
+  // explícita — evita que uma placa da frota digitada errado vire um cadastro "cliente" por engano
+  if(precisaConfirmarNovo()&&!nova.confirmaNaoFrota){ toast('Confirme que esta placa não é da frota Carsz antes de abrir a OS'); return; }
   // agendamento: o carro pode nem ter sido inspecionado ainda (cliente só passou e marcou outro
   // dia) — km vira opcional aqui, e só volta a ser obrigatório quando o atendimento começar de
   // verdade, em "Cliente chegou" (iniciarAgendamento)
