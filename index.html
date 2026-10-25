@@ -663,9 +663,12 @@ function sugPlaca(){
 // só a OS aberta da PRÓPRIA oficina bloqueia abrir uma OS nova pro mesmo carro (evita duas OS
 // simultâneas dentro da mesma oficina). Uma OS aberta em OUTRA oficina não bloqueia mais — cada
 // oficina pode atender o mesmo carro (frota Carsz) ao mesmo tempo; ver osAbertaExterna, que só avisa
-function osAbertaPropria(v){
-  if(!v) return null;
-  return S.os.find(o=>o.veiculoId===v.id&&o.status==='Aberta')||null;
+// checa pela PLACA (texto), não só pelo id do veículo — se por algum motivo existirem dois
+// cadastros de veículo com a mesma placa (ex.: um criado automaticamente antes de o veículo "oficial"
+// ser reconhecido), uma OS aberta em qualquer um dos dois ainda bloqueia e oferece reabrir
+function osAbertaPropria(v,placaStr){
+  const p=placaStr||(v&&v.placa); if(!p) return null;
+  return S.os.find(o=>o.status==='Aberta'&&(o.placa===p||(v&&o.veiculoId===v.id)))||null;
 }
 // OS aberta em outra oficina, só pra aviso informativo (nunca bloqueia)
 function osAbertaExterna(v){
@@ -681,10 +684,18 @@ const kmMinimo = v => +((v&&v.km)||0);
 // então não trava o botão por km "menor que o último registro" — essa checagem de verdade acontece
 // só quando o atendimento começa (iniciarAgendamento)
 function kmRuim(){ if(ehGestor()||nova.agendamento) return false; const v=S.veic.find(x=>x.placa===normPlaca(nova.placa)); return !!(v&&+nova.km>0&&+nova.km<kmMinimo(v)); }
+// bloco mostrado quando já existe uma OS aberta pra esta placa — nunca deixa abrir outra, só
+// oferece continuar editando a que já existe (ver osAbertaPropria, que acha por placa e não só
+// por id de veículo, pra não deixar passar se houver cadastro duplicado da mesma placa)
+function blocoOsAberta(ab){
+  const dias=Math.max(0,Math.round((Date.now()-new Date(ab.data))/864e5));
+  return `<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad)"><b>⚠ Esta placa já tem uma OS aberta na sua oficina</b> desde ${fmtD(ab.data)} (há ${dias} dia${dias===1?'':'s'}, ${fmtKm(ab.km)}, ${esc(ab.mecanico||'')}, ${(ab.itens||[]).length} itens).<br>Em vez de abrir outra, continue editando essa.</div><button class="big sec" onclick="S.osAtual='${ab.id}';render()">Continuar editando esta OS</button>`;
+}
 function infoPlaca(){
   const p=normPlaca(nova.placa); if(p.length<7) return '';
   const v=S.veic.find(x=>x.placa===p);
   if(!v){
+    const abSemVeic=osAbertaPropria(null,p); if(abSemVeic) return blocoOsAberta(abSemVeic);
     // placa parecida com uma que já é da frota (1-2 caracteres de diferença) — bem provável erro de
     // digitação; trava a abertura até escolher a placa certa ou confirmar que não é erro nenhum
     const parecidas=placasFrotaParecidas(p);
@@ -702,8 +713,7 @@ function infoPlaca(){
     return avisoParecida+avisoBox+base;
   }
   const ab=osAbertaPropria(v);
-  if(ab){ const dias=Math.max(0,Math.round((Date.now()-new Date(ab.data))/864e5));
-    return `<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad)"><b>Bloqueado: este veículo já tem uma OS aberta na sua oficina</b> desde ${fmtD(ab.data)} (há ${dias} dias, ${fmtKm(ab.km)}, ${esc(ab.mecanico||'')}, ${(ab.itens||[]).length} itens).<br>Ela precisa ser finalizada com o valor da mão de obra antes de abrir outra.</div><button class="big sec" onclick="S.osAtual='${ab.id}';render()">Abrir a OS pendente para finalizar</button>`; }
+  if(ab) return blocoOsAberta(ab);
   // OS aberta em OUTRA oficina não bloqueia mais — só avisa, pra cada oficina saber da outra
   const extAberta=osAbertaExterna(v);
   const avisoExterna=extAberta?`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn);border-left:4px solid var(--warn)"><b>⚠ Este veículo está com OS aberta em outra oficina</b> desde ${fmtD(extAberta.data)} (${fmtKm(extAberta.km)}${extAberta.oficina?', '+esc(extAberta.oficina):''}). Pode abrir a OS aqui mesmo assim — cada oficina atende separado.</div>`:'';
@@ -863,7 +873,7 @@ async function salvarMec(id,oficinaId){
   }
   fechar(); toast('Usuário salvo');
 }
-function bloqueado(){ return !!osAbertaPropria(S.veic.find(x=>x.placa===normPlaca(nova.placa))); }
+function bloqueado(){ const p=normPlaca(nova.placa); return !!osAbertaPropria(S.veic.find(x=>x.placa===p),p); }
 function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||nova.lendo||bloqueado()||(precisaConfirmarNovo()&&!nova.confirmaNaoFrota); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
   const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
 }
@@ -906,7 +916,8 @@ async function criarOs(){
   const km=+nova.km||0;
   let v=S.veic.find(x=>x.placa===placa);
   if(v&&km>0&&km<kmMinimo(v)&&!ehGestor()&&!agendada){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
-  if(osAbertaPropria(v)){ toast('Veículo com OS aberta na sua oficina — finalize a mão de obra antes'); render(); return; }
+  const abertaExistente=osAbertaPropria(v,placa);
+  if(abertaExistente){ toast('Esta placa já tem uma OS aberta — reabrindo para continuar editando'); S.osAtual=abertaExistente.id; render(); return; }
   // placa nova aberta pelo mecânico: por padrão é cliente particular dele (fora da frota Carsz e fora
   // dos relatórios/painel) — a gestão reclassifica como frota própria em Frota > Completar cadastro
   // se for, de fato, um carro da locadora
@@ -1165,12 +1176,14 @@ async function maoObra(valor){
     if(o.maoObra!==valor){ try{ await S.db.doc('os/'+o.id).update({maoObra:valor,maoObraEdit:editMo(o,valor)}); }catch(e){ erroSalvar('salvar a mão de obra',e); } }
     return;
   }
-  if(!(o.itens||[]).length&&!o.relato){
-    abrir(`<h3>Concluir OS sem peças nem relato?</h3><p class="muted">Essa OS não tem nenhuma peça nem relato registrado. Quer concluir assim mesmo?</p>
-      <div class="act"><button class="sec" onclick="fechar();const c=document.getElementById('os_mo');if(c)c.value='';">Cancelar</button><button class="pri" onclick="fechar();fecharOs(${valor})">Concluir assim mesmo</button></div>`);
-    return;
-  }
-  await fecharOs(valor);
+  // confirmação explícita antes de concluir — digitar a mão de obra fixa o valor e já encerra a
+  // OS, então pede "tem certeza?" sempre (não só quando falta peça/relato), pra não fechar por
+  // engano com um valor errado ou um toque sem querer no campo
+  const semNada=!(o.itens||[]).length&&!o.relato;
+  const valorAntigoStr=o.maoObra?(+o.maoObra).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
+  abrir(`<h3>Concluir esta OS?</h3>
+    <p class="muted">Ao confirmar, a mão de obra fica <b>fixada em ${fmtBRL(valor)}</b> (total da OS: <b>${fmtBRL(osTotal({...o,maoObra:valor}))}</b>) e ela passa para "Concluída".${semNada?'<br><b style="color:var(--warn)">⚠ Esta OS não tem nenhuma peça nem relato registrado.</b>':''}</p>
+    <div class="act"><button class="sec" onclick="fechar();const c=document.getElementById('os_mo');if(c)c.value='${valorAntigoStr}';">Ainda não, continuar editando</button><button class="pri" onclick="fechar();fecharOs(${valor})">Sim, informar mão de obra e concluir</button></div>`);
 }
 // mostra o erro de verdade (nunca falha "em silêncio"): toda escrita que pode ser bloqueada pelas
 // regras de segurança do banco (RLS) passa por aqui quando dá erro, com uma caixa bem visível —
