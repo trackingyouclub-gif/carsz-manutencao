@@ -2695,6 +2695,16 @@ if(location.hash.startsWith('#mecanico')){ S.mec=true; S.view='mnova'; }
 S.db=mkDb(); S.assets=mkAssets(); S.cfg=JSON.parse(JSON.stringify(DEF_CFG)); S.mecsOk=true;
 render();
 aplicarIconeApp(); // ícone padrão (sem oficina ainda identificada) — já deixa o manifest válido antes do login
+// registra o service worker (arquivo sw.js, precisa estar na mesma pasta deste index.html no
+// repositório) — é o que faz o Chrome/Android reconhecer o site como instalável de verdade e criar
+// um ícone de app no celular, em vez de só um atalho de navegador. Se o arquivo não existir ainda
+// (ex: versão antiga do repositório, upload do sw.js esquecido), falha em silêncio e o sistema
+// continua funcionando normalmente, só sem a instalação "completa".
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('service worker não registrado (confira se sw.js foi enviado junto):',e));
+  });
+}
 (async()=>{
   const st=document.getElementById('status');
   if(SUPABASE_URL.startsWith('COLE_')){ st.textContent='Configure SUPABASE_URL e SUPABASE_ANON_KEY no index.html'; return; }
