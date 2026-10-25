@@ -1269,8 +1269,12 @@ function filtroFrotaSelect(){
 }
 function passaFiltroFrota(v){ const ff=S.frotaFiltro||'todos'; return ff==='todos'||(ff==='frota'&&v&&isFrota(v))||(ff==='externo'&&v&&!isFrota(v)); }
 function mabertas(m){
-  const lst=S.os.filter(o=>o.status==='Aberta'&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
-  m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${alertaCobrancaBanner()}`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
+  // padrão continua sendo a mais recente primeiro (o trabalho do dia na frente) — colocar a mais
+  // antiga sempre no topo aqui atrapalharia o fluxo normal; quem quiser achar a OS parada há mais
+  // tempo troca pelo seletor de ordem
+  const ordem=S.abertasOrdem||'recentes';
+  const lst=S.os.filter(o=>o.status==='Aberta'&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>ordem==='antigas'?(a.data||'').localeCompare(b.data||''):(b.data||'').localeCompare(a.data||''));
+  m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span><select onchange="S.abertasOrdem=this.value;render()" style="max-width:190px" title="Ordem de exibição"><option value="recentes" ${ordem==='recentes'?'selected':''}>Mais recentes primeiro</option><option value="antigas" ${ordem==='antigas'?'selected':''}>Mais antigas primeiro</option></select>${filtroFrotaSelect()}</div>${alertaCobrancaBanner()}`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
     return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate lg">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`;
   }).join(''):'<div class="empty">Nenhuma OS aberta nessa seleção.</div>');
 }
@@ -1319,8 +1323,28 @@ async function cancelarAgendamento(id){
 }
 function mconc(m){
   const f=normPlaca(S.filtro); const podeMo=podeFinalizarOs();
-  const lst=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>(b.data||b.concluidaEm||'').localeCompare(a.data||a.concluidaEm||'')).slice(0,60);
-  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${alertaCobrancaBanner()}<input id="mc_busca" placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
+  // ordem: cobrança não paga mais antiga sempre no topo (pra não deixar a mais velha esquecida),
+  // depois as outras não pagas (da mais antiga pra mais nova), e só então as já pagas (mais
+  // recente primeiro, como era antes — pagas não precisam de atenção urgente)
+  const todasFiltradas=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>{
+    if(!a.pago&&!b.pago) return (a.data||a.concluidaEm||'').localeCompare(b.data||b.concluidaEm||'');
+    if(!a.pago) return -1; if(!b.pago) return 1;
+    return (b.data||b.concluidaEm||'').localeCompare(a.data||a.concluidaEm||'');
+  });
+  const lst=todasFiltradas.slice(0,60);
+  // resumo no topo — soma TODAS as filtradas (não só as 60 exibidas), respeitando o filtro de
+  // frota/cliente (e a busca por placa, se houver) já selecionado acima; ajudante não vê valor de
+  // mão de obra em outras telas, então também não vê este resumo
+  let resumoHtml='';
+  if(ehChefe()||ehGestor()){
+    let pago=0,aReceber=0; for(const o of todasFiltradas){ const tot=osTotal(o); if(o.pago) pago+=tot; else aReceber+=tot; }
+    const sufixo=S.frotaFiltro==='frota'?' · frota Carsz':S.frotaFiltro==='externo'?' · clientes do mecânico':'';
+    resumoHtml=`<div class="cards" style="margin-bottom:12px">
+      <div class="card ok"><div class="v">${fmtBRL(pago)}</div><div class="l">Total pago${sufixo}</div></div>
+      <div class="card bad"><div class="v">${fmtBRL(aReceber)}</div><div class="l">Saldo a receber${sufixo}</div></div>
+    </div>`;
+  }
+  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${resumoHtml}${alertaCobrancaBanner()}<input id="mc_busca" placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
    (lst.length?lst.map(o=>{
      const v=S.veic.find(x=>x.id===o.veiculoId);
      const atraso=diasAtraso(o);
