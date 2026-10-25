@@ -552,7 +552,14 @@ function render(){
   if(S.oficina&&S.oficina.logo&&S.oficina.logo.url){ hdrLogo.src=S.oficina.logo.url; hdrLogo.style.display='inline-block'; } else hdrLogo.style.display='none';
   const nav=(S.mec?navMec():navAdm());
   document.getElementById('nav').innerHTML=nav.map(([k,l])=>`<button data-v="${k}" class="${k===S.view?'on':''}">${l}</button>`).join('');
-  document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;S.filtro='';render();});
+  // clicar em "Nova OS" no menu sempre começa uma OS do zero — antes, se já tivesse uma OS aberta
+  // em edição (S.osAtual), a tela "Nova OS" continuava mostrando ela em vez do formulário de
+  // identificar o veículo (a OS anterior já está salva, cada campo grava sozinho; só faltava
+  // limpar o "em edição" pra liberar o formulário novo)
+  document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+    if(b.dataset.v==='mnova'&&S.osAtual){ S.osAtual=null; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:'',confirmaNaoFrota:false}; }
+    S.view=b.dataset.v;S.filtro='';render();
+  });
   const m=document.getElementById('main');
   if(!S.cfg){ m.innerHTML='<div class="empty">Carregando dados…</div>'; return; }
   const keep=preservar(m);
