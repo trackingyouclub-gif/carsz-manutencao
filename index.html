@@ -394,7 +394,7 @@ const mkAssets=()=>({
   async list(){ const {data,error}=await sb.storage.from(BUCKET).list('',{limit:1000}); if(error) throw error; return {assets:(data||[]).map(f=>({id:f.name,url:sb.storage.from(BUCKET).getPublicUrl(f.name).data.publicUrl,sizeBytes:(f.metadata&&f.metadata.size)||0,contentType:'image/jpeg',createdAt:f.created_at})),usage:{}}; }
 });
 
-const S = { veic:[], os:[], sin:[], pecas:[], oficinas:[], histCompartilhado:[], oficina:null, cfg:null, view:'painel', db:null, assets:null, sample:null, canOcr:false, filtro:'', mec:false, osAtual:null, mecNome:'', mecs:[], mecsOk:false, sess:null, user:null, perfil:null, relPeriodo:12, relOrdem:'paradas', custoPeriodo:'mes', frotaFiltro:'todos' };
+const S = { veic:[], os:[], sin:[], pecas:[], oficinas:[], histCompartilhado:[], oficina:null, cfg:null, view:'painel', db:null, assets:null, sample:null, canOcr:false, filtro:'', filtroCliente:'', mec:false, osAtual:null, mecNome:'', mecs:[], mecsOk:false, sess:null, user:null, perfil:null, relPeriodo:12, relOrdem:'paradas', custoPeriodo:'mes', frotaFiltro:'todos' };
 const DEF_CFG = { avisoKm:500, avisoDias:15 };
 // catálogo inicial de peças/serviços (intervalos em km e dias; 0 = não avisa)
 const DEF_PECAS = [
@@ -445,22 +445,19 @@ const val = id => (document.getElementById(id)||{value:''}).value.trim();
 function upperInput(el){ const s=el.selectionStart,e=el.selectionEnd; el.value=el.value.toUpperCase(); try{ el.setSelectionRange(s,e); }catch(err){} }
 const opt = (arr,sel) => arr.map(o=>`<option value="${esc(o)}" ${o===sel?'selected':''}>${esc(o)}</option>`).join('');
 const normPlaca = p => String(p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-// distância de edição simples, só pra pegar erro de digitação (1-2 caracteres) entre a placa
-// digitada e placas já cadastradas como frota — pra avisar antes de criar um veículo novo por engano
-function levDist(a,b){
-  if(Math.abs(a.length-b.length)>2) return 99;
-  const dp=[]; for(let i=0;i<=a.length;i++){ dp[i]=[i]; }
-  for(let j=1;j<=b.length;j++) dp[0][j]=j;
-  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++) dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
-  return dp[a.length][b.length];
-}
-function placasFrotaParecidas(p){ return S.veic.filter(isFrota).map(v=>({v,d:levDist(p,v.placa)})).filter(x=>x.d>0&&x.d<=2).sort((a,b)=>a.d-b.d).slice(0,3); }
-// placa digitada não existe no cadastro: só deixa abrir como veículo novo/cliente particular depois
-// de confirmar explicitamente que não é um erro de digitação de uma placa que já é da frota Carsz
-function precisaConfirmarNovo(){ const p=normPlaca(nova.placa); return p.length>=7&&!S.veic.find(x=>x.placa===p); }
+// (removida a checagem de "placa parecida com a frota" + confirmação obrigatória pra placa nova —
+// a classificação frota/cliente é sempre decidida à parte, pela gestão, antes do carro chegar aqui;
+// ver decisão registrada no histórico desta conversa)
 const blob = id => sb.storage.from(BUCKET).getPublicUrl(id).data.publicUrl;
-const osTotal = o => (o.itens||[]).reduce((s,i)=>s+(+i.custo||0)*(+i.qtd||1),0)+(+o.maoObra||0);
-const pecasTotal = o => (o.itens||[]).reduce((s,i)=>s+(+i.custo||0)*(+i.qtd||1),0);
+// peça marcada como "trazida pelo cliente" (pecaCliente) fica registrada na OS normalmente, mas
+// não entra em nenhum total cobrado — centralizado aqui pra valer automaticamente em toda parte
+// que usa osTotal/pecasTotal (tela da OS, PDF, faturamento, relatórios etc.)
+const itemCusto = i => i.pecaCliente?0:(+i.custo||0)*(+i.qtd||1);
+const osTotal = o => (o.itens||[]).reduce((s,i)=>s+itemCusto(i),0)+(+o.maoObra||0);
+const pecasTotal = o => (o.itens||[]).reduce((s,i)=>s+itemCusto(i),0);
+// quanto as peças marcadas "do cliente" CUSTARIAM se fossem cobradas — só pra mostrar no resumo
+// quanto foi abatido; esse valor nunca entra em pecasTotal/osTotal (ver itemCusto)
+const valorPecasCliente = o => (o.itens||[]).filter(i=>i.pecaCliente).reduce((s,i)=>s+(+i.custo||0)*(+i.qtd||1),0);
 const lightbox = id => { document.getElementById('lbimg').src=blob(id); document.getElementById('lb').classList.add('on'); };
 // ---- papéis: superadmin (rede de oficinas, só a frota Carsz), gestor (acesso total dentro da
 // própria oficina), chefe (oficina completa, inclui mão de obra), ajudante (só peças) ----
@@ -666,7 +663,7 @@ function render(){
   // identificar o veículo (a OS anterior já está salva, cada campo grava sozinho; só faltava
   // limpar o "em edição" pra liberar o formulário novo)
   document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
-    if(b.dataset.v==='mnova'&&S.osAtual){ S.osAtual=null; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:'',confirmaNaoFrota:false}; }
+    if(b.dataset.v==='mnova'&&S.osAtual){ S.osAtual=null; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''}; }
     S.view=b.dataset.v;S.filtro='';render();
   });
   const m=document.getElementById('main');
@@ -719,7 +716,7 @@ function timelineHtml(v, opts={}){
 }
 
 // ============ MODO MECÂNICO ============
-let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:'',confirmaNaoFrota:false};
+let nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''};
 function mnova(m){
   if(S.osAtual){ osMecanico(m); return; }
   const v=S.veic.find(x=>x.placa===normPlaca(nova.placa));
@@ -738,7 +735,7 @@ function mnova(m){
     <div class="hint">Pra lançar uma manutenção que já aconteceu, atendida por outra oficina/mecânico — a OS já nasce atribuída a quem realmente atendeu, sem precisar mover depois.</div>`:''}
     <div class="shot">
       <div><label class="btn ${nova.fotoPlaca?'done':''}"><input type="file" accept="image/*" capture="environment" onchange="foto(this,'placa')">${nova.fotoPlaca?`<img src="${nova.fotoPlaca.url}">`:'📷<span>Fotografar placa</span>'}</label>
-        <label style="margin-top:8px">ou digite a placa</label><div class="sug"><input class="xl" id="n_placa" value="${esc(nova.placa)}" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" oninput="nova.placa=this.value;nova.confirmaNaoFrota=false;chkPlaca();sugPlaca()" onfocus="sugPlaca()" onblur="setTimeout(()=>{const l=document.getElementById('sug_placa');if(l)l.style.display='none'},150)"><div class="list" id="sug_placa" style="display:none"></div></div></div>
+        <label style="margin-top:8px">ou digite a placa</label><div class="sug"><input class="xl" id="n_placa" value="${esc(nova.placa)}" placeholder="ABC1D23" maxlength="8" autocapitalize="characters" autocomplete="off" oninput="nova.placa=this.value;chkPlaca();sugPlaca()" onfocus="sugPlaca()" onblur="setTimeout(()=>{const l=document.getElementById('sug_placa');if(l)l.style.display='none'},150)"><div class="list" id="sug_placa" style="display:none"></div></div></div>
       <div><label class="btn ${nova.fotoKm?'done':''}"><input type="file" accept="image/*" capture="environment" onchange="foto(this,'km')">${nova.fotoKm?`<img src="${nova.fotoKm.url}">`:'📷<span>Fotografar hodômetro</span>'}</label>
         <label style="margin-top:8px">ou digite o km</label><input class="xl" id="n_km" type="number" inputmode="numeric" min="1" value="${esc(nova.km)}" placeholder="obrigatório" oninput="nova.km=this.value;chkPlaca()"></div>
     </div>
@@ -763,7 +760,7 @@ function mnova(m){
     <div class="hint">Se informado, fica salvo na placa e dá pra abrir o WhatsApp direto da tela da OS depois, pra avisar o cliente sobre o andamento.</div>
   </div>
   <div class="step">
-    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||kmRuim()||nova.lendo||bloqueado()||(precisaConfirmarNovo()&&!nova.confirmaNaoFrota))?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
+    <button class="big" id="btn_abrir" onclick="criarOs()" ${(!nova.placa||kmRuim()||nova.lendo||bloqueado())?'disabled':''}>${nova.agendamento?'Agendar ordem de serviço':'Abrir ordem de serviço'}</button>
   </div>`;
 }
 function sugPlaca(){
@@ -772,7 +769,7 @@ function sugPlaca(){
   const arr=S.veic.filter(v=>p?v.placa.includes(p):true).sort((a,b)=>a.placa.localeCompare(b.placa)).slice(0,6);
   if(!arr.length||(arr.length===1&&arr[0].placa===p)){l.style.display='none';return;}
   l.style.display='block';
-  l.innerHTML=arr.map(v=>`<div onmousedown="nova.placa='${v.placa}';document.getElementById('n_placa').value='${v.placa}';nova.confirmaNaoFrota=false;chkPlaca();"><span class="plate">${v.placa}</span> ${esc(v.modelo)}<small>${osDoVeic(v.id).length} intervenções · último km ${fmtKm(v.km)}${osAbertaDe(v)?' · <b>OS aberta</b>':''}</small></div>`).join('');
+  l.innerHTML=arr.map(v=>`<div onmousedown="nova.placa='${v.placa}';document.getElementById('n_placa').value='${v.placa}';chkPlaca();"><span class="plate">${v.placa}</span> ${esc(v.modelo)}<small>${osDoVeic(v.id).length} intervenções · último km ${fmtKm(v.km)}${osAbertaDe(v)?' · <b>OS aberta</b>':''}</small></div>`).join('');
 }
 // também olha o histórico compartilhado de outras oficinas, pra não deixar duas oficinas
 // atenderem o mesmo carro (frota Carsz) ao mesmo tempo sem saber uma da outra
@@ -812,21 +809,19 @@ function infoPlaca(){
   const v=S.veic.find(x=>x.placa===p);
   if(!v){
     const abSemVeic=osAbertaPropria(null,p); if(abSemVeic) return blocoOsAberta(abSemVeic);
-    // placa parecida com uma que já é da frota (1-2 caracteres de diferença) — bem provável erro de
-    // digitação; trava a abertura até escolher a placa certa ou confirmar que não é erro nenhum
-    const parecidas=placasFrotaParecidas(p);
-    const avisoParecida=parecidas.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Confira a placa</b> — ${parecidas.length>1?'estas placas':'esta placa'} da frota Carsz ${parecidas.length>1?'são':'é'} muito parecida${parecidas.length>1?'s':''} com "${esc(p)}": ${parecidas.map(x=>`<button class="ghost" style="margin:2px" onmousedown="nova.placa='${x.v.placa}';document.getElementById('n_placa').value='${x.v.placa}';nova.confirmaNaoFrota=false;chkPlaca();">${esc(x.v.placa)} · ${esc(x.v.modelo||'')}</button>`).join(' ')}<br>Se for erro de digitação, clique na placa certa acima. Se não for, confirme abaixo antes de continuar.</div>`:'';
-    const base=`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn);border-left:4px solid var(--warn)"><b>⚠ Placa não encontrada na frota.</b> Será criada agora como veículo novo (cliente particular do mecânico, fora dos relatórios da Carsz). <b>Se este carro é da frota/locadora, confira se digitou a placa certa antes de continuar</b> — se estiver certa, avise a gestão pra cadastrar como "Frota Carsz".<input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px">
-      <label style="display:flex;align-items:flex-start;gap:6px;margin-top:10px;font-weight:600;cursor:pointer"><input type="checkbox" id="n_confnovo" ${nova.confirmaNaoFrota?'checked':''} onchange="nova.confirmaNaoFrota=this.checked;chkPlaca()" style="width:auto;margin-top:3px"> Confirmo que esta placa NÃO é um carro da frota Carsz/locadora — é cliente particular do mecânico.</label>
-    </div>`;
+    // placa nova: já entra automaticamente como cliente da oficina, sem perguntar nem travar nada —
+    // a classificação de frota é sempre feita à parte, pela gestão (Frota > Cadastrar), antes do
+    // carro passar pela revisão; se a placa não está cadastrada como frota aqui, não tem por que
+    // esta tela checar de novo
+    const base=`<div class="lastinfo neu">Placa nova — cadastrada agora como cliente da oficina.<input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px"></div>`;
     const hist=historicoPorPlaca(p);
-    if(!hist.length) return avisoParecida+base;
+    if(!hist.length) return base;
     // placa nova por aqui, mas já tem histórico técnico vindo de outra oficina — mostra pendências
     // mesmo antes do veículo existir no cadastro local (histórico é geral pra toda a base)
     const al=alertasVeic({placa:p},+nova.km>0?+nova.km:null,hist).filter(a=>a.lvl==='bad'||a.lvl==='warn');
     const ul=hist[0];
     const avisoBox=al.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Esta placa já tem histórico em outra oficina</b> (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}):<ul style="margin:6px 0 0;padding-left:18px">${al.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:`<div class="lastinfo ok">Esta placa já tem histórico em outra oficina (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}) — sem pendências vencidas.</div>`;
-    return avisoParecida+avisoBox+base;
+    return avisoBox+base;
   }
   const ab=osAbertaPropria(v);
   if(ab) return blocoOsAberta(ab);
@@ -1038,7 +1033,7 @@ async function reenviarSenhaMec(id){
   avisoAcessoMec(x.nome,x.telefone,x.email,!error);
 }
 function bloqueado(){ const p=normPlaca(nova.placa); return !!osAbertaPropria(S.veic.find(x=>x.placa===p),p); }
-function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||nova.lendo||bloqueado()||(precisaConfirmarNovo()&&!nova.confirmaNaoFrota); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
+function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
   const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
 }
 function avisoKm(){ const p=normPlaca(nova.placa); if(p.length<7) return ''; if(!(+nova.km>0)) return 'Km não informado — pode abrir a OS assim mesmo e corrigir depois em "✎ Corrigir placa/km desta OS".'; const v=S.veic.find(x=>x.placa===p); if(v&&+nova.km<kmMinimo(v)) return nova.agendamento?`Km informado é menor que o último registro desta placa (${fmtKm(kmMinimo(v))}) — sem problema pra agendar, é só uma referência; o km real é conferido quando o cliente voltar.`:(ehGestor()?`Km menor que o registro atual (${fmtKm(kmMinimo(v))}) — ok para lançar OS antiga, o km do veículo não será alterado.`:`Km menor que o último registro desta placa (${fmtKm(kmMinimo(v))}). O km atual precisa ser igual ou maior.`); return ''; }
@@ -1068,9 +1063,6 @@ async function foto(inp,tipo){
 }
 async function criarOs(){
   const placa=normPlaca(nova.placa); if(placa.length<7){toast('Placa inválida');return;}
-  // segunda trava, igual à do botão: nunca cria veículo novo (cliente particular) sem confirmação
-  // explícita — evita que uma placa da frota digitada errado vire um cadastro "cliente" por engano
-  if(precisaConfirmarNovo()&&!nova.confirmaNaoFrota){ toast('Confirme que esta placa não é da frota Carsz antes de abrir a OS'); return; }
   // agendamento: o carro pode nem ter sido inspecionado ainda (cliente só passou e marcou outro
   // dia) — km vira opcional aqui, e só volta a ser obrigatório quando o atendimento começar de
   // verdade, em "Cliente chegou" (iniciarAgendamento)
@@ -1108,8 +1100,12 @@ async function criarOs(){
   const d={veiculoId:v.id,placa,km,data:dataOs,mecanico:mecanicoFinal,oficinaId:oficinaIdFinal,status:agendada?'Agendada':'Aberta',agendamento:agendada?nova.agendamento:null,fotoPlaca:nova.fotoPlaca?.id||null,fotoKm:nova.fotoKm?.id||null,fotos:[],itens:[],maoObra:0,oficina:oficinaNomeFinal,relato:agendada?(nova.agendaObs||''):''};
   const ref=await S.db.collection('os').add(d);
   nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''};
+  // manda pra lista de "OS abertas" em vez de ficar na mesma tela: antes, como a tela de OS aberta
+  // usa a mesma aba "Nova OS", ficava parecido demais com "não abriu nada" e o mecânico às vezes
+  // digitava a placa de novo (achando que tinha falhado) — indo pra lista fica óbvio que abriu,
+  // e a OS nova aparece bem no topo (ordem padrão é mais recente primeiro)
   if(agendada){ S.osAtual=null; S.view='magenda'; toast('Agendado para '+fmtD(d.agendamento)); }
-  else { S.osAtual=ref.id; toast('OS aberta'); }
+  else { S.osAtual=null; S.view='mabertas'; toast('OS aberta — já está na lista de OS abertas'); }
   render();
 }
 // ---- tela da OS (mecânico) ----
@@ -1121,6 +1117,7 @@ function osMecanico(m){
   const crit=v.id?alertasVeic(v,+o.km).filter(a=>(a.lvl==='bad'||a.lvl==='warn')&&destaque(a.p)&&!(o.itens||[]).some(i=>i.pecaId===a.p.id)&&!(o.ignorados||[]).includes(a.p.id)):[];
   const lembretes=v.lembretes||[];
   const podeMo=podeFinalizarOs();
+  const temPecaCliente=(o.itens||[]).some(i=>i.pecaCliente);
   // encaminhamento entre oficinas: só faz sentido pra cliente particular (não frota Carsz, que já
   // tem o próprio jeito de ser atendida por qualquer oficina ativa) e enquanto a OS está aberta
   const encs=o.encaminhamentos||[];
@@ -1146,9 +1143,10 @@ function osMecanico(m){
       </div>
       <div class="hint">${podeMo?'Ao informar a mão de obra a OS é concluída.':'Valor visível apenas para o mecânico chefe e a gestão.'}</div>${(podeMo&&o.maoObraEdit)?`<div class="muted" style="font-size:12px">${tagMo(o)} antes: ${fmtBRL(o.maoObraEdit.original)} · ${fmtD(o.maoObraEdit.em)} por ${esc(o.maoObraEdit.por||'')}</div>`:''}</div>
     ${podeMo?`<div class="calc" style="margin-top:10px;background:var(--ok-bg);border:1px solid var(--ok);text-align:center">
-      <div class="row" style="justify-content:center;gap:16px;font-size:13px"><span>Peças: <b>${fmtBRL(pecasTotal(o))}</b></span><span>Mão de obra: <b>${fmtBRL(+o.maoObra||0)}</b></span></div>
-      <div style="font-size:26px;font-weight:700;color:var(--ok);margin-top:4px">Total: ${fmtBRL(osTotal(o))}</div>
-    </div>`:`<div class="calc" style="margin-top:10px"><span class="muted">Parcial (peças): <b>${fmtBRL(pecasTotal(o))}</b> — a mão de obra e o total só aparecem pro mecânico chefe e a gestão.</span></div>`}
+      ${temPecaCliente?`<div class="row" style="justify-content:center;gap:16px;font-size:13px;color:var(--muted)"><span>Peças do cliente (abatido): <b>${fmtBRL(valorPecasCliente(o))}</b></span></div>`:''}
+      <div class="row" style="justify-content:center;gap:16px;font-size:13px"><span>Peças da oficina: <b>${fmtBRL(pecasTotal(o))}</b></span><span>Mão de obra: <b>${fmtBRL(+o.maoObra||0)}</b></span></div>
+      <div style="font-size:26px;font-weight:700;color:var(--ok);margin-top:4px">Total a cobrar: ${fmtBRL(osTotal(o))}</div>
+    </div>`:`<div class="calc" style="margin-top:10px">${temPecaCliente?`<div class="muted" style="font-size:13px">Peças do cliente (abatido): <b>${fmtBRL(valorPecasCliente(o))}</b></div>`:''}<span class="muted">Parcial (peças da oficina): <b>${fmtBRL(pecasTotal(o))}</b> — a mão de obra e o total só aparecem pro mecânico chefe e a gestão.</span></div>`}
     <div class="row" style="margin-top:14px"><h3 style="margin:0">Relato da intervenção</h3><span class="sp"></span><button class="ghost" onclick="formLembrete()">🔔 Lembrete futuro</button></div><textarea id="os_rel" placeholder="O que foi verificado, o que foi feito, recomendações…" onchange="salvarCampoOs('relato',this.value)">${esc(o.relato)}</textarea>
     <div class="ph" id="os_fotos">${[o.fotoPlaca,o.fotoKm,...(o.fotos||[])].filter(Boolean).map(f=>`<span style="position:relative;display:inline-block"><img src="${blob(f)}" onclick="lightbox('${f}')">${S.assets?`<button class="ghost danger" title="Apagar foto" style="position:absolute;top:-6px;right:-6px;background:var(--panel);border:1px solid var(--line);border-radius:50%;width:22px;height:22px;padding:0;line-height:1" onclick="apagarFoto('${o.id}','${f}')">✕</button>`:''}</span>`).join('')}</div>
     ${(o.status==='Concluída'&&(ehChefe()||ehGestor()))?`<div class="row" style="margin-top:8px;align-items:center"><label style="margin:0">Data de conclusão</label><input type="date" style="width:150px" value="${(o.concluidaEm||o.data||'').slice(0,10)}" onchange="salvarCampoOs('concluidaEm',this.value+'T12:00:00.000Z')"><span class="hint" style="margin:0">Ajuste para lançar OS antigas na linha do tempo correta.</span></div>`:''}
@@ -1177,7 +1175,16 @@ function sairDaOs(){ S.osAtual=null; novoItem={q:'',hl:0}; nova={placa:'',km:'',
 function timelineHtmlFiltrada(v,skipId){ const bak=S.os; S.os=S.os.filter(x=>x.id!==skipId); const h=timelineHtml(v); S.os=bak; return h; }
 function itensHtml(o){ if(!(o.itens||[]).length) return '<div class="muted" style="padding:10px 0">Nenhuma peça adicionada ainda.</div>';
   const ab=(S.os.find(x=>x.id===S.osAtual)||{}).status==='Aberta';
-  return o.itens.map((i,idx)=>`<div class="item" ${novoItem.editIdx===idx?'style="background:var(--warn-bg);border-left-color:var(--warn)"':''}><span class="nm"><b>${esc(i.nome)}</b>${i.obs?` <span class="muted">${esc(i.obs)}</span>`:''}${i.retroativo?` <span class="tag neu" title="Registrado sem serviço nesta OS">informado · ${fmtKm(i.kmTroca)}</span>`:''}${tagEditado(i)}${i.editado?`<div class="muted" style="font-size:12px">antes: ${esc(i.editado.original.nome)} ${i.editado.original.qtd||1}× ${fmtBRL(i.editado.original.custo)}${i.editado.original.obs?' ('+esc(i.editado.original.obs)+')':''} · ${fmtD(i.editado.em)} por ${esc(i.editado.por||'')}</div>`:''}</span><span class="qt">${(+i.qtd||1)}×</span><span class="vl">${fmtBRL(+i.custo)}</span>${ab?`<button class="ghost" title="Editar" onclick="editItem(${idx})">✎</button><button class="ghost danger" title="Remover" onclick="delItem(${idx})">✕</button>`:''}</div>`).join(''); }
+  return o.itens.map((i,idx)=>`<div class="item" ${novoItem.editIdx===idx?'style="background:var(--warn-bg);border-left-color:var(--warn)"':''}><span class="nm"><b>${esc(i.nome)}</b>${i.obs?` <span class="muted">${esc(i.obs)}</span>`:''}${i.retroativo?` <span class="tag neu" title="Registrado sem serviço nesta OS">informado · ${fmtKm(i.kmTroca)}</span>`:''}${tagEditado(i)}${i.editado?`<div class="muted" style="font-size:12px">antes: ${esc(i.editado.original.nome)} ${i.editado.original.qtd||1}× ${fmtBRL(i.editado.original.custo)}${i.editado.original.obs?' ('+esc(i.editado.original.obs)+')':''} · ${fmtD(i.editado.em)} por ${esc(i.editado.por||'')}</div>`:''}</span><span class="qt">${(+i.qtd||1)}×</span><span class="vl" ${i.pecaCliente?'title="Peça trazida pelo cliente — não entra no valor cobrado desta OS"':''}>${i.pecaCliente?'👤 ':''}${fmtBRL(+i.custo)}</span>${ab?`<button class="ghost" title="${i.pecaCliente?'Desmarcar — voltar a cobrar esta peça':'O cliente trouxe esta peça: marcar como não cobrada'}" onclick="togglePecaCliente(${idx})">${i.pecaCliente?'👤 ✓':'👤'}</button><button class="ghost" title="Editar" onclick="editItem(${idx})">✎</button><button class="ghost danger" title="Remover" onclick="delItem(${idx})">✕</button>`:''}</div>`).join(''); }
+// peça que o cliente já trouxe comprada por conta própria: fica registrada na OS (pro histórico
+// técnico do veículo) mas sai do valor cobrado — ver itemCusto()/osTotal()/pecasTotal()
+async function togglePecaCliente(idx){
+  const o=S.os.find(x=>x.id===S.osAtual); if(!o) return;
+  const itens=[...(o.itens||[])]; const i=itens[idx]; if(!i) return;
+  itens[idx]={...i,pecaCliente:!i.pecaCliente};
+  try{ await S.db.doc('os/'+o.id).update({itens}); toast(itens[idx].pecaCliente?'Marcado: peça do cliente — não entra no valor cobrado':'Removida a marcação — volta a cobrar esta peça'); }
+  catch(e){ erroSalvar('marcar esta peça como do cliente',e); }
+}
 function editMo(o,novo){ const ant=+o.maoObra||0; if(ant>0&&ant!==+novo){ return {em:agoraIso(),por:S.mecNome,vezes:(o.maoObraEdit?o.maoObraEdit.vezes:0)+1,original:o.maoObraEdit?o.maoObraEdit.original:ant}; } return o.maoObraEdit||null; }
 function tagMo(o){ if(!o.maoObraEdit) return ''; const e=o.maoObraEdit; return ` <span class="tag warn" title="${esc(`Mão de obra editada ${e.vezes>1?e.vezes+'x ':''}em ${fmtD(e.em)} por ${e.por||''}. Original: ${fmtBRL(e.original)}`)}" style="cursor:help">✎ editado</span>`; }
 function tagEditado(i){ if(!i.editado) return ''; const o=i.editado.original||{}; const t=`Editado ${i.editado.vezes>1?i.editado.vezes+'x ':''}em ${fmtD(i.editado.em)} por ${i.editado.por||''}. Original: ${o.nome||''} ${o.qtd||1}× ${fmtBRL(o.custo)}${o.obs?' ('+o.obs+')':''}`; return ` <span class="tag warn" title="${esc(t)}" style="cursor:help">✎ editado</span>`; }
@@ -1238,11 +1245,14 @@ async function salvarCampoOs(k,v){ const o=S.os.find(x=>x.id===S.osAtual); if(!o
 function notaEdicaoCampo(o,campo,rotulo){ const por=o[campo+'EditadoPor'], em=o[campo+'EditadoEm']; return por?`<div class="muted" style="font-size:11px">${rotulo} alterado por ${esc(por)} em ${fmtD(em)}</div>`:''; }
 function formCorrigirPlacaKm(){
   const o=S.os.find(x=>x.id===S.osAtual); if(!o) return;
-  abrir(`<h3>Corrigir placa / km desta OS</h3>
-    <div class="hint">Use só quando a placa ou o km foram digitados errado na abertura desta OS. A correção fica registrada.</div>
+  const v=S.veic.find(x=>x.id===o.veiculoId)||{};
+  abrir(`<h3>Corrigir placa / km / cliente desta OS</h3>
+    <div class="hint">Use só quando a placa ou o km foram digitados errado na abertura desta OS — essa correção fica registrada (quem alterou e quando). Nome e telefone do cliente ficam salvos na placa (não só nesta OS) e valem pras próximas visitas também; um campo deixado em branco não apaga um valor já salvo antes.</div>
     <div class="grid" style="max-width:360px">
       <div><label>Placa</label><input id="fx_placa" value="${esc(o.placa)}" maxlength="8" autocapitalize="characters">${notaEdicaoCampo(o,'placa','Placa')}</div>
       <div><label>Km</label><input id="fx_km" type="number" inputmode="numeric" value="${o.km||''}">${notaEdicaoCampo(o,'km','Km')}</div>
+      <div><label>Nome do cliente</label><input id="fx_clinome" value="${esc(v.clienteNome)}" placeholder="opcional"></div>
+      <div><label>WhatsApp do cliente</label><input id="fx_clitel" value="${esc(v.clienteTel)}" placeholder="11987654321"></div>
     </div>
     <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarCorrecaoPlacaKm()">Salvar correção</button></div>`);
 }
@@ -1271,7 +1281,19 @@ async function salvarCorrecaoPlacaKm(){
   const quem=S.mecNome||'', agora=agoraIso(); const upd={};
   if(placa!==o.placa){ upd.placa=placa; upd.placaEditadoPor=quem; upd.placaEditadoEm=agora; }
   if(km!==(+o.km||0)){ upd.km=km; upd.kmEditadoPor=quem; upd.kmEditadoEm=agora; }
-  if(!Object.keys(upd).length){ fechar(); return; }
+  // nome/telefone do cliente ficam salvos no cadastro do VEÍCULO (não na OS) — mesma regra usada
+  // ao abrir a OS: um campo deixado em branco aqui nunca apaga um valor já salvo antes
+  const v=S.veic.find(x=>x.id===o.veiculoId);
+  if(v){
+    const clinome=val('fx_clinome'), clitelRaw=val('fx_clitel'); const cliUpd={};
+    if(clinome&&clinome!==v.clienteNome) cliUpd.clienteNome=clinome;
+    if(clitelRaw){ const telNum=clitelRaw.replace(/\D/g,''); if(telNum&&telNum!==v.clienteTel) cliUpd.clienteTel=telNum; }
+    if(Object.keys(cliUpd).length){
+      try{ await S.db.doc('veiculos/'+v.id).update(cliUpd); Object.assign(v,cliUpd); }
+      catch(e){ erroSalvar('salvar dados do cliente',e); }
+    }
+  }
+  if(!Object.keys(upd).length){ fechar(); render(); return; }
   try{ await S.db.doc('os/'+o.id).update(upd); toast('Corrigido'); fechar(); render(); }
   catch(e){ erroSalvar('corrigir placa/km desta OS',e); }
 }
@@ -1848,11 +1870,12 @@ function msgCobranca(o,v){
   // mensagem só precisa do resumo "fala por si só" (sem instrução nenhuma pra quem está mandando)
   const itens=o.itens||[];
   const itensTxt=itens.length?itens.map(i=>{
-    const qtd=+i.qtd||1, sub=qtd*(+i.custo||0);
-    return `• ${esc(i.nome)}${qtd>1?' ('+qtd+'x)':''}${sub>0?` — ${fmtBRL(sub)}`:''}`;
+    const qtd=+i.qtd||1, valReal=(+i.custo||0)*qtd;
+    return `• ${esc(i.nome)}${qtd>1?' ('+qtd+'x)':''}${i.pecaCliente?` — 👤 ${fmtBRL(valReal)}`:(valReal>0?` — ${fmtBRL(valReal)}`:'')}`;
   }).join('\n'):'• Nenhuma peça nesta OS';
-  const pecasT=pecasTotal(o), mo=+o.maoObra||0;
-  return `Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}*${v.modelo?' ('+v.modelo+')':''}:\nKm atual: ${fmtKm(o.km)}\n\n🔧 *Peças e serviços:*\n${itensTxt}${pecasT>0?`\n*Subtotal peças: ${fmtBRL(pecasT)}*`:''}\n\n👨‍🔧 *Mão de obra: ${fmtBRL(mo)}*\n\n💰 *Total: ${fmtBRL(osTotal(o))}*${pixTextoCobranca(o)}\n\nQualquer dúvida, estou à disposição!`;
+  const pecasT=pecasTotal(o), mo=+o.maoObra||0, pecasCliT=valorPecasCliente(o);
+  const resumoCli=pecasCliT>0?`\n*Peças do cliente (abatido): ${fmtBRL(pecasCliT)}*`:'';
+  return `Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}*${v.modelo?' ('+v.modelo+')':''}:\nKm atual: ${fmtKm(o.km)}\n\n🔧 *Peças e serviços:*\n${itensTxt}${resumoCli}\n*Peças da oficina: ${fmtBRL(pecasT)}*\n\n👨‍🔧 *Mão de obra: ${fmtBRL(mo)}*\n\n💰 *Total a cobrar: ${fmtBRL(osTotal(o))}*${pixTextoCobranca(o)}\n\nQualquer dúvida, estou à disposição!`;
 }
 // cobrar funciona do mesmo jeito pra OS de qualquer oficina — não depende de qual oficina é dona
 // da OS, só do cliente ter (ou cadastrar aqui) um WhatsApp
@@ -1996,18 +2019,33 @@ async function montarOsPdf(id){
   quebraSeNecessario(20);
   tituloSecao('PEÇAS E SERVIÇOS');
   if((o.itens||[]).length){
+    // "bonequinho" (cabeça + corpo) desenhado em vetor — ícone simbolizando "peça trazida pelo
+    // cliente", ao lado do valor real da peça (fonte padrão do PDF não tem emoji/glifos unicode)
+    const bonequinho=(xDireita,yBase)=>{
+      doc.setFillColor(130,130,130);
+      doc.circle(xDireita,yBase-3.1,0.85,'F');
+      doc.roundedRect(xDireita-1.6,yBase-2.1,3.2,2.3,0.9,0.9,'F');
+      doc.setFillColor(0,0,0);
+    };
     for(const i of o.itens){
       quebraSeNecessario();
       const qtd=+i.qtd||1;
+      const valTxt=i.custo?fmtBRL((+i.custo)*qtd):'—';
       doc.text(`${i.nome}${qtd>1?' ×'+qtd:''}`,margin,y);
-      doc.text(i.custo?fmtBRL((+i.custo)*qtd):'—',pageW-margin,y,{align:'right'}); y+=lh;
+      const xIcone=i.pecaCliente?pageW-margin-doc.getTextWidth(valTxt)-5:0;
+      doc.text(valTxt,pageW-margin,y,{align:'right'});
+      if(i.pecaCliente) bonequinho(xIcone,y);
+      y+=lh;
       if(i.obs){ doc.setFontSize(9); doc.setTextColor(110); quebraSeNecessario(); doc.text(String(i.obs),margin+4,y); doc.setFontSize(12); doc.setTextColor(0); y+=lh-2; }
     }
   } else { doc.text('Nenhuma peça registrada.',margin,y); y+=lh; }
   y+=1; linha(); quebraSeNecessario(18);
   const emAndamento=o.status==='Aberta';
-  doc.setFont('helvetica','bold');
-  doc.text('Subtotal peças:',margin,y); doc.text(fmtBRL(pecasTotal(o)),pageW-margin,y,{align:'right'}); y+=lh;
+  const pecasCliT=valorPecasCliente(o);
+  doc.setFont('helvetica','normal'); doc.setTextColor(110);
+  if(pecasCliT>0){ doc.text('Peças do cliente (abatido):',margin,y); doc.text(fmtBRL(pecasCliT),pageW-margin,y,{align:'right'}); y+=lh; }
+  doc.setTextColor(0); doc.setFont('helvetica','bold');
+  doc.text('Peças da oficina:',margin,y); doc.text(fmtBRL(pecasTotal(o)),pageW-margin,y,{align:'right'}); y+=lh;
   if(podeMo){
     doc.setFont('helvetica','normal');
     doc.text(emAndamento&&!o.maoObra?'Mão de obra: ainda não informada':'Mão de obra:',margin,y); if(!(emAndamento&&!o.maoObra)) doc.text(fmtBRL(o.maoObra||0),pageW-margin,y,{align:'right'}); y+=lh+2;
@@ -2102,11 +2140,38 @@ function imprimirDireto(url){
   try{ w.addEventListener('load',tentarImprimir); }catch(e){}
   setTimeout(tentarImprimir,600);
 }
+// agrupa os veículos que têm nome de cliente cadastrado, filtrando pelo texto digitado (sem
+// acento/maiúscula) — usado na busca por cliente de "Histórico por placa": útil pra quem atende
+// cliente com mais de um carro (revenda, cliente com frota própria etc.), não só a frota Carsz
+function clientesParecidos(busca){
+  const q=slug(busca);
+  const porCliente={};
+  for(const v of S.veic){
+    if(!v.clienteNome) continue;
+    if(q&&!slug(v.clienteNome).includes(q)) continue;
+    (porCliente[v.clienteNome]=porCliente[v.clienteNome]||[]).push(v);
+  }
+  return Object.entries(porCliente).sort((a,b)=>a[0].localeCompare(b[0]));
+}
 function mhist(m){
   const p=normPlaca(S.filtro); const v=S.veic.find(x=>x.placa===p);
-  m.innerHTML=`<div class="bar"><h2>Histórico por placa</h2></div><input id="mh_busca" class="xl" placeholder="Digite a placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" autofocus>
-  ${p.length<7?'':
-    v?`<div class="step" style="margin-top:12px"><span class="plate" style="font-size:19px">${esc(v.placa)}</span> <b>${esc(v.modelo)} ${esc(v.ano||'')}</b> · ${fmtKm(v.km)}</div>${timelineHtml(v,{edit:true})}`:`<div class="step" style="margin-top:12px;text-align:center"><div class="muted" style="margin-bottom:10px">Placa <span class="plate">${esc(p)}</span> não está cadastrada — sem histórico.</div><button class="big" onclick="novaOsPlaca('${esc(p)}')">Abrir OS para esta placa nova</button></div>`}`;
+  const buscaCli=S.filtroCliente||'';
+  let corpoPlaca='';
+  if(p.length>=7){
+    corpoPlaca=v?`<div class="step" style="margin-top:12px"><span class="plate" style="font-size:19px">${esc(v.placa)}</span> <b>${esc(v.modelo)} ${esc(v.ano||'')}</b> · ${fmtKm(v.km)}</div>${timelineHtml(v,{edit:true})}`:`<div class="step" style="margin-top:12px;text-align:center"><div class="muted" style="margin-bottom:10px">Placa <span class="plate">${esc(p)}</span> não está cadastrada — sem histórico.</div><button class="big" onclick="novaOsPlaca('${esc(p)}')">Abrir OS para esta placa nova</button></div>`;
+  }
+  let corpoCliente='';
+  if(buscaCli.trim().length>=2){
+    const grupos=clientesParecidos(buscaCli);
+    corpoCliente=!grupos.length?`<div class="step" style="margin-top:12px"><div class="muted">Nenhum cliente encontrado com esse nome.</div></div>`
+      :grupos.map(([nome,veics])=>`<div class="step" style="margin-top:12px"><b>${esc(nome)}</b> <span class="muted">(${veics.length} veículo${veics.length>1?'s':''})</span>
+        ${veics.map(vv=>`<div class="osrow" onclick="S.filtro='${vv.placa}';S.filtroCliente='';render()"><span class="plate">${esc(vv.placa)}</span><b>${esc(vv.modelo||'')}</b>${!isFrota(vv)?' <span class="tag neu">cliente</span>':' <span class="tag ok">frota</span>'}<span class="sp"></span><span class="muted">${fmtKm(vv.km)}</span></div>`).join('')}
+      </div>`).join('');
+  }
+  m.innerHTML=`<div class="bar"><h2>Histórico por placa</h2></div>
+  <input id="mh_busca" class="xl" placeholder="Digite a placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" autofocus>
+  <input id="mh_cliente" class="xl" style="margin-top:8px" placeholder="ou digite o nome do cliente (pra ver todos os carros dele)" value="${esc(buscaCli)}" oninput="S.filtroCliente=this.value;render()">
+  ${corpoPlaca}${corpoCliente}`;
 }
 // aba do mecânico chefe: mesmos alertas de "Atenção agora" do painel do administrador, só da
 // frota Carsz (clientes particulares do mecânico não entram aqui), para ele acompanhar junto com o gestor
