@@ -797,41 +797,41 @@ const kmMinimo = v => +((v&&v.km)||0);
 // então não trava o botão por km "menor que o último registro" — essa checagem de verdade acontece
 // só quando o atendimento começa (iniciarAgendamento)
 function kmRuim(){ if(ehGestor()||nova.agendamento) return false; const v=S.veic.find(x=>x.placa===normPlaca(nova.placa)); return !!(v&&+nova.km>0&&+nova.km<kmMinimo(v)); }
-// bloco mostrado quando já existe uma OS aberta pra esta placa — nunca deixa abrir outra, só
-// oferece continuar editando a que já existe (ver osAbertaPropria, que acha por placa e não só
-// por id de veículo, pra não deixar passar se houver cadastro duplicado da mesma placa)
+// bloco mostrado quando já existe uma OS aberta pra esta placa — só avisa, não bloqueia mais: dá
+// pra continuar editando a que já existe OU seguir preenchendo embaixo e abrir mais uma (ex.:
+// segunda visita no mesmo dia), a pedido do Valdeci (ver osAbertaPropria, que acha por placa e não
+// só por id de veículo, pra não deixar passar se houver cadastro duplicado da mesma placa)
 function blocoOsAberta(ab){
   const dias=Math.max(0,Math.round((Date.now()-new Date(ab.data))/864e5));
-  return `<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad)"><b>⚠ Esta placa já tem uma OS aberta na sua oficina</b> desde ${fmtD(ab.data)} (há ${dias} dia${dias===1?'':'s'}, ${fmtKm(ab.km)}, ${esc(ab.mecanico||'')}, ${(ab.itens||[]).length} itens).<br>Em vez de abrir outra, continue editando essa.</div><button class="big sec" onclick="S.osAtual='${ab.id}';render()">Continuar editando esta OS</button>`;
+  return `<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad)"><b>⚠ Esta placa já tem uma OS aberta</b> desde ${fmtD(ab.data)} (há ${dias} dia${dias===1?'':'s'}, ${fmtKm(ab.km)}, ${esc(ab.mecanico||'')}, ${(ab.itens||[]).length} itens).<br>Pode continuar nela ou abrir uma nova OS mesmo assim, preenchendo embaixo.<br><button class="sec" style="margin-top:6px" onclick="S.osAtual='${ab.id}';render()">Continuar editando esta OS</button></div>`;
 }
 function infoPlaca(){
   const p=normPlaca(nova.placa); if(p.length<7) return '';
   const v=S.veic.find(x=>x.placa===p);
   if(!v){
-    const abSemVeic=osAbertaPropria(null,p); if(abSemVeic) return blocoOsAberta(abSemVeic);
+    const avisoJaAberta=(()=>{ const abSemVeic=osAbertaPropria(null,p); return abSemVeic?blocoOsAberta(abSemVeic):''; })();
     // placa nova: já entra automaticamente como cliente da oficina, sem perguntar nem travar nada —
     // a classificação de frota é sempre feita à parte, pela gestão (Frota > Cadastrar), antes do
     // carro passar pela revisão; se a placa não está cadastrada como frota aqui, não tem por que
     // esta tela checar de novo
     const base=`<div class="lastinfo neu">Placa nova — cadastrada agora como cliente da oficina.<input id="n_modelo" placeholder="Modelo (opcional)" style="margin-top:6px"></div>`;
     const hist=historicoPorPlaca(p);
-    if(!hist.length) return base;
+    if(!hist.length) return avisoJaAberta+base;
     // placa nova por aqui, mas já tem histórico técnico vindo de outra oficina — mostra pendências
     // mesmo antes do veículo existir no cadastro local (histórico é geral pra toda a base)
     const al=alertasVeic({placa:p},+nova.km>0?+nova.km:null,hist).filter(a=>a.lvl==='bad'||a.lvl==='warn');
     const ul=hist[0];
     const avisoBox=al.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Esta placa já tem histórico em outra oficina</b> (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}):<ul style="margin:6px 0 0;padding-left:18px">${al.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:`<div class="lastinfo ok">Esta placa já tem histórico em outra oficina (última intervenção em ${fmtD(ul.data)}, ${fmtKm(ul.km)}) — sem pendências vencidas.</div>`;
-    return avisoBox+base;
+    return avisoJaAberta+avisoBox+base;
   }
-  const ab=osAbertaPropria(v);
-  if(ab) return blocoOsAberta(ab);
+  const avisoJaAberta=(()=>{ const ab=osAbertaPropria(v); return ab?blocoOsAberta(ab):''; })();
   // OS aberta em OUTRA oficina não bloqueia mais — só avisa, pra cada oficina saber da outra
   const extAberta=osAbertaExterna(v);
   const avisoExterna=extAberta?`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn);border-left:4px solid var(--warn)"><b>⚠ Este veículo está com OS aberta em outra oficina</b> desde ${fmtD(extAberta.data)} (${fmtKm(extAberta.km)}${extAberta.oficina?', '+esc(extAberta.oficina):''}). Pode abrir a OS aqui mesmo assim — cada oficina atende separado.</div>`:'';
   const al=alertasVeic(v,+nova.km>0?+nova.km:null).filter(a=>a.lvl==='bad'||a.lvl==='warn');
   const crit=al.filter(a=>destaque(a.p));
   const ul=osDoVeic(v.id)[0];
-  return avisoExterna+`<div class="lastinfo ok">Veículo reconhecido: <b>${esc(v.modelo)} ${esc(v.ano||'')}</b> · último km ${fmtKm(v.km)} · ${osDoVeic(v.id).length} intervenções${ul?` · última em ${fmtD(ul.data)} (${(ul.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'})`:''}${al.filter(a=>!destaque(a.p)).length?'<br>Pendências: '+al.filter(a=>!destaque(a.p)).map(a=>esc(a.p.nome)+' ('+a.txt+')').join(', '):''}</div>${crit.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Itens sensíveis desta placa:</b><ul style="margin:6px 0 0;padding-left:18px">${crit.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:''}`;
+  return avisoJaAberta+avisoExterna+`<div class="lastinfo ok">Veículo reconhecido: <b>${esc(v.modelo)} ${esc(v.ano||'')}</b> · último km ${fmtKm(v.km)} · ${osDoVeic(v.id).length} intervenções${ul?` · última em ${fmtD(ul.data)} (${(ul.itens||[]).map(i=>esc(i.nome)).slice(0,3).join(', ')||'sem itens'})`:''}${al.filter(a=>!destaque(a.p)).length?'<br>Pendências: '+al.filter(a=>!destaque(a.p)).map(a=>esc(a.p.nome)+' ('+a.txt+')').join(', '):''}</div>${crit.length?`<div class="lastinfo" style="background:var(--bad-bg);color:var(--bad);border-left:4px solid var(--bad)"><b>⚠ Itens sensíveis desta placa:</b><ul style="margin:6px 0 0;padding-left:18px">${crit.map(a=>`<li><b>${esc(a.p.nome)}</b> — ${a.txt}</li>`).join('')}</ul></div>`:''}`;
 }
 const mascaraCpf=v=>v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
 const mascaraTel=v=>{const d=v.replace(/\D/g,'').slice(0,11);return d.length>10?d.replace(/(\d{2})(\d{5})(\d{4})/,'($1) $2-$3'):d.replace(/(\d{2})(\d{4})(\d{0,4})/,'($1) $2-$3').replace(/-$/,'');};
@@ -1072,16 +1072,27 @@ async function criarOs(){
   const km=+nova.km||0;
   let v=S.veic.find(x=>x.placa===placa);
   if(v&&km>0&&km<kmMinimo(v)&&!ehGestor()&&!agendada){toast(`Km inválido: o último registro desta placa é ${fmtKm(kmMinimo(v))}. O km atual não pode ser menor.`);return;}
+  // antes bloqueava e reabria a OS existente; agora só avisa — pode abrir outra OS na mesma placa
+  // mesmo já tendo uma aberta (ex.: segunda visita no mesmo dia), a pedido do Valdeci
   const abertaExistente=osAbertaPropria(v,placa);
-  if(abertaExistente){ toast('Esta placa já tem uma OS aberta — reabrindo para continuar editando'); S.osAtual=abertaExistente.id; render(); return; }
+  if(abertaExistente) toast('Atenção: esta placa já tinha uma OS aberta — abrindo mais uma');
   // placa nova aberta pelo mecânico: por padrão é cliente particular dele (fora da frota Carsz e fora
   // dos relatórios/painel) — a gestão reclassifica como frota própria em Frota > Completar cadastro
   // se for, de fato, um carro da locadora
   // admin geral pode lançar uma OS atribuindo diretamente a outra oficina/mecânico (backfill de
   // manutenção que já aconteceu em outro lugar) — "Atendida por"/"Mecânico responsável" na tela
   const oficinaEsc=(ehAdminGeral()&&nova.oficinaId)?(S.oficinas||[]).find(o=>o.id===nova.oficinaId):null;
-  const oficinaIdFinal=oficinaEsc?oficinaEsc.id:(S.perfil.oficinaId||null);
-  const oficinaNomeFinal=oficinaEsc?oficinaEsc.nome:((S.oficina&&S.oficina.nome)||'');
+  let oficinaIdFinal=oficinaEsc?oficinaEsc.id:(S.perfil.oficinaId||null);
+  let oficinaNomeFinal=oficinaEsc?oficinaEsc.nome:((S.oficina&&S.oficina.nome)||'');
+  // pedido específico da Auto Mecânica Valdeci (AMF): ele quer os carros de frota Carsz totalmente
+  // separados dos clientes particulares dele, em outro acesso — então toda OS aberta por ESTA
+  // oficina num veículo que já é frota (cadastro feito à parte, pela gestão) vai pro acesso da
+  // Matriz, não pro login dele; os clientes particulares dele continuam normais, na oficina dele.
+  // Regra só pra esta oficina (pelo nome) — não vale pras outras oficinas parceiras.
+  if(!oficinaEsc&&v&&isFrota(v)&&slug(oficinaNomeFinal).includes('valdeci')){
+    const matriz=(S.oficinas||[]).find(o=>o.id==='matriz');
+    oficinaIdFinal='matriz'; oficinaNomeFinal=(matriz&&matriz.nome)||'Matriz';
+  }
   const mecanicoFinal=(ehAdminGeral()&&nova.mecanicoNome)?nova.mecanicoNome:S.mecNome;
   if(!v){ const ref=await S.db.collection('veiculos').add({placa,modelo:val('n_modelo')||'(a definir)',ano:'',empresa:'',frotaPropria:false,oficinaId:oficinaIdFinal,km,status:'Em manutenção',criadoPor:mecanicoFinal,pendente:true}); v={id:ref.id,placa,km}; }
   else if(km>(+v.km||0)) await S.db.doc('veiculos/'+v.id).update({km});
@@ -1449,9 +1460,19 @@ function mabertas(m){
   // antiga sempre no topo aqui atrapalharia o fluxo normal; quem quiser achar a OS parada há mais
   // tempo troca pelo seletor de ordem
   const ordem=S.abertasOrdem||'recentes';
-  const lst=S.os.filter(o=>o.status==='Aberta'&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>ordem==='antigas'?(a.data||'').localeCompare(b.data||''):(b.data||'').localeCompare(a.data||''));
-  m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span><select onchange="S.abertasOrdem=this.value;render()" style="max-width:190px" title="Ordem de exibição"><option value="recentes" ${ordem==='recentes'?'selected':''}>Mais recentes primeiro</option><option value="antigas" ${ordem==='antigas'?'selected':''}>Mais antigas primeiro</option></select>${filtroFrotaSelect()}</div>${alertaCobrancaBanner()}`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
-    return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate lg">${esc(o.placa)}</span>${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`;
+  const fp=normPlaca(S.filtro||''); const fc=(S.filtroCliente||'').trim();
+  const lst=S.os.filter(o=>{
+    if(o.status!=='Aberta') return false;
+    const v=S.veic.find(x=>x.id===o.veiculoId);
+    if(!passaFiltroFrota(v)) return false;
+    if(fp&&!(o.placa||'').includes(fp)) return false;
+    if(fc&&!(v&&v.clienteNome&&slug(v.clienteNome).includes(slug(fc)))) return false;
+    return true;
+  }).sort((a,b)=>ordem==='antigas'?(a.data||'').localeCompare(b.data||''):(b.data||'').localeCompare(a.data||''));
+  m.innerHTML=`<div class="bar"><h2>OS abertas</h2><span class="sp"></span><select onchange="S.abertasOrdem=this.value;render()" style="max-width:190px" title="Ordem de exibição"><option value="recentes" ${ordem==='recentes'?'selected':''}>Mais recentes primeiro</option><option value="antigas" ${ordem==='antigas'?'selected':''}>Mais antigas primeiro</option></select>${filtroFrotaSelect()}</div>
+  <div class="row" style="gap:8px;margin-bottom:10px"><input id="ma_busca" placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="flex:1"><input id="ma_cliente" placeholder="Filtrar por cliente" value="${esc(fc)}" oninput="S.filtroCliente=this.value;render()" style="flex:1"></div>
+  ${alertaCobrancaBanner()}`+(lst.length?lst.map(o=>{ const v=S.veic.find(x=>x.id===o.veiculoId);
+    return `<div class="osrow" onclick="S.osAtual='${o.id}';S.view='mnova';render()"><span class="plate lg">${esc(o.placa)}</span>${v&&v.clienteNome?` <b class="cliente-badge">${esc(v.clienteNome)}</b>`:''}${v&&!isFrota(v)?' <span class="tag neu" title="Cliente particular do mecânico">cliente</span>':''}${(o.encaminhamentos||[]).length?' <span class="tag warn" title="Encaminhada entre oficinas">↪ encaminhada</span>':''}<div><b>${esc((v||{}).modelo||'')}</b><div class="muted">${fmtD(o.data)} · aberta há ${Math.max(0,Math.round((Date.now()-new Date(o.data))/864e5))} dias · ${fmtKm(o.km)} · ${(o.itens||[]).length} itens · ${esc(o.mecanico||'')}</div></div><span class="sp"></span><b>${fmtBRL(osTotal(o))}</b></div>`;
   }).join(''):'<div class="empty">Nenhuma OS aberta nessa seleção.</div>');
 }
 // ---- agendamentos: clientes que não puderam ser atendidos na hora e marcaram outro dia. A OS já
@@ -1498,11 +1519,17 @@ async function cancelarAgendamento(id){
   catch(e){ erroSalvar('cancelar o agendamento',e); }
 }
 function mconc(m){
-  const f=normPlaca(S.filtro); const podeMo=podeFinalizarOs();
+  const f=normPlaca(S.filtro); const fc=(S.filtroCliente||'').trim(); const podeMo=podeFinalizarOs();
   // ordem: cobrança não paga mais antiga sempre no topo (pra não deixar a mais velha esquecida),
   // depois as outras não pagas (da mais antiga pra mais nova), e só então as já pagas (mais
   // recente primeiro, como era antes — pagas não precisam de atenção urgente)
-  const todasFiltradas=S.os.filter(o=>o.status==='Concluída'&&(!f||o.placa.includes(f))&&passaFiltroFrota(S.veic.find(v=>v.id===o.veiculoId))).sort((a,b)=>{
+  const todasFiltradas=S.os.filter(o=>{
+    if(o.status!=='Concluída') return false;
+    const v=S.veic.find(x=>x.id===o.veiculoId);
+    if(f&&!(o.placa||'').includes(f)) return false;
+    if(fc&&!(v&&v.clienteNome&&slug(v.clienteNome).includes(slug(fc)))) return false;
+    return passaFiltroFrota(v);
+  }).sort((a,b)=>{
     if(!a.pago&&!b.pago) return (a.data||a.concluidaEm||'').localeCompare(b.data||b.concluidaEm||'');
     if(!a.pago) return -1; if(!b.pago) return 1;
     return (b.data||b.concluidaEm||'').localeCompare(a.data||a.concluidaEm||'');
@@ -1520,7 +1547,7 @@ function mconc(m){
       <div class="card bad"><div class="v">${fmtBRL(aReceber)}</div><div class="l">Saldo a receber${sufixo}</div></div>
     </div>`;
   }
-  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${resumoHtml}${alertaCobrancaBanner()}<input id="mc_busca" placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="margin-bottom:10px">`+
+  m.innerHTML=`<div class="bar"><h2>OS concluídas</h2><span class="sp"></span>${filtroFrotaSelect()}</div>${resumoHtml}${alertaCobrancaBanner()}<div class="row" style="gap:8px;margin-bottom:10px"><input id="mc_busca" placeholder="Filtrar por placa" value="${esc(S.filtro)}" oninput="S.filtro=this.value;render()" style="flex:1"><input id="mc_cliente" placeholder="Filtrar por cliente" value="${esc(fc)}" oninput="S.filtroCliente=this.value;render()" style="flex:1"></div>`+
    (lst.length?lst.map(o=>{
      const v=S.veic.find(x=>x.id===o.veiculoId);
      const atraso=diasAtraso(o);
