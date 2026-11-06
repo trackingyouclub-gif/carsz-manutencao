@@ -1257,11 +1257,12 @@ function notaEdicaoCampo(o,campo,rotulo){ const por=o[campo+'EditadoPor'], em=o[
 function formCorrigirPlacaKm(){
   const o=S.os.find(x=>x.id===S.osAtual); if(!o) return;
   const v=S.veic.find(x=>x.id===o.veiculoId)||{};
-  abrir(`<h3>Corrigir placa / km / cliente desta OS</h3>
-    <div class="hint">Use só quando a placa ou o km foram digitados errado na abertura desta OS — essa correção fica registrada (quem alterou e quando). Nome e telefone do cliente ficam salvos na placa (não só nesta OS) e valem pras próximas visitas também; um campo deixado em branco não apaga um valor já salvo antes.</div>
+  abrir(`<h3>Corrigir placa / km / veículo / cliente desta OS</h3>
+    <div class="hint">Use só quando a placa ou o km foram digitados errado na abertura desta OS — essa correção fica registrada (quem alterou e quando). Modelo do veículo, nome e telefone do cliente ficam salvos na placa (não só nesta OS) e valem pras próximas visitas também; nome e telefone deixados em branco não apagam um valor já salvo antes (modelo pode ser apagado se precisar corrigir).</div>
     <div class="grid" style="max-width:360px">
       <div><label>Placa</label><input id="fx_placa" value="${esc(o.placa)}" maxlength="8" autocapitalize="characters">${notaEdicaoCampo(o,'placa','Placa')}</div>
       <div><label>Km</label><input id="fx_km" type="number" inputmode="numeric" value="${o.km||''}">${notaEdicaoCampo(o,'km','Km')}</div>
+      <div><label>Modelo do veículo</label><input id="fx_modelo" value="${esc(v.modelo)}" placeholder="opcional" autocapitalize="characters"></div>
       <div><label>Nome do cliente</label><input id="fx_clinome" value="${esc(v.clienteNome)}" placeholder="opcional"></div>
       <div><label>WhatsApp do cliente</label><input id="fx_clitel" value="${esc(v.clienteTel)}" placeholder="11987654321"></div>
     </div>
@@ -1292,16 +1293,18 @@ async function salvarCorrecaoPlacaKm(){
   const quem=S.mecNome||'', agora=agoraIso(); const upd={};
   if(placa!==o.placa){ upd.placa=placa; upd.placaEditadoPor=quem; upd.placaEditadoEm=agora; }
   if(km!==(+o.km||0)){ upd.km=km; upd.kmEditadoPor=quem; upd.kmEditadoEm=agora; }
-  // nome/telefone do cliente ficam salvos no cadastro do VEÍCULO (não na OS) — mesma regra usada
-  // ao abrir a OS: um campo deixado em branco aqui nunca apaga um valor já salvo antes
+  // modelo/nome/telefone ficam salvos no cadastro do VEÍCULO (não na OS). Nome/telefone seguem a
+  // mesma regra usada ao abrir a OS (campo em branco nunca apaga valor já salvo); modelo é campo de
+  // correção, então pode ser apagado se for preciso (ex.: estava errado e não se sabe o certo ainda)
   const v=S.veic.find(x=>x.id===o.veiculoId);
   if(v){
-    const clinome=val('fx_clinome'), clitelRaw=val('fx_clitel'); const cliUpd={};
+    const modelo=val('fx_modelo'), clinome=val('fx_clinome'), clitelRaw=val('fx_clitel'); const cliUpd={};
+    if(modelo!==(v.modelo||'')) cliUpd.modelo=modelo;
     if(clinome&&clinome!==v.clienteNome) cliUpd.clienteNome=clinome;
     if(clitelRaw){ const telNum=clitelRaw.replace(/\D/g,''); if(telNum&&telNum!==v.clienteTel) cliUpd.clienteTel=telNum; }
     if(Object.keys(cliUpd).length){
       try{ await S.db.doc('veiculos/'+v.id).update(cliUpd); Object.assign(v,cliUpd); }
-      catch(e){ erroSalvar('salvar dados do cliente',e); }
+      catch(e){ erroSalvar('salvar dados do veículo',e); }
     }
   }
   if(!Object.keys(upd).length){ fechar(); render(); return; }
