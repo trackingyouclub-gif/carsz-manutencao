@@ -453,7 +453,11 @@ const blob = id => sb.storage.from(BUCKET).getPublicUrl(id).data.publicUrl;
 // não entra em nenhum total cobrado — centralizado aqui pra valer automaticamente em toda parte
 // que usa osTotal/pecasTotal (tela da OS, PDF, faturamento, relatórios etc.)
 const itemCusto = i => i.pecaCliente?0:(+i.custo||0)*(+i.qtd||1);
-const osTotal = o => (o.itens||[]).reduce((s,i)=>s+itemCusto(i),0)+(+o.maoObra||0);
+// desconto dado ao cliente (valor positivo guardado em o.desconto, motivo em o.descontoMotivo) — é
+// SUBTRAÍDO do total da OS, e como tudo (tela, PDF, WhatsApp, faturamento, relatórios) calcula o
+// total por osTotal(), ele entra em todos de uma vez; nunca deixa o total ficar negativo
+const descontoOs = o => Math.max(0,+o.desconto||0);
+const osTotal = o => Math.max(0,(o.itens||[]).reduce((s,i)=>s+itemCusto(i),0)+(+o.maoObra||0)-descontoOs(o));
 const pecasTotal = o => (o.itens||[]).reduce((s,i)=>s+itemCusto(i),0);
 // quanto as peças marcadas "do cliente" CUSTARIAM se fossem cobradas — só pra mostrar no resumo
 // quanto foi abatido; esse valor nunca entra em pecasTotal/osTotal (ver itemCusto)
@@ -555,7 +559,7 @@ function alertasVeic(v,kmRef,eventosOverride){
 function statusVeic(v){ const al=alertasVeic(v); return al.some(a=>a.lvl==='bad')?'bad':al.some(a=>a.lvl==='warn')?'warn':'ok'; }
 
 // ============ navegação ============
-const NAV_ADM=[['painel','Painel'],['rel','Relatórios'],['frota','Frota'],['os','Ordens de serviço'],['sin','Sinistros'],['pecas','Peças'],['oficina','Oficina'],['cfg','Configurações']];
+const NAV_ADM=[['painel','Painel'],['rel','Relatórios'],['frota','Frota'],['mot','Motoristas'],['os','Ordens de serviço'],['sin','Sinistros'],['pecas','Peças'],['oficina','Oficina'],['cfg','Configurações']];
 // aba "Oficinas" (rede de oficinas parceiras) só aparece para o administrador geral
 function navAdm(){ return ehSuperadmin()?[...NAV_ADM,['oficinas','Oficinas']]:NAV_ADM; }
 const NAV_MEC=[['mnova','Nova OS'],['mabertas','OS abertas'],['magenda','Agendamentos'],['mconc','OS concluídas'],['mhist','Histórico por placa']];
@@ -586,9 +590,11 @@ function navMec(){
     if(ehChefe()||ehGestor()) nav.push(['mrel','Relatórios'],['mfat','Faturamento']);
     if(ehChefe()||donoOficina) nav.push(['oficina','Oficina']);
   }
+  // equipe de cobrança (administrador geral, gestão da Matriz, auxiliar da Matriz): app do motorista
+  if(podeMotoristas()) nav.push(['mmot','Motoristas']);
   return nav;
 }
-const PRESERVE=['lg_user','lg_pass','it_nome','it_qtd','it_custo','it_obs','os_rel','os_mo','os_of','n_placa','n_km','n_modelo'];
+const PRESERVE=['lg_user','lg_pass','it_nome','it_qtd','it_custo','it_obs','os_rel','os_mo','os_of','n_placa','n_km','n_modelo','mot_txt','mot_busca','mb_status','mb_data','mb_motivo'];
 function preservar(root){ const k={vals:{},focus:null,sel:null}; for(const id of PRESERVE){ const e=document.getElementById(id); if(e&&e.value!=='') k.vals[id]=e.value; } const a=document.activeElement; if(a&&a.id&&root.contains(a)){ k.focus=a.id; try{k.sel=[a.selectionStart,a.selectionEnd];}catch(e){} } return k; }
 function restaurar(k){ for(const [id,v] of Object.entries(k.vals)){ const e=document.getElementById(id); if(e&&!e.disabled&&e.value!==v) e.value=v; } if(k.focus){ const e=document.getElementById(k.focus); if(e){ e.focus(); if(k.sel&&k.sel[0]!=null){ try{e.setSelectionRange(k.sel[0],k.sel[1]);}catch(x){} } } } }
 function toggleMode(){ S.mec=!S.mec; location.hash=S.mec?'#mecanico':''; S.view=S.mec?'mnova':'painel'; S.osAtual=null; render(); }
@@ -663,13 +669,15 @@ function render(){
   // identificar o veículo (a OS anterior já está salva, cada campo grava sozinho; só faltava
   // limpar o "em edição" pra liberar o formulário novo)
   document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+    if(b.dataset.v==='mot'||b.dataset.v==='mmot') S.motAtual=null;
     if(b.dataset.v==='mnova'&&S.osAtual){ S.osAtual=null; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''}; }
     S.view=b.dataset.v;S.filtro='';render();
   });
+  if(podeMotoristas()){ const nm=motPendTotal(); const bm=document.querySelector('nav [data-v=mot],nav [data-v=mmot]'); if(bm) bm.innerHTML='Motoristas'+(nm?`<span class="n">${nm}</span>`:''); }
   const m=document.getElementById('main');
   if(!S.cfg){ m.innerHTML='<div class="empty">Carregando dados…</div>'; return; }
   const keep=preservar(m);
-  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,magenda,mconc,mhist,matencao,mfat,mrel:mrelView,oficinas:oficinasView})[S.view](m);
+  ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,magenda,mconc,mhist,matencao,mfat,mrel:mrelView,oficinas:oficinasView,mot:motoristasView,mmot:motoristasView})[S.view](m);
   restaurar(keep);
   if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
   else {
@@ -707,6 +715,7 @@ function timelineHtml(v, opts={}){
     h+=`<div class="ev ${o.status==='Aberta'?'open':''}"><div class="hd"><b>${fmtD(o.data)}</b><span class="plate">${fmtKm(o.km)}</span><span class="tag ${o.status==='Aberta'?'warn':'ok'}">${esc(o.status)}</span><span class="muted">${esc(o.mecanico||'')}${o.oficina?' · '+esc(o.oficina):''}</span><span class="sp"></span><b>${fmtBRL(tot)}</b>${opts.edit?`<button class="sec" onclick="abrirOs('${o.id}')">Abrir OS</button>`:''}</div>`;
     if((o.itens||[]).length){ h+='<ul>'; for(const i of o.itens) h+=`<li>${esc(i.nome)}${(+i.qtd||1)>1?' ×'+i.qtd:''}${i.custo?` — ${fmtBRL((+i.custo)*(+i.qtd||1))}`:''}${i.obs?` <span class="muted">(${esc(i.obs)})</span>`:''}${i.retroativo?` <span class="tag neu">informado · ${fmtKm(i.kmTroca)}</span>`:''}${tagEditado(i)}</li>`; h+='</ul>'; }
     if(podeMo&&(o.maoObra||o.maoObraEdit)) h+=`<div class="muted">Mão de obra: ${fmtBRL(o.maoObra)}${tagMo(o)}</div>`;
+    if(podeMo&&descontoOs(o)>0) h+=`<div class="muted">Desconto${o.descontoMotivo?' ('+esc(o.descontoMotivo)+')':''}: − ${fmtBRL(descontoOs(o))}</div>`;
     if(o.relato) h+=`<div class="rel">${esc(o.relato)}</div>`;
     const fotos=[o.fotoPlaca,o.fotoKm,...(o.fotos||[])].filter(Boolean);
     if(fotos.length) h+='<div class="ph">'+fotos.map(f=>`<img src="${blob(f)}" onclick="lightbox('${f}')" loading="lazy">`).join('')+'</div>';
@@ -923,6 +932,7 @@ async function carregarSessao(session){
   S.mecNome=S.perfil.nome;
   aplicarIconeApp(); // personaliza o ícone da tela inicial com o logo da oficina, se ela tiver um cadastrado
   const d={...S.perfil,ultimoAcesso:agoraIso()}; delete d.id; sb.from('perfis').upsert({id:S.user.id,data:d}).then(()=>{},()=>{});
+  iniciarMotoristas(); // só liga as tabelas do app do motorista pra quem é equipe de cobrança
   if(!ehAdminGeral()){ S.mec=true; S.view='mnova'; }
   render();
 }
@@ -1032,7 +1042,9 @@ async function reenviarSenhaMec(id){
   const {error}=await sb.auth.resetPasswordForEmail(x.email,{redirectTo:location.origin+location.pathname});
   avisoAcessoMec(x.nome,x.telefone,x.email,!error);
 }
-function bloqueado(){ const p=normPlaca(nova.placa); return !!osAbertaPropria(S.veic.find(x=>x.placa===p),p); }
+// não bloqueia mais o botão: pode abrir outra OS na mesma placa mesmo com uma aberta (só avisa — ver
+// blocoOsAberta/infoPlaca); mantida como função pra não mexer nos pontos que a chamam
+function bloqueado(){ return false; }
 function chkPlaca(){ const el=document.getElementById('n_info'); if(el) el.innerHTML=infoPlaca(); const b=document.getElementById('btn_abrir'); if(b) b.disabled=!nova.placa||nova.lendo||bloqueado(); const a=document.getElementById('n_kmaviso'); if(a) a.textContent=avisoKm(); if(b&&kmRuim()) b.disabled=true;
   const p=normPlaca(nova.placa); if(p.length>=7&&!S.veic.find(x=>x.placa===p)) checarPlacaExterna(p);
 }
@@ -1146,6 +1158,13 @@ function osMecanico(m){
     <div id="it_list">${itensHtml(o)}</div>
   </div>
   <div class="step zona-clara">
+    ${podeMo?`<div style="background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px"><label>Desconto (opcional)</label>
+      <input id="os_desc_motivo" placeholder="Do que se trata o desconto? (ex.: cliente antigo, peça com defeito…)" value="${esc(o.descontoMotivo||'')}" onchange="salvarCampoOs('descontoMotivo',this.value.trim())" ${o.status!=='Aberta'?'disabled':''}>
+      <div class="row" style="gap:8px;flex-wrap:nowrap;margin-top:6px">
+        <span style="font-size:20px;font-weight:700;color:var(--bad)">− R$</span>
+        <input id="os_desc" style="font-size:20px;font-weight:700;padding:8px;flex:1;min-width:0" inputmode="numeric" placeholder="0,00" value="${descontoOs(o)?descontoOs(o).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):''}" oninput="maoObraMask(this)" onchange="salvarCampoOs('desconto',maoObraValor(this))" ${o.status!=='Aberta'?'disabled':''}>
+      </div>
+      <div class="hint">Aparece com sinal negativo no PDF e na mensagem de cobrança, abatido do total. Informe antes da mão de obra (ao informar a mão de obra a OS é concluída).</div></div>`:''}
     <div style="background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px"><label>Mão de obra</label>
       <div class="row" style="gap:8px;flex-wrap:nowrap">
         <span style="font-size:20px;font-weight:700;color:var(--muted)">R$</span>
@@ -1156,6 +1175,7 @@ function osMecanico(m){
     ${podeMo?`<div class="calc" style="margin-top:10px;background:var(--ok-bg);border:1px solid var(--ok);text-align:center">
       ${temPecaCliente?`<div class="row" style="justify-content:center;gap:16px;font-size:13px;color:var(--muted)"><span>Peças do cliente (abatido): <b>${fmtBRL(valorPecasCliente(o))}</b></span></div>`:''}
       <div class="row" style="justify-content:center;gap:16px;font-size:13px"><span>Peças da oficina: <b>${fmtBRL(pecasTotal(o))}</b></span><span>Mão de obra: <b>${fmtBRL(+o.maoObra||0)}</b></span></div>
+      ${descontoOs(o)>0?`<div class="row" style="justify-content:center;gap:16px;font-size:13px;color:var(--bad)"><span>Desconto${o.descontoMotivo?' ('+esc(o.descontoMotivo)+')':''}: <b>− ${fmtBRL(descontoOs(o))}</b></span></div>`:''}
       <div style="font-size:26px;font-weight:700;color:var(--ok);margin-top:4px">Total a cobrar: ${fmtBRL(osTotal(o))}</div>
     </div>`:`<div class="calc" style="margin-top:10px">${temPecaCliente?`<div class="muted" style="font-size:13px">Peças do cliente (abatido): <b>${fmtBRL(valorPecasCliente(o))}</b></div>`:''}<span class="muted">Parcial (peças da oficina): <b>${fmtBRL(pecasTotal(o))}</b> — a mão de obra e o total só aparecem pro mecânico chefe e a gestão.</span></div>`}
     <div class="row" style="margin-top:14px"><h3 style="margin:0">Relato da intervenção</h3><span class="sp"></span><button class="ghost" onclick="formLembrete()">🔔 Lembrete futuro</button></div><textarea id="os_rel" placeholder="O que foi verificado, o que foi feito, recomendações…" onchange="salvarCampoOs('relato',this.value)">${esc(o.relato)}</textarea>
@@ -1435,7 +1455,6 @@ async function reabrirOs(){
   toast('Reabrindo…');
   if(!podeFinalizarOs()){ toast('Sem permissão para reabrir a OS'); return; }
   const o=S.os.find(x=>x.id===S.osAtual); if(!o){ erroSalvar('reabrir a OS',{message:'OS não encontrada na tela — volte pra lista e abra a OS de novo'}); return; }
-  const outra=S.os.find(x=>x.veiculoId===o.veiculoId&&x.status==='Aberta'&&x.id!==o.id); if(outra){ toast('Já existe outra OS aberta desta placa — finalize-a antes'); return; }
   try{ await S.db.doc('os/'+o.id).update({status:'Aberta',concluidaEm:null}); toast('OS reaberta'); render(); }catch(e){ erroSalvar('reabrir a OS',e); } }
 async function fecharOs(mo){
   toast('Concluindo…');
@@ -1621,7 +1640,7 @@ function faturamentoPorPeriodo(nivel){
     const k=chaveFaturamento(data,nivel);
     if(!porChave[k]) porChave[k]={total:0,pecas:0,mo:0};
     const pecas=pecasTotal(o), mo=+o.maoObra||0;
-    porChave[k].pecas+=pecas; porChave[k].mo+=mo; porChave[k].total+=pecas+mo;
+    porChave[k].pecas+=pecas; porChave[k].mo+=mo; porChave[k].total+=osTotal(o); // total já líquido do desconto
   }
   return porChave;
 }
@@ -1752,7 +1771,7 @@ async function montarResumoBackupPdf(lista,ini,fim){
   let totPecas=0, totMo=0, totGeral=0;
   for(const o of lista){
     if(y>278){ doc.addPage(); y=20; cabecalho(); }
-    const pecas=pecasTotal(o), mo=+o.maoObra||0, tot=pecas+mo;
+    const pecas=pecasTotal(o), mo=+o.maoObra||0, tot=osTotal(o); // líquido do desconto
     totPecas+=pecas; totMo+=mo; totGeral+=tot;
     doc.text(fmtD(o.data||o.concluidaEm),xData+1,y);
     doc.text(String(o.placa||'—'),xPlaca+1,y);
@@ -1905,7 +1924,7 @@ function msgCobranca(o,v){
   }).join('\n'):'• Nenhuma peça nesta OS';
   const pecasT=pecasTotal(o), mo=+o.maoObra||0, pecasCliT=valorPecasCliente(o);
   const resumoCli=pecasCliT>0?`\n*Peças do cliente (abatido): ${fmtBRL(pecasCliT)}*`:'';
-  return `Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}*${v.modelo?' ('+v.modelo+')':''}:\nKm atual: ${fmtKm(o.km)}\n\n🔧 *Peças e serviços:*\n${itensTxt}${resumoCli}\n*Peças da oficina: ${fmtBRL(pecasT)}*\n\n👨‍🔧 *Mão de obra: ${fmtBRL(mo)}*\n\n💰 *Total a cobrar: ${fmtBRL(osTotal(o))}*${pixTextoCobranca(o)}\n\nQualquer dúvida, estou à disposição!`;
+  return `Olá${v.clienteNome?', '+v.clienteNome:''}! Segue o resumo da manutenção do veículo *${o.placa}*${v.modelo?' ('+v.modelo+')':''}:\nKm atual: ${fmtKm(o.km)}\n\n🔧 *Peças e serviços:*\n${itensTxt}${resumoCli}\n*Peças da oficina: ${fmtBRL(pecasT)}*\n\n👨‍🔧 *Mão de obra: ${fmtBRL(mo)}*${descontoOs(o)>0?`\n\n🏷 *Desconto${o.descontoMotivo?' ('+o.descontoMotivo+')':''}: - ${fmtBRL(descontoOs(o))}*`:''}\n\n💰 *Total a cobrar: ${fmtBRL(osTotal(o))}*${pixTextoCobranca(o)}\n\nQualquer dúvida, estou à disposição!`;
 }
 // cobrar funciona do mesmo jeito pra OS de qualquer oficina — não depende de qual oficina é dona
 // da OS, só do cliente ter (ou cadastrar aqui) um WhatsApp
@@ -2078,7 +2097,18 @@ async function montarOsPdf(id){
   doc.text('Peças da oficina:',margin,y); doc.text(fmtBRL(pecasTotal(o)),pageW-margin,y,{align:'right'}); y+=lh;
   if(podeMo){
     doc.setFont('helvetica','normal');
-    doc.text(emAndamento&&!o.maoObra?'Mão de obra: ainda não informada':'Mão de obra:',margin,y); if(!(emAndamento&&!o.maoObra)) doc.text(fmtBRL(o.maoObra||0),pageW-margin,y,{align:'right'}); y+=lh+2;
+    doc.text(emAndamento&&!o.maoObra?'Mão de obra: ainda não informada':'Mão de obra:',margin,y); if(!(emAndamento&&!o.maoObra)) doc.text(fmtBRL(o.maoObra||0),pageW-margin,y,{align:'right'}); y+=lh;
+    // desconto: aparece negativo, com o motivo escrito (o PDF é o que o cliente recebe)
+    const descPdf=descontoOs(o);
+    if(descPdf>0){
+      quebraSeNecessario(12);
+      const linhasDesc=doc.splitTextToSize('Desconto'+(o.descontoMotivo?' ('+o.descontoMotivo+')':'')+':',pageW-margin*2-45);
+      doc.setTextColor(185,28,28);
+      doc.text(linhasDesc,margin,y); doc.text('- '+fmtBRL(descPdf),pageW-margin,y,{align:'right'});
+      doc.setTextColor(0);
+      y+=(linhasDesc.length-1)*5+lh;
+    }
+    y+=2;
     quebraSeNecessario(12);
     // total em destaque, com uma faixa clara atrás — é o número que mais importa no papel; em
     // andamento usa cor de alerta e deixa claro que é parcial, não o fechamento da OS
@@ -2758,6 +2788,212 @@ function formSin(id){
 async function salvarSin(id){ const d={veiculoId:val('s_v'),data:val('s_data'),desc:val('s_desc'),seguradora:val('s_seg'),bo:val('s_bo'),franquia:+val('s_fr')||0,terceiro:val('s_ter'),status:val('s_st'),culpa:val('s_culpa')};
   if(!d.veiculoId||!d.desc){toast('Informe veículo e ocorrência');return;} if(id) await S.db.doc('sinistros/'+id).set(d); else await S.db.collection('sinistros').add(d); fechar(); toast('Sinistro salvo'); }
 async function delSin(id){ if(!confirm('Excluir este sinistro?'))return; await S.db.doc('sinistros/'+id).delete(); fechar(); toast('Sinistro excluído'); }
+
+// ============ motoristas: app do motorista (avisos, chat com a cobrança, promessa de pagamento,
+// bloqueio sinalizado, pedido de manutenção) ============
+// O motorista usa o app motorista.html (login por CPF+senha, fora do login da equipe); aqui é o lado
+// da equipe — administrador geral, gestão da Matriz e auxiliar da Matriz (cobrança). Os dados ficam
+// em tabelas próprias (ver motoristas.sql). O bloqueio aqui só SINALIZA no app do motorista; o
+// bloqueio do veículo em si continua sendo feito na plataforma do rastreador.
+const podeMotoristas = () => !!S.perfil&&(ehAdminGeral()||(ehAuxiliar()&&(!S.perfil.oficinaId||S.perfil.oficinaId==='matriz')));
+Object.assign(S,{mots:[],motMsgs:[],motPromessas:[],motAgend:[],motAvisos:[],motAtual:null,motOk:true,motBusca:''});
+let motIniciado=false;
+function iniciarMotoristas(){
+  if(motIniciado||!podeMotoristas()) return; motIniciado=true;
+  const sub=(col,key)=>S.db.collection(col).onSnapshot(snap=>{ S[key]=snap.docs.map(d=>({id:d.id,...d.data()})); S.motOk=true; render(); },e=>{ console.warn('tabela "'+col+'" indisponível (rode o motoristas.sql no Supabase):',e); S.motOk=false; });
+  sub('motoristas','mots'); sub('mot_mensagens','motMsgs'); sub('mot_promessas','motPromessas'); sub('mot_agendamentos','motAgend'); sub('mot_avisos','motAvisos');
+}
+const motLink = () => location.origin+location.pathname.replace(/[^/]*$/,'')+'motorista.html';
+const motMsgsAuto = x => x.tipo==='promessa'||x.tipo==='agendamento'; // já contadas nas pendências próprias
+const motNaoLidas = id => S.motMsgs.filter(x=>x.motoristaId===id&&x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length;
+const motPromPend = id => S.motPromessas.filter(x=>(!id||x.motoristaId===id)&&x.status==='pendente').length;
+const motAgPend = id => S.motAgend.filter(x=>(!id||x.motoristaId===id)&&x.status==='solicitado').length;
+const motPendTotal = () => S.motMsgs.filter(x=>x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length+motPromPend()+motAgPend();
+const MOT_BLOQ={normal:['Liberado','ok'],programado:['Bloqueio programado','warn'],bloqueado:['Bloqueado','bad']};
+const MOT_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
+const MOT_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Recusado','bad']};
+const motHora = iso => { try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
+const motGerarSenha = () => { const c='abcdefghjkmnpqrstuvwxyz23456789'; let s=''; for(let i=0;i<6;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; };
+const telWa = t => { const d=String(t||'').replace(/\D/g,''); return d?(d.length<=11?'55'+d:d):''; };
+
+function motoristasView(m){
+  if(!podeMotoristas()){ m.innerHTML='<div class="empty">Sem permissão para ver Motoristas.</div>'; return; }
+  if(S.motAtual&&S.mots.find(x=>x.id===S.motAtual)) return motDetalhe(m);
+  S.motAtual=null;
+  const q=(S.motBusca||'').trim()?slug(S.motBusca):'';
+  const lista=S.mots.filter(x=>!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q)).map(x=>({x,pend:motNaoLidas(x.id)+motPromPend(x.id)+motAgPend(x.id)}))
+    .sort((a,b)=>b.pend-a.pend||(a.x.nome||'').localeCompare(b.x.nome||''));
+  const nBloq=S.mots.filter(x=>(x.bloqueio||{}).status==='bloqueado').length, nProg=S.mots.filter(x=>(x.bloqueio||{}).status==='programado').length;
+  m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="pri" onclick="motForm('')">+ Novo motorista</button></div>
+    ${S.motOk?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>As tabelas do app do motorista ainda não existem no banco.</b> Rode o arquivo <b>motoristas.sql</b> no SQL Editor do Supabase e recarregue esta página.</div>`}
+    <div class="cards" style="margin-bottom:12px">
+      <div class="card bad"><div class="v">${nBloq}</div><div class="l">Bloqueados</div></div>
+      <div class="card warn"><div class="v">${nProg}</div><div class="l">Bloqueio programado</div></div>
+      <div class="card"><div class="v">${motPromPend()}</div><div class="l">Promessas p/ responder</div></div>
+      <div class="card"><div class="v">${motAgPend()}</div><div class="l">Pedidos de manutenção</div></div>
+    </div>
+    <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
+    (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}</div></div>`; }).join('')
+      :'<div class="empty">'+(S.mots.length?'Nenhum motorista encontrado.':'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
+}
+
+// relê as tabelas na hora (além do tempo real do banco, que pode demorar ou estar desligado) — chamado
+// depois de cada ação aqui e a cada 15s enquanto a aba Motoristas está aberta, pro chat não ficar parado
+async function motRecarregar(){
+  if(!podeMotoristas()||!S.db) return;
+  try{ for(const [c,k] of [['motoristas','mots'],['mot_mensagens','motMsgs'],['mot_promessas','motPromessas'],['mot_agendamentos','motAgend'],['mot_avisos','motAvisos']]){ const sn=await S.db.collection(c).get(); S[k]=sn.docs.map(d=>({id:d.id,...d.data()})); } S.motOk=true; render(); }
+  catch(e){ console.warn('motoristas: não foi possível recarregar',e); }
+}
+setInterval(()=>{ if((S.view==='mot'||S.view==='mmot')&&document.visibilityState==='visible') motRecarregar(); },15000);
+const motMarcando=new Set();
+async function motMarcarLidas(lista){
+  for(const t of lista){ if(motMarcando.has(t.id)) continue; motMarcando.add(t.id); try{ await S.db.doc('mot_mensagens/'+t.id).update({lidaEquipe:true}); motMarcando.delete(t.id); }catch(e){ console.warn(e); /* fica no conjunto: não tenta de novo em loop */ } }
+  motRecarregar();
+}
+function motDetalhe(m){
+  const x=S.mots.find(y=>y.id===S.motAtual); const bl=x.bloqueio||{status:'normal'}; const b=MOT_BLOQ[bl.status]||MOT_BLOQ.normal;
+  const msgs=S.motMsgs.filter(t=>t.motoristaId===x.id).sort((a,c)=>(a.em||'').localeCompare(c.em||''));
+  const naoLidas=msgs.filter(t=>t.de==='motorista'&&!t.lidaEquipe); if(naoLidas.length) motMarcarLidas(naoLidas);
+  const proms=S.motPromessas.filter(t=>t.motoristaId===x.id).sort((a,c)=>(c.criadoEm||'').localeCompare(a.criadoEm||''));
+  const ags=S.motAgend.filter(t=>t.motoristaId===x.id).sort((a,c)=>(c.criadoEm||'').localeCompare(a.criadoEm||''));
+  const avs=S.motAvisos.filter(t=>!t.motoristaId||t.motoristaId===x.id).sort((a,c)=>(c.em||'').localeCompare(a.em||'')).slice(0,8);
+  const wa=telWa(x.telefone);
+  m.innerHTML=`<div class="bar"><button class="ghost" onclick="S.motAtual=null;render()">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
+    <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}</div></div>
+    <div class="step"><h3>🔒 Bloqueio do veículo (sinalização no app)</h3>
+      <div class="hint">Isto só avisa o motorista no app dele — o bloqueio de verdade continua sendo feito na plataforma do rastreador.</div>
+      <div class="grid" style="margin-top:8px">
+        <div><label>Situação</label><select id="mb_status">${Object.entries(MOT_BLOQ).map(([k,v])=>`<option value="${k}" ${bl.status===k?'selected':''}>${v[0]}</option>`).join('')}</select></div>
+        <div><label>Data do bloqueio (se programado)</label><input id="mb_data" type="date" value="${esc(bl.data||'')}"></div>
+        <div class="full"><label>Motivo (o motorista vê)</label><input id="mb_motivo" value="${esc(bl.motivo||'')}" placeholder="Ex.: Semanalidade de R$ 699,00 vencida em 07/11"></div>
+        <div class="full"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="mb_avisar" checked style="width:auto"> Mandar também um aviso no app quando a situação mudar</label></div>
+      </div>
+      <div class="act"><button class="pri" onclick="motSalvarBloqueio('${x.id}')">Salvar situação</button></div></div>
+    <div class="step"><h3>🤝 Promessas de pagamento</h3>${proms.length?proms.map(p=>{ const s=MOT_PROM[p.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>Até ${fmtD(p.dataPrometida)}</b>${p.valor?' · '+fmtBRL(p.valor):''} <span class="tag ${s[1]}">${s[0]}</span><div class="muted">${esc(p.obs||'')}${p.resposta?' · Resposta: '+esc(p.resposta):''}</div></div><span class="sp"></span><div class="row">${p.status==='pendente'?`<button class="pri" onclick="motRespPromessa('${p.id}','aceita')">Aceitar</button><button class="ghost danger" onclick="motRespPromessa('${p.id}','recusada')">Recusar</button>`:''}${p.status==='aceita'?`<button class="pri" onclick="motRespPromessa('${p.id}','cumprida')">Pagou</button><button class="ghost danger" onclick="motRespPromessa('${p.id}','quebrada')">Não pagou</button>`:''}</div></div>`; }).join(''):'<div class="muted">Nenhuma promessa.</div>'}</div>
+    <div class="step"><h3>🛠 Pedidos de manutenção</h3>${ags.length?ags.map(g=>{ const s=MOT_AGEND[g.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>${fmtD(g.dataDesejada)}</b> <span class="tag ${s[1]}">${s[0]}${g.status==='confirmado'&&g.dataConfirmada?' · '+fmtD(g.dataConfirmada):''}</span><div>${esc(g.descricao||'')}${g.km?` <span class="muted">(${fmtKm(g.km)})</span>`:''}</div>${g.resposta?`<div class="muted">Resposta: ${esc(g.resposta)}</div>`:''}</div><span class="sp"></span>${g.status==='solicitado'?`<div class="row"><button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="ghost danger" onclick="motRespAgend('${g.id}','recusado')">Recusar</button></div>`:''}</div>`; }).join(''):'<div class="muted">Nenhum pedido.</div>'}</div>
+    <div class="step"><h3>💬 Conversa</h3>
+      <div id="mot_chat" style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0">${msgs.length?msgs.map(t=>`<div style="align-self:${t.de==='equipe'?'flex-end':'flex-start'};max-width:85%;padding:7px 11px;border-radius:12px;background:${t.de==='equipe'?'var(--brand)':'var(--soft)'};color:${t.de==='equipe'?'#fff':'var(--ink)'};white-space:pre-wrap;word-wrap:break-word"><div style="font-size:11px;opacity:.8">${esc(t.autor||'')} · ${esc(motHora(t.em))}${t.de==='equipe'&&t.lidaMotorista?' · ✓ lida':''}</div>${esc(t.texto)}</div>`).join(''):'<div class="muted">Nenhuma mensagem ainda.</div>'}</div>
+      <div class="row" style="margin-top:8px;align-items:flex-end"><textarea id="mot_txt" placeholder="Escreva para o motorista…" style="flex:1;min-height:46px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();motEnviarMsg('${x.id}')}"></textarea><button class="pri" onclick="motEnviarMsg('${x.id}')">Enviar</button></div></div>
+    <div class="step"><div class="row"><h3 style="margin:0">📢 Avisos no app</h3><span class="sp"></span><button class="sec" onclick="motAvisoForm('${x.id}')">+ Aviso para ${esc((x.nome||'').split(' ')[0])}</button></div>
+      ${avs.length?avs.map(a=>`<div class="osrow" style="cursor:default"><div><b>${esc(a.titulo||'')}</b> <span class="tag neu">${a.motoristaId?'só dele':'geral'}</span>${a.ate?` <span class="muted">até ${fmtD(a.ate)}</span>`:''}<div class="muted">${esc(a.texto||'')}</div></div><span class="sp"></span><button class="ghost danger" onclick="motApagarAviso('${a.id}')">Apagar</button></div>`).join(''):'<div class="muted" style="margin-top:6px">Nenhum aviso.</div>'}</div>`;
+  const c=document.getElementById('mot_chat'); if(c) c.scrollTop=c.scrollHeight;
+}
+
+async function motEnviarMsg(id){
+  const t=document.getElementById('mot_txt'); const txt=(t&&t.value||'').trim(); if(!txt) return;
+  try{ await S.db.collection('mot_mensagens').add({motoristaId:id,de:'equipe',autor:(S.perfil&&S.perfil.nome)||'Cobrança Carsz',texto:txt,em:agoraIso(),lidaMotorista:false}); t.value=''; motRecarregar(); }
+  catch(e){ erroSalvar('enviar a mensagem',e); }
+}
+async function motMsgEquipe(id,texto){ await S.db.collection('mot_mensagens').add({motoristaId:id,de:'equipe',autor:(S.perfil&&S.perfil.nome)||'Cobrança Carsz',texto,em:agoraIso(),lidaMotorista:false}); }
+async function motSalvarBloqueio(id){
+  const x=S.mots.find(y=>y.id===id); if(!x) return;
+  const status=val('mb_status'), motivo=val('mb_motivo'), data=val('mb_data'); const avisar=document.getElementById('mb_avisar').checked;
+  if(status==='programado'&&!data){ toast('Informe a data do bloqueio programado'); return; }
+  const antes=(x.bloqueio||{}).status||'normal';
+  try{
+    await S.db.doc('motoristas/'+id).update({bloqueio:{status,motivo,data:status==='programado'?data:'',em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''}});
+    if(avisar&&status!==antes){
+      const tit=status==='bloqueado'?'Veículo bloqueado':status==='programado'?'Bloqueio programado para '+fmtD(data):'Veículo liberado';
+      await S.db.collection('mot_avisos').add({motoristaId:id,tipo:status==='normal'?'info':'urgente',titulo:tit,texto:status==='normal'?'Seu veículo foi liberado. Obrigado!':(motivo||''),em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''});
+    }
+    toast('Situação salva'); motRecarregar();
+  }catch(e){ erroSalvar('salvar a situação do veículo',e); }
+}
+function motRespPromessa(pid,status){
+  const p=S.motPromessas.find(y=>y.id===pid); if(!p) return;
+  const x=S.mots.find(y=>y.id===p.motoristaId)||{}; const st=(x.bloqueio||{}).status||'normal';
+  const rot={aceita:'Aceitar a promessa',recusada:'Recusar a promessa',cumprida:'Marcar como paga',quebrada:'Marcar como não paga'}[status];
+  const opc=status==='aceita'&&st!=='normal'?['Liberar o veículo agora (situação → Liberado)','normal']:status==='cumprida'&&st!=='normal'?['Liberar o veículo (situação → Liberado)','normal']:status==='quebrada'&&st!=='bloqueado'?['Bloquear o veículo de novo (situação → Bloqueado)','bloqueado']:null;
+  abrir(`<h3>${rot}</h3><p class="muted">${esc(x.nome||'')} prometeu pagar até <b>${fmtD(p.dataPrometida)}</b>${p.valor?' ('+fmtBRL(p.valor)+')':''}.</p>
+    <label>Resposta para o motorista (opcional)</label><textarea id="pr_resp" placeholder="${status==='aceita'?'Ex.: Ok, aguardamos o pagamento até lá.':''}"></textarea>
+    ${opc?`<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="pr_opc" checked style="width:auto"> ${opc[0]}</label>`:''}
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motConfirmarPromessa('${pid}','${status}','${opc?opc[1]:''}')">Confirmar</button></div>`);
+}
+async function motConfirmarPromessa(pid,status,novaSit){
+  const p=S.motPromessas.find(y=>y.id===pid); if(!p) return; const resp=val('pr_resp'); const opc=document.getElementById('pr_opc');
+  try{
+    await S.db.doc('mot_promessas/'+pid).update({status,resposta:resp,respondidoPor:(S.perfil&&S.perfil.nome)||'',respondidoEm:agoraIso()});
+    const txt={aceita:`Sua promessa de pagamento para ${fmtD(p.dataPrometida)} foi ACEITA.`,recusada:`Sua promessa de pagamento para ${fmtD(p.dataPrometida)} não foi aceita.`,cumprida:`Recebemos seu pagamento. Obrigado!`,quebrada:`O pagamento prometido para ${fmtD(p.dataPrometida)} não foi identificado.`}[status]+(resp?'\n'+resp:'');
+    await motMsgEquipe(p.motoristaId,txt);
+    if(opc&&opc.checked&&novaSit){ await S.db.doc('motoristas/'+p.motoristaId).update({bloqueio:{status:novaSit,motivo:'',data:'',em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''}}); }
+    fechar(); toast('Resposta enviada'); motRecarregar();
+  }catch(e){ erroSalvar('responder a promessa',e); }
+}
+function motRespAgend(gid,status){
+  const g=S.motAgend.find(y=>y.id===gid); if(!g) return;
+  abrir(`<h3>${status==='confirmado'?'Confirmar manutenção':'Recusar pedido'}</h3><p class="muted">${esc(g.motoristaNome||'')} · ${esc(g.placa||'')}: ${esc(g.descricao||'')}</p>
+    ${status==='confirmado'?`<label>Data confirmada</label><input id="ag_conf" type="date" value="${esc(g.dataDesejada||'')}">`:''}
+    <label>Mensagem para o motorista (opcional)</label><textarea id="ag_resp" placeholder="${status==='confirmado'?'Ex.: Pode vir às 9h.':'Ex.: Nessa data não temos vaga, sugiro outra.'}"></textarea>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motConfirmarAgend('${gid}','${status}')">Confirmar</button></div>`);
+}
+async function motConfirmarAgend(gid,status){
+  const g=S.motAgend.find(y=>y.id===gid); if(!g) return; const resp=val('ag_resp'); const dc=status==='confirmado'?val('ag_conf'):'';
+  if(status==='confirmado'&&!dc){ toast('Informe a data confirmada'); return; }
+  try{
+    await S.db.doc('mot_agendamentos/'+gid).update({status,resposta:resp,dataConfirmada:dc,respondidoPor:(S.perfil&&S.perfil.nome)||'',respondidoEm:agoraIso()});
+    await motMsgEquipe(g.motoristaId,(status==='confirmado'?`Sua manutenção foi CONFIRMADA para ${fmtD(dc)}.`:`Não foi possível atender o pedido de manutenção para ${fmtD(g.dataDesejada)}.`)+(resp?'\n'+resp:''));
+    fechar(); toast('Resposta enviada'); motRecarregar();
+  }catch(e){ erroSalvar('responder o pedido de manutenção',e); }
+}
+function motAvisoForm(motId){
+  abrir(`<h3>${motId?'Aviso para este motorista':'Aviso geral (todos os motoristas)'}</h3><div class="grid">
+    <div class="full"><label>Tipo</label><select id="av_tipo"><option value="geral">Geral</option><option value="cobranca">Cobrança</option><option value="manutencao">Manutenção</option><option value="urgente">Urgente</option><option value="info">Informativo</option></select></div>
+    <div class="full"><label>Título</label><input id="av_titulo" placeholder="Ex.: Semanalidade vence sexta"></div>
+    <div class="full"><label>Mensagem</label><textarea id="av_texto"></textarea></div>
+    <div class="full"><label>Some do app em (opcional)</label><input id="av_ate" type="date"></div></div>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motSalvarAviso('${motId}')">Publicar</button></div>`);
+}
+async function motSalvarAviso(motId){
+  const titulo=val('av_titulo'); if(!titulo){ toast('Informe o título'); return; }
+  try{ await S.db.collection('mot_avisos').add({motoristaId:motId||'',tipo:val('av_tipo'),titulo,texto:val('av_texto'),ate:val('av_ate')||null,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''}); fechar(); toast('Aviso publicado'); motRecarregar(); }
+  catch(e){ erroSalvar('publicar o aviso',e); }
+}
+async function motApagarAviso(id){ if(!confirm('Apagar este aviso?')) return; try{ await S.db.doc('mot_avisos/'+id).delete(); motRecarregar(); }catch(e){ erroSalvar('apagar o aviso',e); } }
+
+function motForm(id){
+  const x=id?(S.mots.find(m=>m.id===id)||{}):{ativo:true};
+  const veics=S.veic.filter(v=>isFrota(v)).sort((a,b)=>(a.placa||'').localeCompare(b.placa||''));
+  abrir(`<h3>${id?'Editar motorista':'Novo motorista'}</h3><div class="grid">
+    <div class="full"><label>Nome</label><input id="mf_nome" value="${esc(x.nome||'')}"></div>
+    <div><label>CPF (é o login do app)</label><input id="mf_cpf" inputmode="numeric" value="${esc(mascaraCpf(x.cpf||''))}" oninput="this.value=mascaraCpf(this.value)"></div>
+    <div><label>WhatsApp</label><input id="mf_tel" value="${esc(x.telefone||'')}" placeholder="11987654321"></div>
+    <div class="full"><label>Veículo</label><select id="mf_veic"><option value="">— sem veículo —</option>${veics.map(v=>`<option value="${v.id}" ${x.veiculoId===v.id?'selected':''}>${esc(v.placa)} · ${esc(v.modelo||'')}</option>`).join('')}</select></div>
+    <div class="full"><label>${id?'Nova senha (deixe em branco para manter a atual)':'Senha de acesso (mín. 6 caracteres)'}</label><div class="row"><input id="mf_senha" value="${id?'':motGerarSenha()}" style="flex:1" autocomplete="off"><button class="sec" type="button" onclick="document.getElementById('mf_senha').value=motGerarSenha()">Gerar</button></div></div>
+    <div class="full"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="mf_ativo" ${x.ativo!==false?'checked':''} style="width:auto"> Acesso ativo</label></div></div>
+    <div class="act">${id?`<button class="ghost danger" onclick="motApagar('${id}')">Excluir</button><span class="sp"></span>`:''}<button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motSalvar('${id}')">Salvar</button></div>`);
+}
+async function motSalvar(id){
+  const nome=val('mf_nome'), cpf=val('mf_cpf').replace(/\D/g,''), tel=val('mf_tel').replace(/\D/g,''), veicId=val('mf_veic'), senha=val('mf_senha'), ativo=document.getElementById('mf_ativo').checked;
+  if(!nome){ toast('Informe o nome'); return; }
+  if(!cpfValido(cpf)){ toast('CPF inválido'); return; }
+  if(!id&&senha.length<6){ toast('A senha precisa ter ao menos 6 caracteres'); return; }
+  if(id&&senha&&senha.length<6){ toast('A senha precisa ter ao menos 6 caracteres'); return; }
+  const v=S.veic.find(y=>y.id===veicId);
+  const base=id?{...(S.mots.find(m=>m.id===id)||{})}:{criadoEm:agoraIso(),criadoPor:S.mecNome};
+  const d={...base,nome,cpf,telefone:tel,veiculoId:veicId||'',placa:v?v.placa:'',ativo}; delete d.id;
+  let docId=id;
+  try{
+    if(id) await S.db.doc('motoristas/'+id).set(d); else { const ref=await S.db.collection('motoristas').add(d); docId=ref.id; }
+    const {data,error}=await sb.rpc('mot_salvar_acesso',{p_id:docId,p_cpf:cpf,p_senha:senha||null});
+    if(error) throw error;
+    if(data&&data.erro){ toast(data.erro); if(!id) await S.db.doc('motoristas/'+docId).delete(); return; }
+    fechar(); motRecarregar();
+    if(senha) motAcessoWhats(nome,tel,cpf,senha); else toast('Motorista salvo');
+  }catch(e){ erroSalvar('salvar o motorista',e); }
+}
+function motAcessoWhats(nome,tel,cpf,senha){
+  const msg=`Olá, ${nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\nAbra: ${motLink()}\nLogin (CPF): ${mascaraCpf(cpf)}\nSenha: ${senha}\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início". Você pode trocar a senha dentro do app.`;
+  const wa=telWa(tel);
+  abrir(`<h3>Acesso criado</h3><p class="muted">Anote ou envie agora — a senha não aparece de novo (se perder, é só definir outra em Editar).</p>
+    <div class="lastinfo"><b>Login:</b> ${esc(mascaraCpf(cpf))}<br><b>Senha:</b> ${esc(senha)}<br><b>Link:</b> ${esc(motLink())}</div>
+    <div class="act">${wa?`<button class="pri" onclick="window.open('https://wa.me/${wa}?text=${encodeURIComponent(msg)}','_blank')">💬 Enviar por WhatsApp</button>`:'<span class="hint">Sem WhatsApp cadastrado.</span>'}<button class="sec" onclick="fechar()">Fechar</button></div>`);
+}
+async function motApagar(id){
+  const x=S.mots.find(m=>m.id===id); if(!x) return;
+  if(!confirm(`Excluir o motorista ${x.nome}? O acesso dele ao app é removido (as mensagens antigas ficam no banco).`)) return;
+  try{ await S.db.doc('motoristas/'+id).delete(); S.motAtual=null; fechar(); toast('Motorista excluído'); motRecarregar(); }catch(e){ erroSalvar('excluir o motorista',e); }
+}
 
 // ============ boot ============
 function subCol(col,key){ S.db.collection(col).onSnapshot(snap=>{ S[key]=snap.docs.map(d=>({id:d.id,...d.data()})); render(); }, e=>{ document.getElementById('status').textContent='Erro: '+e.code; }); }
