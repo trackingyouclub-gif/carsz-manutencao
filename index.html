@@ -2971,20 +2971,23 @@ async function motConfirmarRecusa(fid){
     motWaPrompt(f.motoristaId,ref?ref.id:'',motMsgWaLivre(txt),'Foto recusada ('+motNomeFoto(f.tipo)+')');
   }catch(e){ erroSalvar('recusar a foto',e); }
 }
-// ---- pontuação dos motoristas (negativa: menos pontos = melhor). Atraso = dias com "Bloqueio programado"/"Bloqueado"
-// (registrado sozinho quando você muda a situação do veículo). 1 dia = -1 · 2 dias = -3 · 3+ dias = -6; cada promessa = -1.
+// ---- pontuação dos motoristas = SALDO (positivos − negativos), quanto MAIOR melhor. Positivos: água/óleo no dia +0,1 cada; foto do painel/etiqueta enviada na segunda +10 cada. Atraso = dias com "Bloqueio programado"/"Bloqueado"
+// (registrado sozinho quando você muda a situação do veículo). 1 dia = -20 · 2 dias = -50 · 3+ dias = -100; cada promessa = -10.
 // Vale as últimas 8 semanas. Empate: mais semanas seguidas sem atraso e sem promessa. Os motoristas veem a placa do 1º colocado.
-const motPts = n => n===0?'0':(n<0?'−':'+')+Math.abs(n);
+const motPts = n => { n=Math.round((+n||0)*10)/10; return n===0?'0':(n<0?'−':'+')+Math.abs(n).toLocaleString('pt-BR',{maximumFractionDigits:1}); };
+const motRotGanho = g => ({agua:'💧 Água verificada no dia',oleo:'🛢 Óleo verificado no dia',painel:'📷 Foto do painel na segunda',etiqueta:'📷 Foto da etiqueta na segunda'})[g.tipo]||g.tipo;
 function motPontosHtml(x){
   const e=(S.motRank||[]).find(y=>y.id===x.id);
   if(!e) return `<div class="step"><h3>🏆 Pontuação</h3><div class="muted">Sem pontuação ${x.ativo===false?'(motorista desativado)':!x.placa?'(motorista sem placa)':'ainda — atualize a página'}.</div></div>`;
   const pen=(e.penalidades||[]).slice().sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const gan=e.ganhos||[];
   const lin=p=>p.tipo==='promessa'
     ? `<div class="osrow" style="cursor:default"><div>🤝 Promessa de pagamento <span class="muted">${fmtD(p.data)}</span></div><span class="sp"></span><b>${motPts(p.pontos)}</b></div>`
     : `<div class="osrow" style="cursor:default"><div>⏰ Atraso de <b>${p.dias} dia${p.dias>1?'s':''}</b> <span class="muted">${fmtD(p.data)} ${p.aberto?'→ em aberto':'→ '+fmtD(p.fim)}</span></div><span class="sp"></span><b>${motPts(p.pontos)}</b> <button class="ghost" style="padding:2px 10px;font-size:12px" title="Use se a situação do veículo foi marcada por engano" onclick="motAnularAtraso('${p.id}',true)">Anular</button></div>`;
   const anul=S.motAtrasos.filter(a=>a.motoristaId===x.id&&a.anulado).sort((a,b)=>String(b.inicio).localeCompare(String(a.inicio)));
   return `<div class="step"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🏆 Pontuação</h3><span class="sp"></span><button class="sec" onclick="motRankingModal()">Ver ranking</button></div>
-    <div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="tag ${e.pontos<0?'bad':'ok'}" style="font-size:15px;padding:4px 12px">${motPts(e.pontos)} pontos</span><span class="tag neu">${e.posicao}º de ${(S.motRank||[]).length}</span><span class="tag ${e.semanas_limpas?'ok':'neu'}">🟢 ${e.semanas_limpas} semana${e.semanas_limpas===1?'':'s'} limpa${e.semanas_limpas===1?'':'s'} seguida${e.semanas_limpas===1?'':'s'}</span>${e.posicao===1?'<span class="tag ok">🏆 melhor motorista (a placa aparece para todos)</span>':''}</div>
+    <div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="tag ${e.pontos<0?'bad':'ok'}" style="font-size:15px;padding:4px 12px">${motPts(e.pontos)} pontos</span><span class="tag neu" title="positivos / negativos">+${motPts(e.positivos||0).replace('+','')} · ${motPts(e.negativos||0)}</span><span class="tag neu">${e.posicao}º de ${(S.motRank||[]).length}</span><span class="tag ${e.semanas_limpas?'ok':'neu'}">🟢 ${e.semanas_limpas} semana${e.semanas_limpas===1?'':'s'} limpa${e.semanas_limpas===1?'':'s'} seguida${e.semanas_limpas===1?'':'s'}</span>${e.posicao===1?'<span class="tag ok">🏆 melhor motorista (a placa aparece para todos)</span>':''}</div>
+    ${gan.map(g=>`<div class="osrow" style="cursor:default"><div>${motRotGanho(g)} <span class="muted">${g.qtd}×</span></div><span class="sp"></span><b style="color:var(--ok)">${motPts(g.pontos)}</b></div>`).join('')}
     ${pen.length?pen.map(lin).join(''):'<div class="muted">Nenhum ponto negativo nas últimas 8 semanas.</div>'}
     ${anul.length?`<div class="muted" style="margin-top:8px">Atrasos anulados:</div>${anul.map(a=>`<div class="osrow" style="cursor:default;opacity:.7"><div>⏰ ${fmtD(a.inicio)} → ${a.fim?fmtD(a.fim):'em aberto'} <span class="muted">anulado${a.anuladoPor?' por '+esc(a.anuladoPor):''}</span></div><span class="sp"></span><button class="ghost" style="padding:2px 10px;font-size:12px" onclick="motAnularAtraso('${a.id}',false)">Restaurar</button></div>`).join('')}`:''}
   </div>`;
@@ -2996,8 +2999,8 @@ async function motAnularAtraso(id,anular){
 function motRankingModal(){
   const rk=S.motRank||[];
   abrir(`<h3>🏆 Ranking de motoristas</h3>
-    <p class="muted">Últimas 8 semanas. Quanto menos pontos negativos, melhor. Atraso: 1 dia −1 · 2 dias −3 · 3+ dias −6. Promessa de pagamento: −1. Empate: mais semanas limpas seguidas. Os motoristas veem só a placa do 1º colocado e a própria posição.</p>
-    ${rk.length?`<div class="tbl"><table style="min-width:0"><tr><th>#</th><th>Placa</th><th>Motorista</th><th>Pontos</th><th>Semanas limpas</th></tr>${rk.map(e=>`<tr style="cursor:pointer" onclick="fechar();S.motAtual='${e.id}';render()"><td>${e.posicao===1?'🥇':e.posicao}</td><td><b>${esc(e.placa||'')}</b></td><td>${esc(e.nome||'')}</td><td><b style="color:var(--${e.pontos<0?'bad':'ok'})">${motPts(e.pontos)}</b></td><td>${e.semanas_limpas}</td></tr>`).join('')}</table></div>`:'<div class="muted">Nenhum motorista ativo com placa.</div>'}
+    <p class="muted">Últimas 8 semanas. Pontuação = saldo: quanto maior, melhor. <b>Ganha:</b> água e óleo verificados no dia +0,1 cada · foto do painel e da etiqueta enviadas na segunda-feira +10 cada. <b>Perde:</b> atraso 1 dia −20 · 2 dias −50 · 3+ dias −100 · promessa de pagamento −10. Empate: mais semanas limpas seguidas. Os motoristas veem só a placa do 1º colocado e a própria posição.</p>
+    ${rk.length?`<div class="tbl"><table style="min-width:0"><tr><th>#</th><th>Placa</th><th>Motorista</th><th>Saldo</th><th>+</th><th>−</th><th>Semanas limpas</th></tr>${rk.map(e=>`<tr style="cursor:pointer" onclick="fechar();S.motAtual='${e.id}';render()"><td>${e.posicao===1?'🥇':e.posicao}</td><td><b>${esc(e.placa||'')}</b></td><td>${esc(e.nome||'')}</td><td><b style="color:var(--${e.pontos<0?'bad':'ok'})">${motPts(e.pontos)}</b></td><td>${motPts(e.positivos||0)}</td><td>${motPts(e.negativos||0)}</td><td>${e.semanas_limpas}</td></tr>`).join('')}</table></div>`:'<div class="muted">Nenhum motorista ativo com placa.</div>'}
     <div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`);
 }
 // ---- comprovantes de pagamento enviados pelo motorista (foto ou PDF). Ao dar baixa ou recusar, o arquivo é APAGADO. ----
