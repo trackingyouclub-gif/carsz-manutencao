@@ -968,6 +968,9 @@ function oficinaView(m){
 // oficinaId: só usado ao CRIAR um usuário novo — permite ao administrador geral cadastrar alguém
 // direto para outra oficina (a partir de Oficinas > Editar oficina); sem isso, usa a própria oficina
 // de quem está logado (uso normal, pela aba "Oficina" de cada oficina)
+const genSenhaAcesso = () => { const c='abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const a=new Uint32Array(8); window.crypto.getRandomValues(a); return Array.from(a,n=>c[n%c.length]).join(''); };
+function mcSenhaModo(){ const gerar=val('mc_senhamodo')==='gerar', box=document.getElementById('mc_senhabox'); if(!box) return; box.style.display=gerar?'':'none'; if(gerar&&!document.getElementById('mc_senha').value) mcGerarSenha(); }
+function mcGerarSenha(){ const i=document.getElementById('mc_senha'); if(i) i.value=genSenhaAcesso(); }
 function formMec(id,oficinaId){
   const souChefeSoh = ehChefe()&&!ehGestor();
   const x=id?S.mecs.find(m=>m.id===id):{ativo:true,papel:'ajudante'};
@@ -985,13 +988,15 @@ function formMec(id,oficinaId){
   <div class="full"><label>Nome completo</label><input id="mc_nome" value="${esc(x.nome)}"></div>
   <div><label>CPF</label><input id="mc_cpf" value="${esc(x.cpf)}" inputmode="numeric" placeholder="000.000.000-00" oninput="this.value=mascaraCpf(this.value)"></div>
   <div><label>Telefone / WhatsApp</label><input id="mc_tel" value="${esc(x.telefone)}" inputmode="tel" placeholder="(11) 99999-9999" oninput="this.value=mascaraTel(this.value)"></div>
-  <div class="full"><label>E-mail${id?' (usado para entrar)':' (para criar a senha de acesso)'}</label><input id="mc_email" type="email" value="${esc(x.email)}" ${id?'disabled':''}></div>
+  <div class="full"><label>E-mail${' (usado para entrar)'}</label><input id="mc_email" type="email" value="${esc(x.email)}" ${id?'disabled':''}></div>
+  ${id?'':`<div class="full"><label>Senha de acesso</label><select id="mc_senhamodo" onchange="mcSenhaModo()"><option value="email">Enviar e-mail para a pessoa criar a senha</option><option value="gerar">Gerar a senha agora (eu mesmo envio por WhatsApp)</option></select>
+    <div id="mc_senhabox" style="display:none;margin-top:6px"><div class="row"><input id="mc_senha" value="" autocomplete="off" style="flex:1;font-family:monospace;letter-spacing:1px"><button type="button" class="sec" onclick="mcGerarSenha()">🎲 Gerar outra</button></div><div class="hint" style="margin-top:4px">Mínimo de 6 caracteres. Você pode digitar outra senha se preferir. Ela só aparece aqui e na tela seguinte — anote ou envie na hora.</div></div></div>`}
   <div><label>Papel</label><select id="mc_papel">${campoPapel}</select></div>
   <div><label>Situação</label><select id="mc_ativo">${opt(['Ativo','Inativo'],x.ativo===false?'Inativo':'Ativo')}</select></div>
   ${campoOficina}</div>
   <div class="hint"><b>Auxiliar de cobrança</b>: entra no mesmo sistema, mas vê só a aba <b>Motoristas</b> (todos os motoristas: chat, avisos, promessas de pagamento, bloqueios e pedidos de manutenção). Precisa ser da Oficina Matriz. Ajudante: insere peças e valores de peças na OS, mas não vê nem edita a mão de obra e não pode concluir a OS. Auxiliar administrativo: abre OS e preenche peças/valores das peças, sem nenhum acesso a totais financeiros ou mão de obra — só vê as abas Nova OS, Agendamentos, OS abertas e Histórico de placas.${souChefeSoh?'':' Mecânico chefe: acesso completo na oficina — peças, mão de obra e concluir/reabrir OS. Gestão: igual ao mecânico chefe, mais a aba "Oficina" para gerenciar a própria equipe (só a equipe da Oficina Matriz enxerga também os painéis gerais do sistema).'}</div>
   ${ehSuperadmin()?'<div class="hint">O campo "Oficina" move o usuário para outra oficina — as OS que ele já fez continuam registradas na oficina que atendeu na época, só os próximos atendimentos passam a contar pra oficina nova.</div>':''}
-  <div class="hint">${id?'Para redefinir a senha deste usuário, use o botão "Reenviar senha" na lista — ele mesmo cria uma senha nova pelo e-mail recebido.':'O usuário recebe um e-mail para criar a própria senha de acesso na hora (o botão "Reenviar senha" na lista reenvia esse e-mail, se precisar).'}</div>
+  <div class="hint">${id?'Para redefinir a senha deste usuário, use o botão "Reenviar senha" na lista — ele mesmo cria uma senha nova pelo e-mail recebido.':'Se escolher "Enviar e-mail", o usuário recebe um e-mail para criar a própria senha de acesso na hora (o botão "Reenviar senha" na lista reenvia esse e-mail, se precisar).'}</div>
   <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="salvarMec('${id||''}','${oficinaId||''}')">Salvar</button></div>`);
 }
 async function salvarMec(id,oficinaId){
@@ -1012,7 +1017,10 @@ async function salvarMec(id,oficinaId){
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('E-mail inválido');return;}
     // senha aleatória, de uso único e descartável: ninguém a usa — a pessoa define a própria
     // senha pelo e-mail de acesso disparado logo abaixo (reaproveita o fluxo de recuperação)
-    const senhaTemp=genId()+genId()+genId();
+    const modoSenha=document.getElementById('mc_senhamodo')?val('mc_senhamodo'):'email';
+    const senhaGerada=modoSenha==='gerar'?val('mc_senha'):'';
+    if(modoSenha==='gerar'&&senhaGerada.length<6){toast('A senha precisa ter ao menos 6 caracteres');return;}
+    const senhaTemp=modoSenha==='gerar'?senhaGerada:genId()+genId()+genId();
     const tmp=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
     const {data,error}=await tmp.auth.signUp({email,password:senhaTemp});
     if(error){toast('Erro: '+error.message);return;}
@@ -1020,6 +1028,12 @@ async function salvarMec(id,oficinaId){
     if(data.user.identities&&!data.user.identities.length){toast('Este e-mail já está cadastrado');return;}
     const d={nome,cpf,telefone:tel,email,papel,oficinaId:oficinaEscolhida||oficinaId||S.perfil.oficinaId||null,ativo,criadoEm:agoraIso()};
     const {error:e2}=await sb.from('perfis').upsert({id:data.user.id,data:d}); if(e2){toast('Erro ao salvar perfil: '+e2.message);return;}
+    if(modoSenha==='gerar'){
+      // senha definida aqui: não dispara o e-mail de criação de senha. Se o projeto exigir confirmação de
+      // e-mail, a conta só entra depois de confirmada — o aviso na tela seguinte cobre esse caso
+      const confirmado=!!(data.user.email_confirmed_at||data.user.confirmed_at||data.session);
+      fechar(); avisoAcessoMecSenha(nome,tel,email,senhaGerada,confirmado,papel); return;
+    }
     const {error:eReset}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
     fechar(); avisoAcessoMec(nome,tel,email,!eReset); return;
   } else {
@@ -1041,6 +1055,17 @@ function avisoAcessoMec(nome,tel,email,emailOk){
   const msg=`Olá${nome?', '+nome:''}! Seu acesso ao sistema de manutenção da Carsz foi criado.\n\nAcesse: ${site}\nSeu login: ${email}\n\nVocê recebeu um e-mail para criar sua senha de acesso (confira também a caixa de spam). Se não achar, use "Esqueci a senha" na tela de entrada com este e-mail.`;
   abrir(`<h3>Usuário cadastrado</h3><p class="muted">${emailOk?'E-mail de acesso enviado para '+esc(email)+'.':'Não foi possível enviar o e-mail automático agora — avise a pessoa para usar "Esqueci a senha" com este e-mail: '+esc(email)+'.'}</p>
   <div class="act">${telDigits?`<button class="pri" onclick="window.open('https://wa.me/${telDigits.length<=11?'55'+telDigits:telDigits}?text=${encodeURIComponent(msg)}','_blank')">💬 Enviar acesso por WhatsApp</button>`:'<span class="hint">Sem telefone cadastrado — não é possível enviar por WhatsApp.</span>'}<button class="sec" onclick="fechar()">Fechar</button></div>`);
+}
+function avisoAcessoMecSenha(nome,tel,email,senha,confirmado,papel){
+  const telDigits=(tel||'').replace(/\D/g,'');
+  const site=location.origin+location.pathname;
+  const msg=`Olá${nome?', '+nome:''}! Seu acesso ao sistema de manutenção da Carsz (${papelLabel(papel)}) foi criado.\n\nAcesse: ${site}\nLogin (e-mail): ${email}\nSenha: ${senha}\n\nGuarde a senha com você. Se precisar criar outra, use "Esqueci a senha" na tela de entrada.`;
+  window.__acessoMsg=msg; window.__acessoSenha=senha;
+  abrir(`<h3>Usuário cadastrado</h3>
+  <div class="lastinfo" style="font-size:15px"><div>Login (e-mail): <b>${esc(email)}</b></div><div style="margin-top:4px">Senha: <b style="font-family:monospace;font-size:18px;letter-spacing:1px">${esc(senha)}</b></div></div>
+  <p class="muted">Anote ou envie agora — por segurança a senha não fica guardada em nenhum lugar do sistema.</p>
+  ${confirmado?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>Atenção:</b> este projeto pede confirmação de e-mail. A pessoa só consegue entrar depois de confirmar o e-mail dela — se não chegar, peça para usar "Esqueci a senha" na tela de entrada.</div>`}
+  <div class="act">${telDigits?`<button class="pri" onclick="window.open('https://wa.me/${telDigits.length<=11?'55'+telDigits:telDigits}?text='+encodeURIComponent(window.__acessoMsg),'_blank')">💬 Enviar acesso por WhatsApp</button>`:'<span class="hint">Sem telefone cadastrado — não é possível enviar por WhatsApp.</span>'}<button class="sec" onclick="try{navigator.clipboard.writeText(window.__acessoMsg);toast('Acesso copiado')}catch(e){}">📋 Copiar acesso</button><button class="sec" onclick="window.__acessoMsg=window.__acessoSenha=null;fechar()">Fechar</button></div>`);
 }
 // reenvia o e-mail de criação/recuperação de senha pra alguém já cadastrado (sem recriar a
 // conta) — útil se a pessoa não achou o e-mail da primeira vez ou perdeu o link; o mecânico
