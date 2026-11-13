@@ -2851,9 +2851,13 @@ function motFotoSemana(id,semana){ const o={}; for(const f of S.motFotos) if(f.m
 function motFotoStatus(x){
   if(motDispensado(x)) return 'dispensado';
   const sem=motSegunda(), f=motFotoSemana(x.id,sem);
-  if(f.painel&&f.etiqueta) return 'ok';
-  const criado=x.criadoEm?new Date(x.criadoEm).toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}):'';
-  if(criado&&criado>sem) return 'opcional';
+  const valida=t=>f[t]&&!f[t].recusada, recusada=t=>f[t]&&f[t].recusada;
+  if(valida('painel')&&valida('etiqueta')) return 'ok';
+  const criado=x.criadoEm?new Date(x.criadoEm).toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}):''; const novo=criado&&criado>sem;
+  const faltando=!f.painel||!f.etiqueta; // alguma foto que nem foi enviada (diferente de recusada)
+  if(motHojeSP()>sem&&faltando&&!novo) return 'atrasada';
+  if(recusada('painel')||recusada('etiqueta')) return 'refazer';
+  if(novo) return 'opcional';
   return motHojeSP()===sem?'pendente':'atrasada';
 }
 // só cobra "não verificou hoje" depois do meio-dia (de manhã é normal ainda não ter feito)
@@ -2873,14 +2877,14 @@ function motCobrarVerif(id){
   const x=S.mots.find(y=>y.id===id); if(!x) return; const wa=telWa(x.telefone); if(!wa){ toast('Motorista sem telefone'); return; }
   const st=motFotoStatus(x), v=motVerifHoje(id); const falta=[]; if(!v.agua) falta.push('água'); if(!v.oleo) falta.push('óleo');
   const partes=[]; if(falta.length) partes.push('a verificação de '+falta.join(' e ')+' de hoje');
-  if(st==='pendente'||st==='atrasada') partes.push('as fotos da semana (painel de instrumentos e etiqueta de óleo)');
+  if(st==='pendente'||st==='atrasada'||st==='refazer') partes.push('as fotos da semana (painel de instrumentos e etiqueta de óleo)');
   if(!partes.length){ toast('Nada pendente para cobrar'); return; }
   const msg=`Olá, ${(x.nome||'').split(' ')[0]}! Falta você confirmar no app da Carsz ${partes.join(' e ')}. Abra o app e confirme agora: ${motLink()}${st==='atrasada'?'\n\nAtenção: as fotos estão atrasadas e o veículo está sujeito a bloqueio.':''}`;
   window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank');
 }
 // resposta rápida: alerta de bloqueio por falta do checklist por fotos (painel + etiqueta de óleo)
 function motTextoAlertaBloqueio(x){
-  const f=motFotoSemana(x.id,motSegunda()); const falta=[]; if(!f.painel) falta.push('foto do painel de instrumentos'); if(!f.etiqueta) falta.push('foto da etiqueta de troca de óleo');
+  const f=motFotoSemana(x.id,motSegunda()); const falta=[]; if(!f.painel||f.painel.recusada) falta.push('foto do painel de instrumentos'); if(!f.etiqueta||f.etiqueta.recusada) falta.push('foto da etiqueta de troca de óleo');
   const lista=falta.length?falta.join(' e '):'checklist por fotos da semana';
   return `⚠ ALERTA DE BLOQUEIO: ${(x.nome||'').split(' ')[0]}, ainda não recebemos o checklist por fotos da semana (${lista})${x.placa?' do veículo '+x.placa:''}. Abra o app agora e envie as fotos para evitar o bloqueio do veículo.`;
 }
@@ -2933,7 +2937,34 @@ async function motWaAbrir(motId,avisoId){
   window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(t),'_blank'); fechar();
   if(avisoId){ try{ await S.db.doc('mot_avisos/'+avisoId).update({waPendente:false,waEnviadoEm:agoraIso()}); motRecarregar(); }catch(e){ console.warn(e); } }
 }
-function motWaDoAviso(avisoId){ const a=S.motAvisos.find(y=>y.id===avisoId); if(!a) return; const x=S.mots.find(y=>y.id===a.motoristaId); motWaPrompt(a.motoristaId,avisoId,/ALERTA DE BLOQUEIO/.test(a.texto||'')?motMsgWaLivre(a.texto):motMsgWa(x,a.titulo,a.texto,a.tipo!=='info'),a.titulo); }
+function motWaDoAviso(avisoId){ const a=S.motAvisos.find(y=>y.id===avisoId); if(!a) return; const x=S.mots.find(y=>y.id===a.motoristaId); motWaPrompt(a.motoristaId,avisoId,/ALERTA DE BLOQUEIO|FOTO RECUSADA/.test(a.texto||'')?motMsgWaLivre(a.texto):motMsgWa(x,a.titulo,a.texto,a.tipo!=='info'),a.titulo); }
+// ---- recusar foto do checklist semanal (ilegível / informação errada) e avisar o motorista ----
+const MOT_RECUSA_MOTIVOS={
+  painel:['Foto ilegível (borrada, escura ou cortada)','Informação errada (o km do painel não confere)','Não aparece o painel inteiro / o hodômetro','Outro motivo'],
+  etiqueta:['Foto ilegível (borrada, escura ou cortada)','Informação errada (o km da etiqueta não confere)','Não aparece a etiqueta de troca de óleo','Outro motivo']};
+const motNomeFoto = t => t==='painel'?'painel de instrumentos':'etiqueta de troca de óleo';
+function motRecusarFoto(fid){
+  const f=S.motFotos.find(y=>y.id===fid); if(!f) return; const x=S.mots.find(y=>y.id===f.motoristaId)||{};
+  abrir(`<h3>✖ Recusar foto — ${motNomeFoto(f.tipo)}</h3>
+    <p class="muted">${esc(x.nome||'')}${x.placa?' · '+esc(x.placa):''}. O motorista é avisado e o app dele volta a pedir a foto até ele enviar uma nova.</p>
+    <label>Motivo</label><select id="rf_motivo">${(MOT_RECUSA_MOTIVOS[f.tipo]||MOT_RECUSA_MOTIVOS.painel).map(m=>`<option>${esc(m)}</option>`).join('')}</select>
+    <label>Observação para o motorista (opcional)</label><textarea id="rf_obs" placeholder="Ex.: Tire com o carro ligado, mostrando o km inteiro."></textarea>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="rf_chat" checked style="width:auto"> Enviar no chat do app (aba Cobrança)</label>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="rf_aviso" checked style="width:auto"> Criar aviso urgente na aba Avisos do app</label>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" style="background:var(--bad,#b91c1c);border-color:var(--bad,#b91c1c)" onclick="motConfirmarRecusa('${fid}')">Recusar e avisar</button></div>`);
+}
+async function motConfirmarRecusa(fid){
+  const f=S.motFotos.find(y=>y.id===fid); if(!f) return; const obs=val('rf_obs').trim(); const motivo=val('rf_motivo')+(obs?': '+obs:'');
+  const chat=document.getElementById('rf_chat'), avi=document.getElementById('rf_aviso');
+  const txt=`⚠ FOTO RECUSADA (${motNomeFoto(f.tipo)}): ${motivo}. Tire uma nova foto, bem nítida, e envie pelo app.`;
+  try{
+    await S.db.doc('mot_fotos/'+fid).update({recusada:true,recusadaMotivo:motivo,recusadaEm:agoraIso(),recusadaPor:(S.perfil&&S.perfil.nome)||''});
+    if(chat&&chat.checked) await motMsgEquipe(f.motoristaId,txt);
+    let ref=null; if(avi&&avi.checked) ref=await S.db.collection('mot_avisos').add({motoristaId:f.motoristaId,tipo:'urgente',titulo:'Foto recusada: '+motNomeFoto(f.tipo),texto:txt,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||'',waPendente:true});
+    fechar(); toast('Foto recusada — motorista avisado'); motRecarregar();
+    motWaPrompt(f.motoristaId,ref?ref.id:'',motMsgWaLivre(txt),'Foto recusada ('+motNomeFoto(f.tipo)+')');
+  }catch(e){ erroSalvar('recusar a foto',e); }
+}
 function motBloqueioPorFotos(id){
   const sel=document.getElementById('mb_status'), mot=document.getElementById('mb_motivo'), dt=document.getElementById('mb_data'); if(!sel||!mot||!dt) return;
   const d=new Date(motHojeSP()+'T12:00:00'); d.setDate(d.getDate()+1);
@@ -2943,19 +2974,22 @@ function motBloqueioPorFotos(id){
 function motVerifHtml(x){
   const hj=motVerifHoje(x.id), st=motFotoStatus(x), sem=motSegunda(), f=motFotoSemana(x.id,sem);
   const tg=(ok,txt,hora)=>ok?`<span class="tag ok">${txt} ${hora?motHoraSP(hora):''}</span>`:`<span class="tag warn">${txt} pendente</span>`;
-  const rot={ok:['Fotos da semana em dia','ok'],pendente:['Fotos pendentes (prazo hoje)','warn'],atrasada:['Fotos ATRASADAS','bad'],opcional:['Fotos opcionais nesta semana','neu'],dispensado:['Verificações dispensadas (veículo parado/na oficina/desativado)','neu']}[st];
+  const rot={ok:['Fotos da semana em dia','ok'],pendente:['Fotos pendentes (prazo hoje)','warn'],atrasada:['Fotos ATRASADAS','bad'],opcional:['Fotos opcionais nesta semana','neu'],refazer:['Foto recusada — aguardando reenvio','warn'],dispensado:['Verificações dispensadas (veículo parado/na oficina/desativado)','neu']}[st];
   // últimas semanas
   const semanas=[]; for(let i=0;i<5;i++){ const d=new Date(sem+'T12:00:00'); d.setDate(d.getDate()-7*i); semanas.push(d.toLocaleDateString('sv-SE')); }
   const linhasFoto=semanas.map(w=>{ const fw=motFotoSemana(x.id,w); const cel=(t,rot2)=>{ const r=fw[t]; if(!r) return `<span class="muted">— não enviada</span>`; if(r.expirada||(r.expiraEm&&new Date(r.expiraEm)<new Date())) return `<span class="muted">enviada ${motDiaHoraSP(r.em)} · foto expirada</span>`;
-      const dias=Math.max(0,Math.ceil((new Date(r.expiraEm)-new Date())/864e5)); return `<button class="sec" style="padding:2px 10px;font-size:12px" onclick="motVerFoto('${r.fotoId}','${rot2} — ${fmtD(w)}')">🔍 ver foto</button> <span class="muted">· ${motDiaHoraSP(r.em)}${r.tardia?' · <b style="color:var(--bad)">fora do prazo</b>':''} · expira em ${dias}d</span>`; };
+      const dias=Math.max(0,Math.ceil((new Date(r.expiraEm)-new Date())/864e5));
+      const recusar=(w===sem&&!r.recusada)?` <button class="ghost danger" style="padding:2px 10px;font-size:12px" onclick="motRecusarFoto('${r.id}')">✖ Recusar</button>`:'';
+      const marca=r.recusada?` <span class="tag bad">recusada: ${esc(r.recusadaMotivo||'')}</span> <span class="muted">(aguardando nova foto)</span>`:(r.reenviada?' <span class="tag ok">reenviada</span>':'');
+      return `<button class="sec" style="padding:2px 10px;font-size:12px" onclick="motVerFoto('${r.fotoId}','${rot2} — ${fmtD(w)}')">🔍 ver foto</button> <span class="muted">· ${motDiaHoraSP(r.em)}${r.tardia?' · <b style="color:var(--bad)">fora do prazo</b>':''} · expira em ${dias}d</span>${marca}${recusar}`; };
     return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>Semana de ${fmtD(w)}</b><div>📷 Painel: ${cel('painel','Painel')}</div><div>📷 Etiqueta: ${cel('etiqueta','Etiqueta de óleo')}</div></div></div>`; }).join('');
   // últimos 14 dias de água/óleo
   const porDia={}; for(const v of S.motVerif) if(v.motoristaId===x.id){ (porDia[v.dia]=porDia[v.dia]||{})[v.tipo]=v.em; }
   const dias=Object.keys(porDia).sort().reverse().slice(0,14);
   const hist=dias.length?`<div class="tbl"><table style="min-width:0"><tr><th>Dia</th><th>💧 Água</th><th>🛢 Óleo</th></tr>${dias.map(d=>`<tr><td>${fmtD(d)}</td><td>${porDia[d].agua?motHoraSP(porDia[d].agua):'—'}</td><td>${porDia[d].oleo?motHoraSP(porDia[d].oleo):'—'}</td></tr>`).join('')}</table></div>`:'<div class="muted">Nenhuma verificação registrada ainda.</div>';
-  return `<div class="step"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🧰 Verificações de água/óleo e fotos</h3><span class="sp"></span>${st==='pendente'||st==='atrasada'?`<button class="${st==='atrasada'?'pri':'sec'}" style="${st==='atrasada'?'background:var(--bad,#b91c1c);border-color:var(--bad,#b91c1c)':''}" onclick="motAlertaBloqueio('${x.id}')">⚡ Alerta de bloqueio (fotos)</button>`:''}<button class="sec" onclick="motCobrarVerif('${x.id}')">💬 Cobrar por WhatsApp</button></div>
+  return `<div class="step"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🧰 Verificações de água/óleo e fotos</h3><span class="sp"></span>${st==='pendente'||st==='atrasada'||st==='refazer'?`<button class="${st==='atrasada'?'pri':'sec'}" style="${st==='atrasada'?'background:var(--bad,#b91c1c);border-color:var(--bad,#b91c1c)':''}" onclick="motAlertaBloqueio('${x.id}')">⚡ Alerta de bloqueio (fotos)</button>`:''}<button class="sec" onclick="motCobrarVerif('${x.id}')">💬 Cobrar por WhatsApp</button></div>
     <div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap">${tg(hj.agua,'💧 Água hoje',hj.agua)}${tg(hj.oleo,'🛢 Óleo hoje',hj.oleo)}<span class="tag ${rot[1]}">${rot[0]}</span></div>
-    ${st==='atrasada'||st==='pendente'?`<div class="hint" style="margin-bottom:8px">O app do motorista fica travado até ele confirmar. Se as fotos não vierem, use <a href="#" onclick="motBloqueioPorFotos('${x.id}');return false">programar bloqueio por falta de fotos</a> (só sinaliza no app; o bloqueio real é no rastreador).</div>`:''}
+    ${st==='atrasada'||st==='pendente'||st==='refazer'?`<div class="hint" style="margin-bottom:8px">O app do motorista fica travado até ele confirmar. Se as fotos não vierem, use <button class="sec" style="padding:2px 10px;font-size:12px" onclick="motBloqueioPorFotos('${x.id}')">programar bloqueio por falta de fotos</button> (só sinaliza no app; o bloqueio real é no rastreador).</div>`:''}
     <b>Fotos semanais</b> <span class="muted">(ficam guardadas por 30 dias)</span>${linhasFoto}
     <div style="margin-top:10px"><b>Últimos dias</b></div>${hist}</div>`;
 }
@@ -2991,7 +3025,7 @@ function motoristasView(m){
     </div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?'Nenhum motorista encontrado.':'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 

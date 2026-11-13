@@ -206,29 +206,32 @@ function pendencias(r){
   if(!v||bl==='bloqueado'||r.na_oficina) return []; // carro parado (bloqueado ou na oficina): não cobra verificação
   const ve=r.verificacoes||{}, f=r.fotos||{}, p=[];
   if(!ve.agua) p.push('agua'); if(!ve.oleo) p.push('oleo');
-  if(f.status==='pendente'||f.status==='atrasada'){ if(!f.painel) p.push('painel'); if(!f.etiqueta) p.push('etiqueta'); }
+  if(f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'){ if(!f.painel) p.push('painel'); if(!f.etiqueta) p.push('etiqueta'); }
   return p;
 }
 function obrigHtml(r){
   const pend=pendencias(r); if(!pend.length) return '';
-  const ve=r.verificacoes||{}, f=r.fotos||{}; const comFotos=f.status==='pendente'||f.status==='atrasada';
+  const ve=r.verificacoes||{}, f=r.fotos||{}; const comFotos=f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'; const rec=f.recusadas||{};
   const item=(k,em,tit,desc,hora,acao)=> hora
     ? `<div class="card done"><div class="it"><span class="em">✅</span><div class="tx"><b>${tit}</b><div class="muted sm">Registrado hoje às ${hhmm(hora)}</div></div></div></div>`
     : `<div class="card"><div class="it"><span class="em">${em}</span><div class="tx"><b>${tit}</b><div class="muted sm">${desc}</div>${acao}</div></div></div>`;
   const btn=(t,tit)=>`<button class="btn" id="vb_${t}" onclick="verificar('${t}')">Já verifiquei ${tit}</button>`;
-  const foto=t=>`<label class="btn" id="fb_${t}">📷 Tirar foto<input type="file" accept="image/*" capture="environment" data-foto="${t}" onchange="enviarFoto('${t}',this)"></label>`;
+  const foto=t=>`<label class="btn" id="fb_${t}">${rec[t]?'📷 Enviar nova foto':'📷 Tirar foto'}<input type="file" accept="image/*" capture="environment" data-foto="${t}" onchange="enviarFoto('${t}',this)"></label>`;
   let h=`<div class="obrig"><div class="wrap"><h2>✋ Verificações obrigatórias</h2>
     <p class="muted" style="margin:0 0 14px">Para continuar usando o app, confirme os itens abaixo. Fica registrado o dia e o horário de cada um.</p>`;
   if(comFotos){
-    h+=f.status==='atrasada'
+    h+=f.status==='refazer'
+      ? `<div class="alert bad"><b class="t">📷 Foto recusada pela cobrança</b><div class="txt">Alguma foto veio ilegível ou com informação errada. Veja o motivo abaixo e envie de novo.</div></div>`
+      : f.status==='atrasada'
       ? `<div class="alert bad"><b class="t">🚨 Fotos da semana atrasadas</b><div class="txt">As fotos eram para segunda-feira. O veículo está sujeito a bloqueio — envie agora.</div></div>`
       : `<div class="alert warn"><b class="t">⚠ Hoje é dia das fotos da semana</b><div class="txt">Envie até hoje, 23:59. Sem as fotos, o veículo poderá ser bloqueado.</div></div>`;
   }
   h+=item('agua','💧','Água do radiador','Com o motor frio, confira o nível do reservatório de água.',ve.agua,btn('agua','a água'));
   h+=item('oleo','🛢','Óleo do motor','Confira o nível do óleo na vareta.',ve.oleo,btn('oleo','o óleo'));
   if(comFotos){
-    h+=item('painel','📷','Foto do painel de instrumentos','Com o carro ligado, foto do painel inteiro mostrando o km (hodômetro) e as luzes.',f.painel,foto('painel'));
-    h+=item('etiqueta','📷','Foto da etiqueta de troca de óleo','Foto da etiqueta/adesivo com o km da próxima troca de óleo.',f.etiqueta,foto('etiqueta'));
+    const motivo=t=>rec[t]?`<div class="alert bad" style="margin:6px 0"><b>Foto recusada:</b> ${esc(rec[t].motivo||'ilegível ou informação errada')}</div>`:'';
+    h+=item('painel','📷','Foto do painel de instrumentos',motivo('painel')+'Com o carro ligado, foto do painel inteiro mostrando o km (hodômetro) e as luzes. Deve ficar nítida e legível.',f.painel,foto('painel'));
+    h+=item('etiqueta','📷','Foto da etiqueta de troca de óleo',motivo('etiqueta')+'Foto da etiqueta/adesivo com o km da próxima troca de óleo. Deve ficar nítida e legível.',f.etiqueta,foto('etiqueta'));
   }
   return h+`<div class="muted sm" style="text-align:center;margin-top:6px">Faltam ${pend.length} item${pend.length>1?'s':''}.</div></div></div>`;
 }
@@ -261,9 +264,9 @@ async function enviarFoto(tipo,input){
 }
 function cartaoVerificacoes(r){
   const v=r.veiculo, ve=r.verificacoes||{}, f=r.fotos||{}; if(!v) return '';
-  const linha=(ic,t,h)=>`<div class="row" style="margin:4px 0"><span>${ic} ${t}</span><span class="sp"></span>${h?`<span class="tag ok">${hhmm(h)}</span>`:'<span class="tag warn">pendente</span>'}</div>`;
+  const rc=f.recusadas||{}; const linha=(ic,t,h,rec)=>`<div class="row" style="margin:4px 0"><span>${ic} ${t}</span><span class="sp"></span>${rec?'<span class="tag bad">recusada — enviar de novo</span>':h?`<span class="tag ok">${hhmm(h)}</span>`:'<span class="tag warn">pendente</span>'}</div>`;
   let h=`<div class="card"><h3>🧰 Verificações</h3>${linha('💧','Água hoje',ve.agua)}${linha('🛢','Óleo hoje',ve.oleo)}`;
-  h+=`<div class="muted sm" style="margin:10px 0 4px"><b>Fotos da semana</b> (toda segunda-feira)</div>${linha('📷','Painel de instrumentos',f.painel)}${linha('📷','Etiqueta de óleo',f.etiqueta)}`;
+  h+=`<div class="muted sm" style="margin:10px 0 4px"><b>Fotos da semana</b> (toda segunda-feira)</div>${linha('📷','Painel de instrumentos',f.painel,rc.painel)}${linha('📷','Etiqueta de óleo',f.etiqueta,rc.etiqueta)}`;
   if(f.status==='opcional'&&(!f.painel||!f.etiqueta)){
     h+=`<div class="muted sm" style="margin:8px 0 0">Você foi cadastrado nesta semana: as fotos passam a ser obrigatórias a partir da próxima segunda. Pode enviar já:</div>`;
     if(!f.painel) h+=`<label class="btn sec" id="fb_painel" style="margin-top:8px">📷 Foto do painel<input type="file" accept="image/*" capture="environment" data-foto="painel" onchange="enviarFoto('painel',this)" style="display:none"></label>`;
