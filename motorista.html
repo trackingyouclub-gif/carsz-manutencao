@@ -35,9 +35,11 @@ header h1{margin:0;font-size:18px;flex:1;letter-spacing:.2px}
 header .ic{background:rgba(255,255,255,.18);border:0;border-radius:10px;color:#fff;font-size:20px;width:40px;height:40px}
 main{flex:1;padding:14px 16px 24px;max-width:640px;width:100%;margin:0 auto}
 nav.tabs{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:5}
-nav.tabs button{flex:1;background:none;border:0;padding:9px 2px 8px;color:var(--muted);font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+nav.tabs button{flex:1;min-width:0;background:none;border:0;padding:9px 1px 8px;color:var(--muted);font-size:10.5px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
 nav.tabs button .i{font-size:21px;line-height:1}
 nav.tabs button.on{color:var(--brand);font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}.chip{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:16px;padding:4px 11px;font-size:12.5px}.chip.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:700}
+.atag{display:inline-block;font-size:10.5px;font-weight:800;border-radius:5px;padding:0 6px;margin-right:6px;background:rgba(127,127,127,.25)}
 .badge{position:absolute;top:3px;left:calc(50% + 8px);background:var(--bad);color:#fff;border-radius:99px;font-size:11px;font-weight:700;min-width:18px;height:18px;line-height:18px;padding:0 5px;text-align:center}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
 .card h2,.card h3{margin:0 0 6px;font-size:16px}
@@ -209,6 +211,7 @@ function pendencias(r){
   if(f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'){ if(!f.painel) p.push('painel'); if(!f.etiqueta) p.push('etiqueta'); }
   return p;
 }
+const ptsFoto=()=>new Date().getDay()===1?' <b>Enviando hoje (segunda): +10 pontos.</b>':' <span class="muted">Fora da segunda a foto não pontua.</span>';
 function obrigHtml(r){
   const pend=pendencias(r); if(!pend.length) return '';
   const ve=r.verificacoes||{}, f=r.fotos||{}; const comFotos=f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'; const rec=f.recusadas||{};
@@ -218,7 +221,7 @@ function obrigHtml(r){
   const btn=(t,tit)=>`<button class="btn" id="vb_${t}" onclick="verificar('${t}')">Já verifiquei ${tit}</button>`;
   const foto=t=>`<label class="btn" id="fb_${t}">${rec[t]?'📷 Enviar nova foto':'📷 Tirar foto'}<input type="file" accept="image/*" capture="environment" data-foto="${t}" onchange="enviarFoto('${t}',this)"></label>`;
   let h=`<div class="obrig"><div class="wrap"><h2>✋ Verificações obrigatórias</h2>
-    <p class="muted" style="margin:0 0 14px">Para continuar usando o app, confirme os itens abaixo. Fica registrado o dia e o horário de cada um.</p>`;
+    <p class="muted" style="margin:0 0 14px">Para continuar usando o app, confirme os itens abaixo. Fica registrado o dia e o horário de cada um — e cada item rende pontos.</p>`;
   if(comFotos){
     h+=f.status==='refazer'
       ? `<div class="alert bad"><b class="t">📷 Foto recusada pela cobrança</b><div class="txt">Alguma foto veio ilegível ou com informação errada. Veja o motivo abaixo e envie de novo.</div></div>`
@@ -226,12 +229,12 @@ function obrigHtml(r){
       ? `<div class="alert bad"><b class="t">🚨 Fotos da semana atrasadas</b><div class="txt">As fotos eram para segunda-feira. O veículo está sujeito a bloqueio — envie agora.</div></div>`
       : `<div class="alert warn"><b class="t">⚠ Hoje é dia das fotos da semana</b><div class="txt">Envie até hoje, 23:59. Sem as fotos, o veículo poderá ser bloqueado.</div></div>`;
   }
-  h+=item('agua','💧','Água do radiador','Com o motor frio, confira o nível do reservatório de água.',ve.agua,btn('agua','a água'));
-  h+=item('oleo','🛢','Óleo do motor','Confira o nível do óleo na vareta.',ve.oleo,btn('oleo','o óleo'));
+  h+=item('agua','💧','Água do radiador','Com o motor frio, confira o nível do reservatório de água. <b>+0,1 ponto</b>',ve.agua,btn('agua','a água'));
+  h+=item('oleo','🛢','Óleo do motor','Confira o nível do óleo na vareta. <b>+0,1 ponto</b>',ve.oleo,btn('oleo','o óleo'));
   if(comFotos){
     const motivo=t=>rec[t]?`<div class="alert bad" style="margin:6px 0"><b>Foto recusada:</b> ${esc(rec[t].motivo||'ilegível ou informação errada')}</div>`:'';
-    h+=item('painel','📷','Foto do painel de instrumentos',motivo('painel')+'Com o carro ligado, foto do painel inteiro mostrando o km (hodômetro) e as luzes. Deve ficar nítida e legível.',f.painel,foto('painel'));
-    h+=item('etiqueta','📷','Foto da etiqueta de troca de óleo',motivo('etiqueta')+'Foto da etiqueta/adesivo com o km da próxima troca de óleo. Deve ficar nítida e legível.',f.etiqueta,foto('etiqueta'));
+    h+=item('painel','📷','Foto do painel de instrumentos',motivo('painel')+'Com o carro ligado, foto do painel inteiro mostrando o km (hodômetro) e as luzes. Deve ficar nítida e legível.'+ptsFoto(),f.painel,foto('painel'));
+    h+=item('etiqueta','📷','Foto da etiqueta de troca de óleo',motivo('etiqueta')+'Foto da etiqueta/adesivo com o km da próxima troca de óleo. Deve ficar nítida e legível.'+ptsFoto(),f.etiqueta,foto('etiqueta'));
   }
   return h+`<div class="muted sm" style="text-align:center;margin-top:6px">Faltam ${pend.length} item${pend.length>1?'s':''}.</div></div></div>`;
 }
@@ -264,9 +267,10 @@ async function enviarFoto(tipo,input){
 }
 function cartaoVerificacoes(r){
   const v=r.veiculo, ve=r.verificacoes||{}, f=r.fotos||{}; if(!v) return '';
-  const rc=f.recusadas||{}; const linha=(ic,t,h,rec)=>`<div class="row" style="margin:4px 0"><span>${ic} ${t}</span><span class="sp"></span>${rec?'<span class="tag bad">recusada — enviar de novo</span>':h?`<span class="tag ok">${hhmm(h)}</span>`:'<span class="tag warn">pendente</span>'}</div>`;
-  let h=`<div class="card"><h3>🧰 Verificações</h3>${linha('💧','Água hoje',ve.agua)}${linha('🛢','Óleo hoje',ve.oleo)}`;
-  h+=`<div class="muted sm" style="margin:10px 0 4px"><b>Fotos da semana</b> (toda segunda-feira)</div>${linha('📷','Painel de instrumentos',f.painel,rc.painel)}${linha('📷','Etiqueta de óleo',f.etiqueta,rc.etiqueta)}`;
+  const rc=f.recusadas||{}; const seg=new Date().getDay()===1; const linha=(ic,t,h,rec,pts)=>`<div class="row" style="margin:4px 0"><span>${ic} ${t}</span><span class="sp"></span>${rec?'<span class="tag bad">recusada — enviar de novo</span>':h?`<span class="tag ok">✓ ${hhmm(h)}${pts==='+0,1'?' '+pts:''}</span>`:`<span class="tag warn">pendente</span>${pts?` <span class="tag neu">${pts}</span>`:''}`}</div>`;
+  let h=`<div class="card"><h3>📋 Para fazer hoje <span class="muted sm" style="font-weight:400">(ganhe pontos)</span></h3>${linha('💧','Água hoje',ve.agua,0,'+0,1')}${linha('🛢','Óleo hoje',ve.oleo,0,'+0,1')}`;
+  h+=`<div class="muted sm" style="margin:10px 0 4px"><b>Fotos da semana</b> (toda segunda-feira)</div>${linha('📷','Painel de instrumentos',f.painel,rc.painel,'+10 (segunda)')}${linha('📷','Etiqueta de óleo',f.etiqueta,rc.etiqueta,'+10 (segunda)')}`;
+  h+=`<div class="muted sm" style="margin-top:6px">Água e óleo: +0,1 cada, por dia. Fotos: +10 cada, só se enviadas na segunda-feira.</div>`;
   if(f.status==='opcional'&&(!f.painel||!f.etiqueta)){
     h+=`<div class="muted sm" style="margin:8px 0 0">Você foi cadastrado nesta semana: as fotos passam a ser obrigatórias a partir da próxima segunda. Pode enviar já:</div>`;
     if(!f.painel) h+=`<label class="btn sec" id="fb_painel" style="margin-top:8px">📷 Foto do painel<input type="file" accept="image/*" capture="environment" data-foto="painel" onchange="enviarFoto('painel',this)" style="display:none"></label>`;
@@ -303,12 +307,12 @@ function render(rolarChat){
   if(!S.resumo){ app.innerHTML=`<header><h1>Carsz Motorista</h1></header><main><div class="empty">Carregando…</div></main>`; return; }
   const keep=guardarCampos();
   const r=S.resumo; const nl=r.nao_lidas||0;
-  const novosAvisos=avisosVisiveis(r).filter(a=>!vistos.has(a.id)).length;
-  const conteudo={inicio:telaInicio,avisos:telaAvisos,chat:telaChat,manut:telaManut}[S.tab](r);
+  const novosAvisos=avisosVisiveis(r).filter(a=>!vistos.has(a.id)).length; const nRec=(r.comprovantes||[]).filter(c=>c.status==='recusado').length;
+  const conteudo={inicio:telaInicio,avisos:telaAvisos,cobranca:telaCobranca,chat:telaChat,manut:telaManut}[S.tab](r);
   app.innerHTML=`<header><h1>Carsz Motorista</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
     <main>${conteudo}</main>
     <nav class="tabs">
-      ${[['inicio','🏠','Início',0],['avisos','🔔','Avisos',novosAvisos],['chat','💬','Cobrança',nl],['manut','🛠','Manutenção',0]].map(([k,i,l,n])=>`<button class="${S.tab===k?'on':''}" onclick="irPara('${k}')"><span class="i">${i}</span>${l}${n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
+      ${[['inicio','🏠','Início',0],['avisos','🔔','Avisos',novosAvisos],['cobranca','💳','Cobrança',nRec],['chat','💬','Chat',nl],['manut','🛠','Manutenção',0]].map(([k,i,l,n])=>`<button class="${S.tab===k?'on':''}" onclick="irPara('${k}')"><span class="i">${i}</span>${l}${n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
     </nav>${obrigHtml(r)}`;
   document.body.style.overflow=pendencias(r).length?'hidden':'';
   restaurarCampos(keep);
@@ -342,50 +346,60 @@ function avisosVisiveis(r){ const adia=promessaAceitaAdia(r), prog=((r.motorista
 const STATUS_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
 const STATUS_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Não foi possível','bad'],concluido:['Concluído','neu']};
 
-function telaInicio(r){
-  const m=r.motorista, v=r.veiculo, bl=m.bloqueio||{status:'normal'}; const pe=promessaEmAberto(r);
-  let h=`<div style="margin:2px 2px 12px"><div class="muted">Olá,</div><div style="font-size:22px;font-weight:800">${esc((m.nome||'').split(' ')[0])}</div></div>`;
-  // bloqueio sinalizado pela equipe (o bloqueio em si é feito pela Carsz; aqui só avisa e permite prometer pagamento)
-  const adia=promessaAceitaAdia(r);
-  if(adia){
-    h+=`<div class="alert ok"><b class="t">🤝 Promessa de pagamento aceita</b><div class="txt">Pagamento combinado para <b>${fmtD(adia.dataPrometida)}</b>${adia.resposta?' — '+esc(adia.resposta):''}. O aviso de bloqueio foi suspenso. Se não pagar até lá, ele volta.</div><button class="btn sec" onclick="irPara('chat')">Falar com a cobrança</button></div>`;
-  } else if(bl.status==='bloqueado'||bl.status==='programado'){
-    const bloq=bl.status==='bloqueado';
-    h+=`<div class="alert ${bloq?'bad':'warn'}"><b class="t">${bloq?'🔒 Veículo bloqueado':'⚠ Bloqueio programado'}${!bloq&&bl.data?' para '+fmtD(bl.data):''}</b>
-      ${bl.motivo?`<div class="txt">${esc(bl.motivo)}</div>`:''}
-      ${pe?`<div class="txt"><b>Promessa de pagamento registrada para ${fmtD(pe.dataPrometida)}</b> — ${pe.status==='aceita'?'aceita pela cobrança.':'aguardando resposta da cobrança.'}</div><button class="btn sec" onclick="irPara('chat')">Falar com a cobrança</button>`
-          :`<div class="txt">${bloq?'Para pedir o desbloqueio, informe quando vai pagar.':'Para evitar o bloqueio, regularize ou informe quando vai pagar.'}</div><button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`}
-    </div>`;
-  } else {
-    h+=`<div class="alert ok"><b class="t" style="margin:0">✅ Tudo certo com o seu veículo</b></div>`;
-  }
-  h+=cartaoComprovante(r);
-  h+=cartaoVerificacoes(r);
-  h+=cartaoPontos(r);
-  if(v){
-    h+=`<div class="card"><div class="row"><span class="plate">${esc(v.placa||'')}</span><div style="flex:1"><div style="font-weight:700">${esc(v.modelo||'')}</div><div class="muted sm">${esc(v.ano||'')}${v.km?' · '+fmtKm(v.km):''}</div></div></div>
+function cartaoVeiculo(r){
+  const v=r.veiculo;
+  if(!v) return `<div class="card"><div class="muted">Nenhum veículo vinculado ao seu cadastro ainda. Fale com a Carsz.</div></div>`;
+  return `<div class="card"><div class="row"><span class="plate">${esc(v.placa||'')}</span><div style="flex:1"><div style="font-weight:700">${esc(v.modelo||'')}${r.reserva?' <span class="tag warn">🚗 reserva</span>':''}</div><div class="muted sm">${esc(v.ano||'')}${v.km?' · '+fmtKm(v.km):''}</div></div></div>
       ${r.reserva?`<div class="alert warn" style="margin:12px 0 0"><b class="t" style="margin:0">🚗 Você está no carro reserva</b><div class="txt" style="margin:4px 0 8px">Sua placa principal <b>${esc((r.principal||{}).placa||'')}</b> continua pontuando e fica guardada para você${r.reserva.desde?' (desde '+fmtD(String(r.reserva.desde).slice(0,10))+')':''}.</div><button class="btn sm" onclick="devolverReserva()">↩ Devolver reserva</button></div>`
         :`<button class="btn sm ghost" style="margin-top:10px" onclick="formTrocarPlaca()">🚗 Peguei um carro reserva</button>`}
       ${r.na_oficina?`<div class="alert info" style="margin:12px 0 0"><b>🛠 Seu veículo está na oficina</b> desde ${fmtD(r.na_oficina.desde)}.</div>`:''}</div>`;
-  } else {
-    h+=`<div class="card"><div class="muted">Nenhum veículo vinculado ao seu cadastro ainda. Fale com a Carsz.</div></div>`;
+}
+// quadro de pagamento e bloqueio. comAcoes=true (Início) inclui os botões de promessa e comprovante.
+function quadroPagamento(r,comAcoes){
+  const bl=(r.motorista||{}).bloqueio||{status:'normal'}; const pe=promessaEmAberto(r), adia=promessaAceitaAdia(r);
+  const cs=r.comprovantes||[]; const pen=cs.filter(c=>c.status==='pendente'), rec=cs.filter(c=>c.status==='recusado'), pag=cs.filter(c=>c.status==='pago'&&diasDesde(c.baixaEm)<=3);
+  const bloq=bl.status==='bloqueado', prog=bl.status==='programado';
+  const dt=c=>fmtD((c.em||'').slice(0,10))+' '+hhmm(c.em);
+  const extras=rec.map(c=>`<div class="txt"><b>✖ Comprovante recusado</b> — ${esc(c.recusadoMotivo||'envie um comprovante legível.')}</div>`).join('')
+    +pen.map(c=>`<div class="txt">🧾 Comprovante enviado em ${dt(c)}${c.valor?' ('+fmtBRL(c.valor)+')':''} — <b>Aguardando conferência</b></div>`).join('')
+    +pag.map(c=>`<div class="txt">✔ <b>Pagamento confirmado</b> em ${dt(c)}</div>`).join('');
+  const btnProm=comAcoes&&!pe&&(bloq||prog)?`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`:'';
+  const btnComp=comAcoes&&(bloq||prog||pe||pen.length||rec.length)?`<button class="btn ${btnProm||!rec.length?'sec':''}" onclick="formComprovante()">🧾 ${rec.length?'Enviar de novo':'Enviar comprovante'}</button>`:'';
+  const acoes=(btnProm||btnComp)?`<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${btnProm}${btnComp}</div>`:'';
+  if(adia) return `<div class="alert ok"><b class="t">🤝 Promessa de pagamento aceita</b><div class="txt">Pagamento combinado para <b>${fmtD(adia.dataPrometida)}</b>${adia.resposta?' — '+esc(adia.resposta):''}. O aviso de bloqueio foi suspenso. Se não pagar até lá, ele volta.</div>${extras}${acoes}</div>`;
+  if(bloq||prog){
+    return `<div class="alert ${bloq?'bad':'warn'}"><b class="t">${bloq?'🔒 Veículo bloqueado':'⚠ Bloqueio programado'}${!bloq&&bl.data?' para '+fmtD(bl.data):''}</b>
+      ${bl.motivo?`<div class="txt">${esc(bl.motivo)}</div>`:''}
+      ${pe?`<div class="txt"><b>Promessa de pagamento registrada para ${fmtD(pe.dataPrometida)}</b> — ${pe.status==='aceita'?'aceita pela cobrança.':'aguardando resposta da cobrança.'}</div>`
+          :`<div class="txt">${bloq?'Para pedir o desbloqueio, informe quando vai pagar.':'Para evitar o bloqueio, regularize ou informe quando vai pagar.'}</div>`}${extras}${acoes}</div>`;
+  }
+  if(rec.length) return `<div class="alert bad"><b class="t">🧾 Pagamento</b>${extras}${acoes}</div>`;
+  return `<div class="alert ok"><b class="t" style="margin:0">✅ Tudo certo com o seu veículo</b>${extras}${acoes}</div>`;
+}
+
+function telaInicio(r){
+  const m=r.motorista;
+  let h=`<div style="margin:2px 2px 12px"><div class="muted">Olá,</div><div style="font-size:22px;font-weight:800">${esc((m.nome||'').split(' ')[0])}</div></div>`;
+  h+=cartaoVeiculo(r);
+  h+=quadroPagamento(r,true);
+  if(r.nao_lidas) h+=`<button class="btn sec" style="margin-bottom:12px" onclick="irChat()">💬 ${r.nao_lidas} resposta${r.nao_lidas>1?'s':''} nova${r.nao_lidas>1?'s':''} da Carsz</button>`;
+  h+=cartaoVerificacoes(r);
+  h+=cartaoPontos(r);
+  const av=avisosVisiveis(r).slice(0,3);
+  if(av.length){
+    h+=`<div class="card"><div class="row"><h3 style="margin:0">Últimos avisos</h3><span class="sp"></span><button class="btn sm ghost" style="padding:4px 8px" onclick="irPara('avisos')">ver todos</button></div>${av.map(avisoHtml).join('')}</div>`;
+  }
+  if((r.agendadas||[]).length){
+    h+=`<div class="card"><h3>📅 Manutenção agendada</h3>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="muted sm">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
   }
   // alerta de revisão (regra simples: 6 meses ou 10.000 km desde a última manutenção registrada)
-  const um=r.ultima_manutencao;
+  const v=r.veiculo, um=r.ultima_manutencao;
   if(v&&um&&um.data){
     const dias=diasEntre(um.data), dkm=(+v.km||0)-(+um.km||0);
     if(dias>=180||dkm>=10000){
       h+=`<div class="alert warn"><b class="t">🔧 Hora de agendar a revisão</b><div class="txt">A última manutenção registrada foi há ${dias} dias${dkm>0?` (${dkm.toLocaleString('pt-BR')} km rodados desde então)`:''}. Recomendamos revisar a cada 6 meses ou 10.000 km.</div><button class="btn" onclick="irPara('manut');setTimeout(()=>{const d=document.getElementById('ag_desc');if(d&&!d.value)d.value='Revisão'},50)">Pedir manutenção</button></div>`;
     }
   }
-  if((r.agendadas||[]).length){
-    h+=`<div class="card"><h3>📅 Manutenção agendada</h3>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="muted sm">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
-  }
-  const av=avisosVisiveis(r).slice(0,3);
-  if(av.length){
-    h+=`<div class="card"><div class="row"><h3 style="margin:0">Últimos avisos</h3><span class="sp"></span><button class="btn sm ghost" style="padding:4px 8px" onclick="irPara('avisos')">ver todos</button></div>${av.map(avisoHtml).join('')}</div>`;
-  }
-  if(r.nao_lidas) h+=`<button class="btn sec" onclick="irPara('chat')">💬 ${r.nao_lidas} mensagem${r.nao_lidas>1?'s':''} nova${r.nao_lidas>1?'s':''} da cobrança</button>`;
   return h;
 }
 
@@ -395,30 +409,67 @@ function avisoHtml(a){
   return `<div class="list-i"><div class="row" style="align-items:flex-start"><span style="font-size:20px">${ico}</span><div style="flex:1"><div style="font-weight:700">${esc(a.titulo||'Aviso')} ${novo?'<span class="tag bad">novo</span>':''}</div>
     ${a.texto?`<div style="white-space:pre-wrap">${esc(a.texto)}</div>`:''}<div class="muted sm">${esc(fmtHora(a.em))}</div></div></div></div>`;
 }
+const AV_PAG=/bloqueio|comprovante|pagamento|promessa|cobran|atraso|semanalidade/i;
+function avisoDePagamento(a){ return a.tipo==='cobranca'||AV_PAG.test(a.titulo||''); }
 function telaAvisos(r){
   const av=avisosVisiveis(r);
   // marca como vistos (guarda neste aparelho) — o selo "novo" some na próxima vez
   setTimeout(()=>{ let mudou=false; for(const a of av){ if(!vistos.has(a.id)){ vistos.add(a.id); mudou=true; } } if(mudou){ LS.set('mot_avisos_vistos',JSON.stringify([...vistos].slice(-300))); const n=document.querySelector('nav.tabs button:nth-child(2) .badge'); if(n) n.remove(); } },2500);
-  return `<h2 style="margin:4px 2px 10px">Avisos</h2>`+(av.length?`<div class="card">${av.map(avisoHtml).join('')}</div>`:`<div class="empty">Nenhum aviso por enquanto.</div>`);
+  const rec=(r.comprovantes||[]).filter(c=>c.status==='recusado');
+  const g1=av.filter(avisoDePagamento), g2=av.filter(a=>!avisoDePagamento(a));
+  const lab=t=>`<div class="muted sm" style="font-weight:800;letter-spacing:.6px;margin:12px 2px 6px">${t}</div>`;
+  let h=`<h2 style="margin:4px 2px 4px">Avisos</h2>`;
+  if(!av.length&&!rec.length) return h+`<div class="empty">Nenhum aviso por enquanto.</div>`;
+  if(g1.length||rec.length) h+=lab('🔥 PAGAMENTO E BLOQUEIO')+`<div class="card" id="av_pag">${rec.map(c=>`<div class="list-i"><div class="alert bad" style="margin:0"><b class="t" style="margin:0">✖ Comprovante recusado</b><div class="txt" style="margin:4px 0 8px">${esc(c.recusadoMotivo||'Envie um comprovante legível.')}</div><button class="btn sm" onclick="formComprovante()">Enviar de novo</button></div></div>`).join('')}${g1.map(avisoHtml).join('')}</div>`;
+  if(g2.length) h+=lab('📣 GERAIS E MANUTENÇÃO')+`<div class="card" id="av_ger">${g2.map(avisoHtml).join('')}</div>`;
+  return h;
 }
 
+// ---- Cobrança: só pagamento (status, promessa, comprovantes e ações) ----
+function telaCobranca(r){
+  const ps=r.promessas||[], pe=promessaEmAberto(r), cs=r.comprovantes||[];
+  let h=`<h2 style="margin:4px 2px 10px">Cobrança</h2>`;
+  h+=quadroPagamento(r,false);
+  const prom=pe||ps[0];
+  if(prom){ const [t,c]=STATUS_PROM[prom.status]||['—','neu'];
+    h+=`<div class="card"><h3>🤝 ${pe?'Minha promessa':'Última promessa'}</h3><div>Até <b>${fmtD(prom.dataPrometida)}</b>${prom.valor?' · '+fmtBRL(prom.valor):''} <span class="tag ${c}">${t}</span></div>${prom.resposta?`<div class="muted sm">Resposta: ${esc(prom.resposta)}</div>`:''}</div>`; }
+  const ST_C={pendente:['Aguardando conferência','warn'],pago:['Confirmado','ok'],recusado:['Recusado','bad']};
+  h+=`<div class="card"><h3>🧾 Meus comprovantes</h3>${cs.length?cs.slice(0,6).map(c=>{ const [t,k]=ST_C[c.status]||[c.status||'—','neu']; return `<div class="list-i"><div class="row"><span>${fmtD((c.em||'').slice(0,10))}${c.valor?' · '+fmtBRL(c.valor):''}</span><span class="sp"></span><span class="tag ${k}">${t}</span></div>${c.status==='recusado'&&c.recusadoMotivo?`<div class="muted sm">${esc(c.recusadoMotivo)}</div>`:''}</div>`; }).join(''):'<div class="muted sm">Nenhum comprovante enviado.</div>'}</div>`;
+  h+=`<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">${pe?'':`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`}<button class="btn sec" onclick="formComprovante()">🧾 Enviar comprovante</button></div>`;
+  h+=`<div class="card"><div class="row"><span>💬 Dúvida sobre este pagamento?</span><span class="sp"></span><button class="btn sm" onclick="irChat('pagamento')">Falar no chat</button></div><div class="muted sm">Abre o Chat já com o assunto “Pagamento”.</div></div>`;
+  return h;
+}
+
+// ---- Chat: conversa única com a Carsz, vários assuntos (cada mensagem leva uma etiqueta) ----
+const ASSUNTOS={pagamento:['Pagamento','warn'],manutencao:['Manutenção','neu'],sinistro:['Sinistro','bad'],documentos:['Documentos','neu'],outros:['Outros','neu'],reserva:['Reserva','neu']};
+const ASSUNTOS_ESC=['pagamento','manutencao','sinistro','documentos','outros'];
+function assuntoMsg(m){ if(m.assunto&&ASSUNTOS[m.assunto]) return m.assunto; if(m.tipo==='promessa') return 'pagamento'; if(m.tipo==='agendamento') return 'manutencao'; const x=String(m.texto||''); if(x.startsWith('🧾')) return 'pagamento'; if(x.startsWith('🚗')) return 'reserva'; return ''; }
+function irChat(assunto){ S.chatFiltro=assunto||'todos'; S.chatAssunto=assunto||S.chatAssunto||''; irPara('chat'); }
+function chatFiltrar(f){ S.chatFiltro=f; if(f!=='todos') S.chatAssunto=f; render(true); }
 function telaChat(r){
-  const ms=S.msgs;
-  const pe=promessaEmAberto(r);
-  let h=`<div class="row" style="margin:4px 2px 10px"><h2 style="margin:0">Cobrança Carsz</h2><span class="sp"></span>${pe?'':`<button class="btn sm sec" onclick="formPromessa()">🤝 Prometer pagamento</button>`}</div>`;
+  const ms=S.msgs; const fl=S.chatFiltro||'todos';
+  let h=`<h2 style="margin:4px 2px 8px">Chat com a Carsz</h2>`;
   if(ms===null) return h+`<div class="empty">Carregando mensagens…</div>`;
-  h+=`<div class="chat">${ms.length?ms.map(m=>`<div class="msg ${m.de==='motorista'?'eu':'eq'}">${m.de!=='motorista'?`<b class="sm">${esc(m.autor||'Carsz')}</b><br>`:''}${esc(m.texto)}<div class="h">${esc(fmtHora(m.em))}</div></div>`).join(''):'<div class="empty">Nenhuma mensagem ainda. Escreva abaixo pra falar com a cobrança.</div>'}<div id="chat_fim"></div></div>
-    <div class="composer"><textarea id="chat_txt" data-keep placeholder="Escreva sua mensagem…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviarMsg()}"></textarea><button class="btn" onclick="enviarMsg()">Enviar</button></div>`;
+  const noFiltro=m=>{ const a=assuntoMsg(m); return fl==='todos'||a===fl||(fl==='outros'&&(!a||a==='reserva')); };
+  const vis=ms.filter(noFiltro);
+  h+=`<div class="chips">${['todos'].concat(ASSUNTOS_ESC).map(k=>`<button type="button" class="chip ${fl===k?'on':''}" onclick="chatFiltrar('${k}')">${k==='todos'?'Todos':ASSUNTOS[k][0]}</button>`).join('')}</div>`;
+  let ult=''; const bol=m=>{ const a=assuntoMsg(m); const d=(m.em||'').slice(0,10); const sep=d&&d!==ult?`<div class="muted sm" style="text-align:center;margin:6px 0">— ${fmtD(d)} —</div>`:''; ult=d||ult;
+    return sep+`<div class="msg ${m.de==='motorista'?'eu':'eq'}">${m.de!=='motorista'?`<b class="sm">${esc(m.autor||'Carsz')}</b><br>`:''}${a?`<span class="atag" data-assunto="${a}">${esc(ASSUNTOS[a][0])}</span>`:''}${esc(m.texto)}<div class="h">${esc(fmtHora(m.em))}</div></div>`; };
+  const padrao=S.chatAssunto&&ASSUNTOS_ESC.includes(S.chatAssunto)?S.chatAssunto:(fl!=='todos'&&ASSUNTOS_ESC.includes(fl)?fl:(()=>{ for(let i=ms.length-1;i>=0;i--){ const a=assuntoMsg(ms[i]); if(a&&a!=='reserva') return a; } return 'outros'; })());
+  h+=`<div class="chat">${vis.length?vis.map(bol).join(''):`<div class="empty">${ms.length?'Nenhuma mensagem neste assunto.':'Nenhuma mensagem ainda. Escolha o assunto e escreva abaixo.'}</div>`}<div id="chat_fim"></div></div>
+    <div class="composer" style="flex-wrap:wrap"><select id="chat_ass" aria-label="Assunto" data-keep style="flex:0 0 100%;margin:0 0 6px;padding:8px 10px" onchange="S.chatAssunto=this.value">${ASSUNTOS_ESC.map(k=>`<option value="${k}"${k===padrao?' selected':''}>Assunto: ${ASSUNTOS[k][0]}</option>`).join('')}</select>
+    <textarea id="chat_txt" data-keep placeholder="Escreva sua mensagem…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviarMsg()}"></textarea><button class="btn" onclick="enviarMsg()">Enviar</button></div>`;
   return h;
 }
 let enviando=false;
 async function enviarMsg(){
   if(enviando) return; const t=document.getElementById('chat_txt'); const txt=(t.value||'').trim(); if(!txt) return;
+  const sel=document.getElementById('chat_ass'); const ass=(sel&&sel.value)||'outros';
   enviando=true;
   try{
-    const d=await rpc('mot_msg_enviar',{p_token:S.token,p_texto:txt});
+    const d=await rpc('mot_msg_enviar',{p_token:S.token,p_texto:txt,p_assunto:ass});
     if(d&&d.erro){ toast(d.erro); }
-    else { t.value=''; ultimoMsgs=''; await atualizar(true); const c=document.getElementById('chat_fim'); if(c) c.scrollIntoView({block:'end'}); }
+    else { t.value=''; S.chatAssunto=ass; if((S.chatFiltro||'todos')!=='todos') S.chatFiltro=ass; ultimoMsgs=''; await atualizar(true); const c=document.getElementById('chat_fim'); if(c) c.scrollIntoView({block:'end'}); }
   }catch(e){ erroGenerico(e); }
   enviando=false;
 }
@@ -471,18 +522,6 @@ async function enviarComprovante(){
   else { b.disabled=false; b.textContent='Enviar comprovante'; }
 }
 const diasDesde = iso => { const t=Date.parse(iso||''); return isNaN(t)?999:(Date.now()-t)/86400000; };
-function cartaoComprovante(r){
-  const cs=r.comprovantes||[], bl=((r.motorista||{}).bloqueio||{}).status||'normal', pe=promessaEmAberto(r);
-  const pen=cs.filter(c=>c.status==='pendente'), rec=cs.filter(c=>c.status==='recusado'), pag=cs.filter(c=>c.status==='pago'&&diasDesde(c.baixaEm)<=3);
-  if(bl==='normal'&&!pe&&!pen.length&&!rec.length&&!pag.length) return '';
-  const dt=c=>fmtD((c.em||'').slice(0,10))+' '+hhmm(c.em);
-  return `<div class="card"><h3>🧾 Comprovante de pagamento</h3>
-    ${rec.map(c=>`<div class="alert bad" style="margin:8px 0"><b class="t" style="margin:0">✖ Comprovante recusado</b><div class="txt" style="margin:4px 0 0">${esc(c.recusadoMotivo||'Envie um comprovante legível.')}</div><div style="margin-top:8px"><button class="btn sm" onclick="formComprovante()">Enviar de novo</button></div></div>`).join('')}
-    ${pen.map(c=>`<div class="list-i"><b>Enviado em ${dt(c)}</b>${c.valor?' · '+fmtBRL(c.valor):''} <span class="tag warn">Aguardando conferência</span></div>`).join('')}
-    ${pag.map(c=>`<div class="list-i"><b>✔ Pagamento confirmado</b> <span class="muted sm">${dt(c)}</span> <span class="tag ok">Baixa dada</span></div>`).join('')}
-    ${rec.length?'':`<p class="muted sm" style="margin:6px 0 8px">Já pagou? Anexe o comprovante (foto ou PDF) para a cobrança dar baixa mais rápido.</p><button class="btn ${pen.length?'sec':''}" onclick="formComprovante()">🧾 Enviar comprovante</button>`}
-  </div>`;
-}
 function numBR(s){ s=String(s||'').trim(); if(!s) return null; const n=parseFloat(s.replace(/\./g,'').replace(',','.')); return isNaN(n)?null:n; }
 async function enviarPromessa(){
   const data=document.getElementById('pm_data').value, valor=numBR(document.getElementById('pm_valor').value), obs=document.getElementById('pm_obs').value;
@@ -502,14 +541,15 @@ function telaManut(r){
   const v=r.veiculo; const ag=r.agendamentos||[];
   let h=`<h2 style="margin:4px 2px 10px">Manutenção</h2>`;
   if((r.agendadas||[]).length) h+=`<div class="card"><h3>📅 Já agendado</h3>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="muted sm">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
+  if(ag.length){
+    h+=`<div class="card"><h3>🛠 Meus pedidos</h3>${ag.map(a=>{ const [t,c]=STATUS_AGEND[a.status]||['—','neu']; return `<div class="list-i"><div class="row"><b>${fmtD(a.dataDesejada)}</b><span class="tag ${c}">${t}${a.status==='confirmado'&&a.dataConfirmada?' · '+fmtD(a.dataConfirmada):''}</span></div><div class="sm">${esc(a.descricao||'')}</div>${a.resposta?`<div class="muted sm">Resposta: ${esc(a.resposta)}</div>`:''}</div>`; }).join('')}</div>`;
+  }
   h+=`<div class="card"><h3>Pedir uma manutenção</h3><p class="muted sm" style="margin:0 0 4px">A Carsz confirma a data pelo app e pelo WhatsApp.</p>
     <label for="ag_data">Data desejada</label><input id="ag_data" data-keep type="date" min="${hojeStr()}" value="${somaDias(2)}">
     <label for="ag_desc">O que precisa ser feito?</label><textarea id="ag_desc" data-keep placeholder="Ex.: barulho na suspensão, troca de óleo…"></textarea>
     <label for="ag_km">Km atual (opcional)</label><input id="ag_km" data-keep inputmode="numeric" placeholder="${v&&v.km?esc(String(v.km)):'Ex.: 45000'}">
-    <button class="btn" style="margin-top:14px" id="ag_btn" onclick="enviarAgendamento()">Enviar pedido</button></div>`;
-  if(ag.length){
-    h+=`<div class="card"><h3>Meus pedidos</h3>${ag.map(a=>{ const [t,c]=STATUS_AGEND[a.status]||['—','neu']; return `<div class="list-i"><div class="row"><b>${fmtD(a.dataDesejada)}</b><span class="tag ${c}">${t}${a.status==='confirmado'&&a.dataConfirmada?' · '+fmtD(a.dataConfirmada):''}</span></div><div class="sm">${esc(a.descricao||'')}</div>${a.resposta?`<div class="muted sm">Resposta: ${esc(a.resposta)}</div>`:''}</div>`; }).join('')}</div>`;
-  }
+    <button class="btn" style="margin-top:14px" id="ag_btn" onclick="enviarAgendamento()">Enviar pedido</button>
+    <div class="muted sm" style="margin-top:10px">Dúvida? <a href="#" onclick="irChat('manutencao');return false" style="color:var(--brand);font-weight:700">Falar no chat</a> (assunto Manutenção).</div></div>`;
   return h;
 }
 async function enviarAgendamento(){
@@ -526,6 +566,7 @@ async function enviarAgendamento(){
 function menu(){
   sheet(`<h3>${esc(S.nome||'Minha conta')}</h3><p class="muted" style="margin:0 0 12px">Carsz Motorista</p>
     ${emApp?'':`<button class="btn sec" style="margin-bottom:8px" onclick="fecharSheet();instalar()">📲 Instalar o app</button>`}
+    ${(S.resumo&&S.resumo.veiculo)?(S.resumo.reserva?`<button class="btn sec" style="margin-bottom:8px" onclick="fecharSheet();devolverReserva()">↩ Devolver carro reserva</button>`:`<button class="btn sec" style="margin-bottom:8px" onclick="fecharSheet();formTrocarPlaca()">🚗 Carro reserva</button>`):''}
     <button class="btn danger" style="margin-bottom:4px" onclick="fecharSheet();sair()">Sair</button>
     <button class="btn ghost" onclick="fecharSheet()">Fechar</button>`);
 }
