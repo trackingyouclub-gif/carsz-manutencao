@@ -2837,12 +2837,12 @@ async function delSin(id){ if(!confirm('Excluir este sinistro?'))return; await S
 // em tabelas próprias (ver motoristas.sql). O bloqueio aqui só SINALIZA no app do motorista; o
 // bloqueio do veículo em si continua sendo feito na plataforma do rastreador.
 const podeMotoristas = () => !!S.perfil&&(ehAdminGeral()||((ehAuxiliar()||ehCobranca())&&(!S.perfil.oficinaId||S.perfil.oficinaId==='matriz')));
-Object.assign(S,{mots:[],motMsgs:[],motPromessas:[],motAgend:[],motAvisos:[],motVerif:[],motFotos:[],motAtual:null,motOk:true,motBusca:'',motFiltro:''});
+Object.assign(S,{mots:[],motMsgs:[],motPromessas:[],motAgend:[],motAvisos:[],motVerif:[],motFotos:[],motAtrasos:[],motRank:[],motAtual:null,motOk:true,motBusca:'',motFiltro:''});
 let motIniciado=false;
 function iniciarMotoristas(){
   if(motIniciado||!podeMotoristas()) return; motIniciado=true;
   const sub=(col,key)=>S.db.collection(col).onSnapshot(snap=>{ S[key]=snap.docs.map(d=>({id:d.id,...d.data()})); S.motOk=true; render(); },e=>{ console.warn('tabela "'+col+'" indisponível (rode o motoristas.sql no Supabase):',e); S.motOk=false; });
-  sub('motoristas','mots'); sub('mot_mensagens','motMsgs'); sub('mot_promessas','motPromessas'); sub('mot_agendamentos','motAgend'); sub('mot_avisos','motAvisos'); sub('mot_verificacoes','motVerif'); sub('mot_fotos','motFotos');
+  sub('motoristas','mots'); sub('mot_mensagens','motMsgs'); sub('mot_promessas','motPromessas'); sub('mot_agendamentos','motAgend'); sub('mot_avisos','motAvisos'); sub('mot_verificacoes','motVerif'); sub('mot_fotos','motFotos'); sub('mot_atrasos','motAtrasos');
   try{ Promise.resolve(sb.rpc('mot_limpar_expirados')).catch(()=>{}); }catch(e){} // apaga fotos com mais de 30 dias
 }
 // ---- verificações diárias (água/óleo) e fotos semanais (painel + etiqueta de óleo, segundas-feiras) ----
@@ -2971,6 +2971,35 @@ async function motConfirmarRecusa(fid){
     motWaPrompt(f.motoristaId,ref?ref.id:'',motMsgWaLivre(txt),'Foto recusada ('+motNomeFoto(f.tipo)+')');
   }catch(e){ erroSalvar('recusar a foto',e); }
 }
+// ---- pontuação dos motoristas (negativa: menos pontos = melhor). Atraso = dias com "Bloqueio programado"/"Bloqueado"
+// (registrado sozinho quando você muda a situação do veículo). 1 dia = -1 · 2 dias = -3 · 3+ dias = -6; cada promessa = -1.
+// Vale as últimas 8 semanas. Empate: mais semanas seguidas sem atraso e sem promessa. Os motoristas veem a placa do 1º colocado.
+const motPts = n => n===0?'0':(n<0?'−':'+')+Math.abs(n);
+function motPontosHtml(x){
+  const e=(S.motRank||[]).find(y=>y.id===x.id);
+  if(!e) return `<div class="step"><h3>🏆 Pontuação</h3><div class="muted">Sem pontuação ${x.ativo===false?'(motorista desativado)':!x.placa?'(motorista sem placa)':'ainda — atualize a página'}.</div></div>`;
+  const pen=(e.penalidades||[]).slice().sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const lin=p=>p.tipo==='promessa'
+    ? `<div class="osrow" style="cursor:default"><div>🤝 Promessa de pagamento <span class="muted">${fmtD(p.data)}</span></div><span class="sp"></span><b>${motPts(p.pontos)}</b></div>`
+    : `<div class="osrow" style="cursor:default"><div>⏰ Atraso de <b>${p.dias} dia${p.dias>1?'s':''}</b> <span class="muted">${fmtD(p.data)} ${p.aberto?'→ em aberto':'→ '+fmtD(p.fim)}</span></div><span class="sp"></span><b>${motPts(p.pontos)}</b> <button class="ghost" style="padding:2px 10px;font-size:12px" title="Use se a situação do veículo foi marcada por engano" onclick="motAnularAtraso('${p.id}',true)">Anular</button></div>`;
+  const anul=S.motAtrasos.filter(a=>a.motoristaId===x.id&&a.anulado).sort((a,b)=>String(b.inicio).localeCompare(String(a.inicio)));
+  return `<div class="step"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🏆 Pontuação</h3><span class="sp"></span><button class="sec" onclick="motRankingModal()">Ver ranking</button></div>
+    <div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="tag ${e.pontos<0?'bad':'ok'}" style="font-size:15px;padding:4px 12px">${motPts(e.pontos)} pontos</span><span class="tag neu">${e.posicao}º de ${(S.motRank||[]).length}</span><span class="tag ${e.semanas_limpas?'ok':'neu'}">🟢 ${e.semanas_limpas} semana${e.semanas_limpas===1?'':'s'} limpa${e.semanas_limpas===1?'':'s'} seguida${e.semanas_limpas===1?'':'s'}</span>${e.posicao===1?'<span class="tag ok">🏆 melhor motorista (a placa aparece para todos)</span>':''}</div>
+    ${pen.length?pen.map(lin).join(''):'<div class="muted">Nenhum ponto negativo nas últimas 8 semanas.</div>'}
+    ${anul.length?`<div class="muted" style="margin-top:8px">Atrasos anulados:</div>${anul.map(a=>`<div class="osrow" style="cursor:default;opacity:.7"><div>⏰ ${fmtD(a.inicio)} → ${a.fim?fmtD(a.fim):'em aberto'} <span class="muted">anulado${a.anuladoPor?' por '+esc(a.anuladoPor):''}</span></div><span class="sp"></span><button class="ghost" style="padding:2px 10px;font-size:12px" onclick="motAnularAtraso('${a.id}',false)">Restaurar</button></div>`).join('')}`:''}
+  </div>`;
+}
+async function motAnularAtraso(id,anular){
+  try{ await S.db.doc('mot_atrasos/'+id).update(anular?{anulado:true,anuladoPor:(S.perfil&&S.perfil.nome)||'',anuladoEm:agoraIso()}:{anulado:false}); toast(anular?'Atraso anulado — não conta mais pontos':'Atraso restaurado'); await motRecarregar(); }
+  catch(e){ erroSalvar('alterar o atraso',e); }
+}
+function motRankingModal(){
+  const rk=S.motRank||[];
+  abrir(`<h3>🏆 Ranking de motoristas</h3>
+    <p class="muted">Últimas 8 semanas. Quanto menos pontos negativos, melhor. Atraso: 1 dia −1 · 2 dias −3 · 3+ dias −6. Promessa de pagamento: −1. Empate: mais semanas limpas seguidas. Os motoristas veem só a placa do 1º colocado e a própria posição.</p>
+    ${rk.length?`<div class="tbl"><table style="min-width:0"><tr><th>#</th><th>Placa</th><th>Motorista</th><th>Pontos</th><th>Semanas limpas</th></tr>${rk.map(e=>`<tr style="cursor:pointer" onclick="fechar();S.motAtual='${e.id}';render()"><td>${e.posicao===1?'🥇':e.posicao}</td><td><b>${esc(e.placa||'')}</b></td><td>${esc(e.nome||'')}</td><td><b style="color:var(--${e.pontos<0?'bad':'ok'})">${motPts(e.pontos)}</b></td><td>${e.semanas_limpas}</td></tr>`).join('')}</table></div>`:'<div class="muted">Nenhum motorista ativo com placa.</div>'}
+    <div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`);
+}
 function motBloqueioPorFotos(id){
   const sel=document.getElementById('mb_status'), mot=document.getElementById('mb_motivo'), dt=document.getElementById('mb_data'); if(!sel||!mot||!dt) return;
   const d=new Date(motHojeSP()+'T12:00:00'); d.setDate(d.getDate()+1);
@@ -3036,14 +3065,14 @@ function motoristasView(m){
   const lista=S.mots.filter(x=>!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q)).filter(x=>!filtroAtivo||filtroAtivo[3](x)).map(x=>({x,pend:motNaoLidas(x.id)+motPromPend(x.id)+motAgPend(x.id)}))
     .sort((a,b)=>b.pend-a.pend||(a.x.nome||'').localeCompare(b.x.nome||''));
   const nBloq=S.mots.filter(x=>(x.bloqueio||{}).status==='bloqueado').length, nProg=S.mots.filter(x=>(x.bloqueio||{}).status==='programado').length;
-  m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="pri" onclick="motForm('')">+ Novo motorista</button></div>
+  m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="pri" onclick="motForm('')">+ Novo motorista</button></div>
     ${S.motOk?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>As tabelas do app do motorista ainda não existem no banco.</b> Rode o arquivo <b>motoristas.sql</b> (versão mais recente) no SQL Editor do Supabase e recarregue esta página.</div>`}
     <div class="cards motcards">${MOT_FILTROS.map(([k,rot,cls,fn])=>{ const n=S.mots.filter(fn).length; return `<button type="button" class="card cardbtn ${cls}${S.motFiltro===k?' on':''}${n?'':' zero'}" aria-pressed="${S.motFiltro===k}" onclick="motFiltrar('${k}')"><div class="v">${n}</div><div class="l">${rot}</div></button>`; }).join('')}</div>
     ${filtroAtivo?`<div class="lastinfo" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Mostrando só: <b>${filtroAtivo[1]}</b> (${lista.length})<span class="sp"></span><button class="sec" style="padding:4px 12px;min-height:32px" onclick="motFiltrar('')">✕ Limpar filtro</button></div>`:''}
     <div id="mot_lista"></div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 
@@ -3051,7 +3080,8 @@ function motoristasView(m){
 // depois de cada ação aqui e a cada 15s enquanto a aba Motoristas está aberta, pro chat não ficar parado
 async function motRecarregar(){
   if(!podeMotoristas()||!S.db) return;
-  try{ for(const [c,k] of [['motoristas','mots'],['mot_mensagens','motMsgs'],['mot_promessas','motPromessas'],['mot_agendamentos','motAgend'],['mot_avisos','motAvisos'],['mot_verificacoes','motVerif'],['mot_fotos','motFotos']]){ const sn=await S.db.collection(c).get(); S[k]=sn.docs.map(d=>({id:d.id,...d.data()})); } S.motOk=true; render(); }
+  try{ for(const [c,k] of [['motoristas','mots'],['mot_mensagens','motMsgs'],['mot_promessas','motPromessas'],['mot_agendamentos','motAgend'],['mot_avisos','motAvisos'],['mot_verificacoes','motVerif'],['mot_fotos','motFotos'],['mot_atrasos','motAtrasos']]){ const sn=await S.db.collection(c).get(); S[k]=sn.docs.map(d=>({id:d.id,...d.data()})); }
+    try{ const rk=await sb.rpc('mot_ranking'); if(!rk.error&&Array.isArray(rk.data)) S.motRank=rk.data; }catch(e){} S.motOk=true; render(); }
   catch(e){ console.warn('motoristas: não foi possível recarregar',e); }
 }
 setInterval(()=>{ if((S.view==='mot'||S.view==='mmot')&&document.visibilityState==='visible') motRecarregar(); },15000);
@@ -3071,6 +3101,7 @@ function motDetalhe(m){
   m.innerHTML=`<div class="bar"><button class="ghost" onclick="S.motAtual=null;render()">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
     <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}</div></div>
     ${motVerifHtml(x)}
+    ${motPontosHtml(x)}
     <div class="step"><h3>🔒 Bloqueio do veículo (sinalização no app)</h3>
       <div class="hint">Isto só avisa o motorista no app dele — o bloqueio de verdade continua sendo feito na plataforma do rastreador.</div>
       <div class="grid" style="margin-top:8px">

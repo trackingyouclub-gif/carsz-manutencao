@@ -275,6 +275,25 @@ function cartaoVerificacoes(r){
   return h+'</div>';
 }
 
+// ---- pontuação (negativa: quanto menos pontos, melhor) e líder do ranking ----
+const fmtPts = n => n===0?'0':(n<0?'−':'+')+Math.abs(n);
+function cartaoPontos(r){
+  const k=r.ranking; if(!k||!k.eu) return ''; const eu=k.eu, lid=k.lider; const souLider=eu.posicao===1;
+  const pen=(eu.penalidades||[]).slice().sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const linha=p=>p.tipo==='promessa'
+    ? `<div class="row" style="margin:3px 0"><span>🤝 Promessa de pagamento (${fmtD(p.data)})</span><span class="sp"></span><b>${fmtPts(p.pontos)}</b></div>`
+    : `<div class="row" style="margin:3px 0"><span>⏰ Atraso de ${p.dias} dia${p.dias>1?'s':''} (${fmtD(p.data)}${p.aberto?' · em aberto':' → '+fmtD(p.fim)})</span><span class="sp"></span><b>${fmtPts(p.pontos)}</b></div>`;
+  return `<div class="card"><div class="row"><h3 style="margin:0">🏆 Sua pontuação</h3><span class="sp"></span><span class="muted sm">últimas ${k.semanas} semanas</span></div>
+    <div class="row" style="margin:10px 0 4px;align-items:flex-end"><div style="font-size:38px;font-weight:800;line-height:1;color:${eu.pontos<0?'var(--bad)':'var(--ok)'}">${fmtPts(eu.pontos)}</div><div class="muted" style="padding-bottom:4px">pontos<br>quanto menos negativo, melhor</div><span class="sp"></span><div style="text-align:right"><div style="font-size:22px;font-weight:800">${eu.posicao}º</div><div class="muted sm">de ${k.total}</div></div></div>
+    <div class="muted sm" style="margin-top:6px">🟢 <b>${eu.semanas_limpas}</b> semana${eu.semanas_limpas===1?'':'s'} seguida${eu.semanas_limpas===1?'':'s'} sem atraso e sem usar a promessa de pagamento</div>
+    ${souLider?`<div class="alert ok" style="margin:10px 0 0"><b class="t" style="margin:0">🥇 Você é o melhor motorista!</b><div class="txt" style="margin:4px 0 0">A sua placa aparece para todos os motoristas.</div></div>`
+      :lid?`<div class="alert info" style="margin:10px 0 0"><b class="t" style="margin:0">🥇 Melhor motorista agora</b><div class="txt" style="margin:6px 0 0"><span class="plate">${esc(lid.placa||'')}</span> &nbsp;${fmtPts(lid.pontos)} pts · ${lid.semanas_limpas} semana${lid.semanas_limpas===1?'':'s'} limpa${lid.semanas_limpas===1?'':'s'}</div></div>`:''}
+    <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700;color:var(--brand)">Como funciona</summary>
+      <div class="muted sm" style="margin-top:6px">Atraso de <b>1 dia</b>: −1 · <b>2 dias</b>: −3 · <b>3 dias ou mais</b>: −6.<br>Cada vez que usa <b>Prometer pagamento</b>: −1.<br>Vale o que aconteceu nas últimas ${k.semanas} semanas. Fica no topo quem tem menos pontos negativos; em empate, quem tem mais semanas seguidas sem atraso e sem promessa.</div></details>
+    <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700;color:var(--brand)">O que gerou meus pontos</summary>
+      <div style="margin-top:6px">${pen.length?pen.map(linha).join(''):'<div class="muted sm">Nada até agora. Continue assim! 👏</div>'}</div></details></div>`;
+}
+
 // ---- telas ----
 function render(rolarChat){
   const app=document.getElementById('app');
@@ -331,6 +350,7 @@ function telaInicio(r){
     h+=`<div class="alert ok"><b class="t" style="margin:0">✅ Tudo certo com o seu veículo</b></div>`;
   }
   h+=cartaoVerificacoes(r);
+  h+=cartaoPontos(r);
   if(v){
     h+=`<div class="card"><div class="row"><span class="plate">${esc(v.placa||'')}</span><div style="flex:1"><div style="font-weight:700">${esc(v.modelo||'')}</div><div class="muted sm">${esc(v.ano||'')}${v.km?' · '+fmtKm(v.km):''}</div></div></div>
       ${r.na_oficina?`<div class="alert info" style="margin:12px 0 0"><b>🛠 Seu veículo está na oficina</b> desde ${fmtD(r.na_oficina.desde)}.</div>`:''}</div>`;
@@ -394,7 +414,8 @@ async function enviarMsg(){
 function formPromessa(){
   const r=S.resumo; if(promessaEmAberto(r)){ toast('Você já tem uma promessa em aberto'); return; }
   sheet(`<h3>🤝 Prometer pagamento</h3><p class="muted">Diga quando você vai pagar. A cobrança recebe na hora e responde pelo chat.</p>
-    <label for="pm_data">Data que vou pagar (até 15 dias)</label><input id="pm_data" type="date" min="${hojeStr()}" max="${somaDias(15)}" value="${somaDias(1)}">
+    <div class="alert warn" style="margin:10px 0 0"><div class="txt" style="margin:0">⚠ Cada promessa de pagamento tira <b>1 ponto</b> da sua pontuação.</div></div>
+    <label for="pm_data">Data que vou pagar (até 3 dias)</label><input id="pm_data" type="date" min="${hojeStr()}" max="${somaDias(3)}" value="${somaDias(1)}">
     <label for="pm_valor">Valor que vou pagar (opcional)</label><input id="pm_valor" inputmode="decimal" placeholder="Ex.: 699,00">
     <label for="pm_obs">Observação (opcional)</label><textarea id="pm_obs" placeholder="Ex.: recebo do aplicativo na quinta" style="min-height:70px"></textarea>
     <div style="margin-top:14px"><button class="btn" id="pm_btn" onclick="enviarPromessa()">Enviar promessa</button><button class="btn ghost" onclick="fecharSheet()">Cancelar</button></div>`);
