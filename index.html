@@ -2853,6 +2853,37 @@ function motCobrarVerif(id){
   const msg=`Olá, ${(x.nome||'').split(' ')[0]}! Falta você confirmar no app da Carsz ${partes.join(' e ')}. Abra o app e confirme agora: ${motLink()}${st==='atrasada'?'\n\nAtenção: as fotos estão atrasadas e o veículo está sujeito a bloqueio.':''}`;
   window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank');
 }
+// resposta rápida: alerta de bloqueio por falta do checklist por fotos (painel + etiqueta de óleo)
+function motTextoAlertaBloqueio(x){
+  const f=motFotoSemana(x.id,motSegunda()); const falta=[]; if(!f.painel) falta.push('foto do painel de instrumentos'); if(!f.etiqueta) falta.push('foto da etiqueta de troca de óleo');
+  const lista=falta.length?falta.join(' e '):'checklist por fotos da semana';
+  return `⚠ ALERTA DE BLOQUEIO: ${(x.nome||'').split(' ')[0]}, ainda não recebemos o checklist por fotos da semana (${lista})${x.placa?' do veículo '+x.placa:''}. Abra o app agora e envie as fotos para evitar o bloqueio do veículo.`;
+}
+function motAlertaBloqueio(id){
+  const x=S.mots.find(y=>y.id===id); if(!x) return;
+  const st=motFotoStatus(x);
+  if(st==='ok'){ toast('As fotos da semana já foram enviadas'); return; }
+  if(st==='dispensado'){ toast('Este motorista está dispensado das verificações (veículo parado, na oficina ou desativado)'); return; }
+  const wa=telWa(x.telefone);
+  abrir(`<h3>⚡ Alerta de bloqueio — checklist por fotos</h3>
+    <p class="muted">Mensagem para <b>${esc(x.nome||'')}</b>${x.placa?' · '+esc(x.placa):''}. Pode editar o texto antes de enviar.</p>
+    <textarea id="ab_txt" style="min-height:130px">${esc(motTextoAlertaBloqueio(x))}</textarea>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="ab_chat" checked style="width:auto"> Enviar no chat do app (aparece na aba Cobrança)</label>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="ab_aviso" checked style="width:auto"> Criar aviso urgente na aba Avisos do app</label>
+    <div class="hint" style="margin-top:8px">Isto só avisa o motorista. Para sinalizar o bloqueio no app, use "programar bloqueio por falta de fotos" na mesma ficha.</div>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button>${wa?`<button class="sec" onclick="motEnviarAlertaBloqueio('${id}','wa')">💬 Enviar por WhatsApp</button>`:''}<button class="pri" onclick="motEnviarAlertaBloqueio('${id}','app')">Enviar no app</button></div>`);
+}
+async function motEnviarAlertaBloqueio(id,via){
+  const x=S.mots.find(y=>y.id===id); if(!x) return; const txt=val('ab_txt').trim(); if(!txt){ toast('Escreva a mensagem'); return; }
+  const chat=document.getElementById('ab_chat'), avi=document.getElementById('ab_aviso');
+  if(via==='wa'){ const wa=telWa(x.telefone); if(!wa){ toast('Motorista sem telefone'); return; } window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(txt+'\n\n'+motLink()),'_blank'); fechar(); return; }
+  if(!(chat&&chat.checked)&&!(avi&&avi.checked)){ toast('Marque ao menos um destino (chat ou aviso)'); return; }
+  try{
+    if(chat&&chat.checked) await motMsgEquipe(id,txt);
+    if(avi&&avi.checked) await S.db.collection('mot_avisos').add({motoristaId:id,tipo:'urgente',titulo:'Alerta de bloqueio: checklist por fotos pendente',texto:txt,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''});
+    fechar(); toast('Alerta enviado ao motorista'); motRecarregar();
+  }catch(e){ erroSalvar('enviar o alerta de bloqueio',e); }
+}
 function motBloqueioPorFotos(id){
   const sel=document.getElementById('mb_status'), mot=document.getElementById('mb_motivo'), dt=document.getElementById('mb_data'); if(!sel||!mot||!dt) return;
   const d=new Date(motHojeSP()+'T12:00:00'); d.setDate(d.getDate()+1);
@@ -2872,7 +2903,7 @@ function motVerifHtml(x){
   const porDia={}; for(const v of S.motVerif) if(v.motoristaId===x.id){ (porDia[v.dia]=porDia[v.dia]||{})[v.tipo]=v.em; }
   const dias=Object.keys(porDia).sort().reverse().slice(0,14);
   const hist=dias.length?`<div class="tbl"><table style="min-width:0"><tr><th>Dia</th><th>💧 Água</th><th>🛢 Óleo</th></tr>${dias.map(d=>`<tr><td>${fmtD(d)}</td><td>${porDia[d].agua?motHoraSP(porDia[d].agua):'—'}</td><td>${porDia[d].oleo?motHoraSP(porDia[d].oleo):'—'}</td></tr>`).join('')}</table></div>`:'<div class="muted">Nenhuma verificação registrada ainda.</div>';
-  return `<div class="step"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🧰 Verificações de água/óleo e fotos</h3><span class="sp"></span><button class="sec" onclick="motCobrarVerif('${x.id}')">💬 Cobrar por WhatsApp</button></div>
+  return `<div class="step"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🧰 Verificações de água/óleo e fotos</h3><span class="sp"></span>${st==='pendente'||st==='atrasada'?`<button class="${st==='atrasada'?'pri':'sec'}" style="${st==='atrasada'?'background:var(--bad,#b91c1c);border-color:var(--bad,#b91c1c)':''}" onclick="motAlertaBloqueio('${x.id}')">⚡ Alerta de bloqueio (fotos)</button>`:''}<button class="sec" onclick="motCobrarVerif('${x.id}')">💬 Cobrar por WhatsApp</button></div>
     <div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap">${tg(hj.agua,'💧 Água hoje',hj.agua)}${tg(hj.oleo,'🛢 Óleo hoje',hj.oleo)}<span class="tag ${rot[1]}">${rot[0]}</span></div>
     ${st==='atrasada'||st==='pendente'?`<div class="hint" style="margin-bottom:8px">O app do motorista fica travado até ele confirmar. Se as fotos não vierem, use <a href="#" onclick="motBloqueioPorFotos('${x.id}');return false">programar bloqueio por falta de fotos</a> (só sinaliza no app; o bloqueio real é no rastreador).</div>`:''}
     <b>Fotos semanais</b> <span class="muted">(ficam guardadas por 30 dias)</span>${linhasFoto}
