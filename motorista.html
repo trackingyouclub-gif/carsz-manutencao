@@ -303,7 +303,7 @@ function render(rolarChat){
   if(!S.resumo){ app.innerHTML=`<header><h1>Carsz Motorista</h1></header><main><div class="empty">Carregando…</div></main>`; return; }
   const keep=guardarCampos();
   const r=S.resumo; const nl=r.nao_lidas||0;
-  const novosAvisos=(r.avisos||[]).filter(a=>!vistos.has(a.id)).length;
+  const novosAvisos=avisosVisiveis(r).filter(a=>!vistos.has(a.id)).length;
   const conteudo={inicio:telaInicio,avisos:telaAvisos,chat:telaChat,manut:telaManut}[S.tab](r);
   app.innerHTML=`<header><h1>Carsz Motorista</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
     <main>${conteudo}</main>
@@ -334,6 +334,11 @@ function telaLogin(){
 }
 
 function promessaEmAberto(r){ const h=hojeStr(); return (r.promessas||[]).find(p=>(p.status==='pendente'||p.status==='aceita')&&(p.dataPrometida||'')>=h)||null; }
+// promessa de pagamento ACEITA adia o bloqueio programado: o alerta e os avisos de "bloqueio programado" somem do app
+// (voltam sozinhos se a promessa deixar de valer e a situação continuar "programado")
+function promessaAceitaAdia(r){ const bl=((r.motorista||{}).bloqueio||{}).status; const pe=promessaEmAberto(r); return bl==='programado'&&!!pe&&pe.status==='aceita'?pe:null; }
+// o aviso "Bloqueio programado…" some quando a promessa é aceita OU quando a situação deixa de ser "programado" (liberado)
+function avisosVisiveis(r){ const adia=promessaAceitaAdia(r), prog=((r.motorista||{}).bloqueio||{}).status==='programado'; return (r.avisos||[]).filter(a=>!(/^bloqueio programado/i.test(a.titulo||'')&&(adia||!prog))); }
 const STATUS_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
 const STATUS_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Não foi possível','bad'],concluido:['Concluído','neu']};
 
@@ -341,7 +346,10 @@ function telaInicio(r){
   const m=r.motorista, v=r.veiculo, bl=m.bloqueio||{status:'normal'}; const pe=promessaEmAberto(r);
   let h=`<div style="margin:2px 2px 12px"><div class="muted">Olá,</div><div style="font-size:22px;font-weight:800">${esc((m.nome||'').split(' ')[0])}</div></div>`;
   // bloqueio sinalizado pela equipe (o bloqueio em si é feito pela Carsz; aqui só avisa e permite prometer pagamento)
-  if(bl.status==='bloqueado'||bl.status==='programado'){
+  const adia=promessaAceitaAdia(r);
+  if(adia){
+    h+=`<div class="alert ok"><b class="t">🤝 Promessa de pagamento aceita</b><div class="txt">Pagamento combinado para <b>${fmtD(adia.dataPrometida)}</b>${adia.resposta?' — '+esc(adia.resposta):''}. O aviso de bloqueio foi suspenso. Se não pagar até lá, ele volta.</div><button class="btn sec" onclick="irPara('chat')">Falar com a cobrança</button></div>`;
+  } else if(bl.status==='bloqueado'||bl.status==='programado'){
     const bloq=bl.status==='bloqueado';
     h+=`<div class="alert ${bloq?'bad':'warn'}"><b class="t">${bloq?'🔒 Veículo bloqueado':'⚠ Bloqueio programado'}${!bloq&&bl.data?' para '+fmtD(bl.data):''}</b>
       ${bl.motivo?`<div class="txt">${esc(bl.motivo)}</div>`:''}
@@ -373,7 +381,7 @@ function telaInicio(r){
   if((r.agendadas||[]).length){
     h+=`<div class="card"><h3>📅 Manutenção agendada</h3>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="muted sm">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
   }
-  const av=(r.avisos||[]).slice(0,3);
+  const av=avisosVisiveis(r).slice(0,3);
   if(av.length){
     h+=`<div class="card"><div class="row"><h3 style="margin:0">Últimos avisos</h3><span class="sp"></span><button class="btn sm ghost" style="padding:4px 8px" onclick="irPara('avisos')">ver todos</button></div>${av.map(avisoHtml).join('')}</div>`;
   }
@@ -388,7 +396,7 @@ function avisoHtml(a){
     ${a.texto?`<div style="white-space:pre-wrap">${esc(a.texto)}</div>`:''}<div class="muted sm">${esc(fmtHora(a.em))}</div></div></div></div>`;
 }
 function telaAvisos(r){
-  const av=r.avisos||[];
+  const av=avisosVisiveis(r);
   // marca como vistos (guarda neste aparelho) — o selo "novo" some na próxima vez
   setTimeout(()=>{ let mudou=false; for(const a of av){ if(!vistos.has(a.id)){ vistos.add(a.id); mudou=true; } } if(mudou){ LS.set('mot_avisos_vistos',JSON.stringify([...vistos].slice(-300))); const n=document.querySelector('nav.tabs button:nth-child(2) .badge'); if(n) n.remove(); } },2500);
   return `<h2 style="margin:4px 2px 10px">Avisos</h2>`+(av.length?`<div class="card">${av.map(avisoHtml).join('')}</div>`:`<div class="empty">Nenhum aviso por enquanto.</div>`);
