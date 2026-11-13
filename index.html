@@ -3072,6 +3072,44 @@ async function motConfirmarRecusaComp(cid){
     motWaPrompt(c.motoristaId,ref?ref.id:'',motMsgWaLivre(txt),'Comprovante recusado');
   }catch(e){ erroSalvar('recusar o comprovante',e); }
 }
+// ---- carro reserva: a placa PRINCIPAL (senha, pontos e ranking) nunca muda; o reserva fica em x.reserva até devolver ----
+const motEmUso = (m,exceto) => S.mots.find(y=>y.id!==exceto&&y.ativo!==false&&(y.veiculoId===m.id||(y.reserva&&y.reserva.veiculoId===m.id)));
+const motVagas = () => S.veic.filter(v=>isFrota(v)&&v.placa&&!motEmUso(v,'')).sort((a,b)=>(a.placa||'').localeCompare(b.placa||''));
+function motVeiculoHtml(x){
+  const r=x.reserva&&x.reserva.veiculoId?x.reserva:null, hist=(x.reservaHist||[]).slice(0,5);
+  return `<div class="step"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🚗 Veículo</h3><span class="sp"></span>${x.ativo===false?'':(r?`<button class="pri" onclick="motReservaDevolver('${x.id}')">↩ Devolver reserva</button><button class="sec" onclick="motReservaForm('${x.id}')">Trocar o reserva</button>`:`<button class="sec" onclick="motReservaForm('${x.id}')">🚗 Colocar em carro reserva</button>`)}</div>
+    <div style="margin:8px 0"><span class="muted">Placa principal (senha do app, pontos e ranking):</span> <span class="plate">${esc(x.placa||'—')}</span></div>
+    ${r?`<div class="alert warn" style="margin:6px 0"><b>Em carro reserva:</b> <span class="plate">${esc(r.placa||'')}</span> ${esc(r.modelo||'')} <span class="muted">desde ${motHora(r.desde)}${r.por?' · por '+esc(r.por):''}</span><div class="muted">A placa principal continua pontuando e fica guardada para ele.</div></div>`:'<div class="muted">Está com o veículo principal.</div>'}
+    ${hist.length?`<div class="muted" style="margin-top:6px">Reservas anteriores: ${hist.map(h=>`${esc(h.placa||'')} (${motHora(h.desde)} → ${motHora(h.ate)})`).join(' · ')}</div>`:''}
+  </div>`;
+}
+function motReservaForm(id){
+  const x=S.mots.find(y=>y.id===id); if(!x) return; const vagas=motVagas();
+  abrir(`<h3>🚗 Carro reserva — ${esc(x.nome||'')}</h3><p class="muted">Só aparecem placas <b>vagas</b> (da frota, sem motorista ativo). A placa principal <b>${esc(x.placa||'')}</b> continua pontuando e é a senha do app.</p>
+    ${vagas.length?`<label>Placa do reserva</label><select id="rs_veic">${vagas.map(v=>`<option value="${v.id}">${esc(v.placa)} · ${esc(v.modelo||'')}</option>`).join('')}</select>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="rs_msg" checked style="width:auto"> Avisar o motorista no chat do app</label>`:'<div class="empty">Nenhuma placa vaga no momento.</div>'}
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button>${vagas.length?`<button class="pri" onclick="motReservaSalvar('${id}')">Colocar no reserva</button>`:''}</div>`);
+}
+const motHistReserva = (x,r) => [{placa:r.placa||'',desde:r.desde||'',ate:agoraIso(),por:(S.perfil&&S.perfil.nome)||''},...(x.reservaHist||[])].slice(0,20);
+async function motReservaSalvar(id){
+  const x=S.mots.find(y=>y.id===id); if(!x) return; const vid=val('rs_veic'); const v=S.veic.find(y=>y.id===vid); if(!v) return;
+  if(motEmUso(v,'')){ toast('Esta placa acabou de ser ocupada. Escolha outra.'); motReservaForm(id); return; }
+  const antes=x.reserva&&x.reserva.veiculoId?x.reserva:null; const me=(S.perfil&&S.perfil.nome)||'';
+  try{
+    await S.db.doc('motoristas/'+id).update({reserva:{veiculoId:v.id,placa:v.placa,modelo:v.modelo||'',desde:agoraIso(),por:me},reservaHist:antes?motHistReserva(x,antes):(x.reservaHist||[])});
+    const chk=document.getElementById('rs_msg'); if(chk&&chk.checked) await motMsgEquipe(id,`🚗 Você está no carro reserva ${v.placa}. Sua placa principal (${x.placa||''}) continua valendo e pontuando. Quando devolver, avise a cobrança ou toque em "Devolver reserva" no app.`);
+    fechar(); toast('Motorista no carro reserva '+v.placa); motRecarregar();
+  }catch(e){ erroSalvar('colocar no carro reserva',e); }
+}
+async function motReservaDevolver(id){
+  const x=S.mots.find(y=>y.id===id); if(!x||!x.reserva||!x.reserva.veiculoId) return;
+  if(!confirm(`Devolver o reserva ${x.reserva.placa} e voltar para a placa principal ${x.placa||''}?`)) return;
+  try{
+    await S.db.doc('motoristas/'+id).update({reserva:null,reservaHist:motHistReserva(x,x.reserva)});
+    await motMsgEquipe(id,`🚗 Carro reserva ${x.reserva.placa} devolvido. Você voltou para a sua placa ${x.placa||''}.`);
+    toast('Reserva devolvido'); motRecarregar();
+  }catch(e){ erroSalvar('devolver o reserva',e); }
+}
 function motBloqueioPorFotos(id){
   const sel=document.getElementById('mb_status'), mot=document.getElementById('mb_motivo'), dt=document.getElementById('mb_data'); if(!sel||!mot||!dt) return;
   const d=new Date(motHojeSP()+'T12:00:00'); d.setDate(d.getDate()+1);
@@ -3111,7 +3149,6 @@ const MOT_BLOQ={normal:['Liberado','ok'],programado:['Bloqueio programado','warn
 const MOT_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
 const MOT_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Recusado','bad']};
 const motHora = iso => { try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
-const motGerarSenha = () => { const c='abcdefghjkmnpqrstuvwxyz23456789'; let s=''; for(let i=0;i<6;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; };
 const telWa = t => { const d=String(t||'').replace(/\D/g,''); return d?(d.length<=11?'55'+d:d):''; };
 
 // cartões de aviso no topo da aba Motoristas: clicar filtra a lista logo abaixo só com quem está naquela situação
@@ -3146,7 +3183,7 @@ function motoristasView(m){
     <div id="mot_lista"></div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 
@@ -3174,6 +3211,7 @@ function motDetalhe(m){
   const wa=telWa(x.telefone);
   m.innerHTML=`<div class="bar"><button class="ghost" onclick="S.motAtual=null;render()">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
     <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}</div></div>
+    ${motVeiculoHtml(x)}
     ${motCompHtml(x)}
     ${motVerifHtml(x)}
     ${motPontosHtml(x)}
@@ -3281,34 +3319,36 @@ function motForm(id){
     <div class="full"><label>Nome</label><input id="mf_nome" value="${esc(x.nome||'')}"></div>
     <div><label>CPF (é o login do app)</label><input id="mf_cpf" inputmode="numeric" value="${esc(mascaraCpf(x.cpf||''))}" oninput="this.value=mascaraCpf(this.value)"></div>
     <div><label>WhatsApp</label><input id="mf_tel" value="${esc(x.telefone||'')}" placeholder="11987654321"></div>
-    <div class="full"><label>Veículo</label><select id="mf_veic"><option value="">— sem veículo —</option>${veics.map(v=>`<option value="${v.id}" ${x.veiculoId===v.id?'selected':''}>${esc(v.placa)} · ${esc(v.modelo||'')}</option>`).join('')}</select></div>
-    <div class="full"><label>${id?'Nova senha (deixe em branco para manter a atual)':'Senha de acesso (mín. 6 caracteres)'}</label><div class="row"><input id="mf_senha" value="${id?'':motGerarSenha()}" style="flex:1" autocomplete="off"><button class="sec" type="button" onclick="document.getElementById('mf_senha').value=motGerarSenha()">Gerar</button></div></div>
+    <div class="full"><label>Veículo (placa principal)</label><select id="mf_veic"><option value="">— escolha o veículo —</option>${veics.map(v=>`<option value="${v.id}" ${x.veiculoId===v.id?'selected':''}>${esc(v.placa)} · ${esc(v.modelo||'')}</option>`).join('')}</select></div>
+    <div class="full hint">🔑 A <b>senha do app é sempre a placa principal</b> do veículo (sem traço, ex.: RZH5G46). O login é o CPF. Se trocar a placa principal aqui, a senha muda junto.</div>
     <div class="full"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="mf_ativo" ${x.ativo!==false?'checked':''} style="width:auto"> Acesso ativo</label></div></div>
     <div class="act">${id?`<button class="ghost danger" onclick="motApagar('${id}')">Excluir</button><span class="sp"></span>`:''}<button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motSalvar('${id}')">Salvar</button></div>`);
 }
 async function motSalvar(id){
-  const nome=val('mf_nome'), cpf=val('mf_cpf').replace(/\D/g,''), tel=val('mf_tel').replace(/\D/g,''), veicId=val('mf_veic'), senha=val('mf_senha'), ativo=document.getElementById('mf_ativo').checked;
+  const nome=val('mf_nome'), cpf=val('mf_cpf').replace(/\D/g,''), tel=val('mf_tel').replace(/\D/g,''), veicId=val('mf_veic'), ativo=document.getElementById('mf_ativo').checked;
   if(!nome){ toast('Informe o nome'); return; }
   if(!cpfValido(cpf)){ toast('CPF inválido'); return; }
-  if(!id&&senha.length<6){ toast('A senha precisa ter ao menos 6 caracteres'); return; }
-  if(id&&senha&&senha.length<6){ toast('A senha precisa ter ao menos 6 caracteres'); return; }
+  if(!veicId){ toast('Escolha o veículo: a senha do app é a placa'); return; }
+  const ocupa=ativo?S.mots.find(m=>m.id!==id&&m.ativo!==false&&(m.veiculoId===veicId||(m.reserva&&m.reserva.veiculoId===veicId))):null;
+  if(ocupa){ toast('Esta placa já está com '+ocupa.nome+(ocupa.veiculoId===veicId?'':' (carro reserva)')); return; }
   const v=S.veic.find(y=>y.id===veicId);
   const base=id?{...(S.mots.find(m=>m.id===id)||{})}:{criadoEm:agoraIso(),criadoPor:S.mecNome};
   const d={...base,nome,cpf,telefone:tel,veiculoId:veicId||'',placa:v?v.placa:'',ativo}; delete d.id;
   let docId=id;
   try{
     if(id) await S.db.doc('motoristas/'+id).set(d); else { const ref=await S.db.collection('motoristas').add(d); docId=ref.id; }
-    const {data,error}=await sb.rpc('mot_salvar_acesso',{p_id:docId,p_cpf:cpf,p_senha:senha||null});
+    const {data,error}=await sb.rpc('mot_salvar_acesso',{p_id:docId,p_cpf:cpf,p_senha:null});
     if(error) throw error;
     if(data&&data.erro){ toast(data.erro); if(!id) await S.db.doc('motoristas/'+docId).delete(); return; }
     fechar(); motRecarregar();
-    if(senha) motAcessoWhats(nome,tel,cpf,senha); else toast('Motorista salvo');
+    if(!id) motAcessoWhats(nome,tel,cpf,v?v.placa:''); else toast('Motorista salvo');
   }catch(e){ erroSalvar('salvar o motorista',e); }
 }
-function motAcessoWhats(nome,tel,cpf,senha){
-  const msg=`Olá, ${nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\nAbra: ${motLink()}\nLogin (CPF): ${mascaraCpf(cpf)}\nSenha: ${senha}\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início". Você pode trocar a senha dentro do app.`;
+function motAcessoWhats(nome,tel,cpf,placa){
+  const senha=String(placa||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const msg=`Olá, ${nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\nAbra: ${motLink()}\nLogin (CPF): ${mascaraCpf(cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
   const wa=telWa(tel);
-  abrir(`<h3>Acesso criado</h3><p class="muted">Anote ou envie agora — a senha não aparece de novo (se perder, é só definir outra em Editar).</p>
+  abrir(`<h3>Acesso criado</h3><p class="muted">A senha do motorista é a placa do veículo dele. Envie o acesso agora ou mais tarde pelo botão do WhatsApp.</p>
     <div class="lastinfo"><b>Login:</b> ${esc(mascaraCpf(cpf))}<br><b>Senha:</b> ${esc(senha)}<br><b>Link:</b> ${esc(motLink())}</div>
     <div class="act">${wa?`<button class="pri" onclick="window.open('https://wa.me/${wa}?text=${encodeURIComponent(msg)}','_blank')">💬 Enviar por WhatsApp</button>`:'<span class="hint">Sem WhatsApp cadastrado.</span>'}<button class="sec" onclick="fechar()">Fechar</button></div>`);
 }

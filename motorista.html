@@ -325,10 +325,10 @@ function telaLogin(){
     <label for="lg_cpf">CPF</label>
     <input id="lg_cpf" inputmode="numeric" autocomplete="username" placeholder="000.000.000-00" oninput="this.value=mascaraCpf(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('lg_senha').focus()">
     <label for="lg_senha">Senha</label>
-    <div class="pw"><input id="lg_senha" type="password" autocomplete="current-password" placeholder="Sua senha" onkeydown="if(event.key==='Enter')entrar()"><button type="button" onclick="const i=document.getElementById('lg_senha');i.type=i.type==='password'?'text':'password'">ver</button></div>
+    <div class="pw"><input id="lg_senha" type="password" autocomplete="current-password" placeholder="Placa do seu veículo" onkeydown="if(event.key==='Enter')entrar()"><button type="button" onclick="const i=document.getElementById('lg_senha');i.type=i.type==='password'?'text':'password'">ver</button></div>
     <div class="err" id="lg_err">${esc(S.erroLogin)}</div>
     <button class="btn" id="lg_btn" style="margin-top:10px" onclick="entrar()">Entrar</button>
-    <p class="muted sm" style="text-align:center;margin-top:14px">Esqueceu a senha? Fale com a Carsz pelo WhatsApp que enviamos uma nova.</p>
+    <p class="muted sm" style="text-align:center;margin-top:14px">Sua senha é a <b>placa do seu veículo</b> (ex.: RZH5G46). Não consegue entrar? Fale com a Carsz pelo WhatsApp.</p>
     ${blocoInstalar()}
   </div>`;
 }
@@ -356,6 +356,8 @@ function telaInicio(r){
   h+=cartaoPontos(r);
   if(v){
     h+=`<div class="card"><div class="row"><span class="plate">${esc(v.placa||'')}</span><div style="flex:1"><div style="font-weight:700">${esc(v.modelo||'')}</div><div class="muted sm">${esc(v.ano||'')}${v.km?' · '+fmtKm(v.km):''}</div></div></div>
+      ${r.reserva?`<div class="alert warn" style="margin:12px 0 0"><b class="t" style="margin:0">🚗 Você está no carro reserva</b><div class="txt" style="margin:4px 0 8px">Sua placa principal <b>${esc((r.principal||{}).placa||'')}</b> continua pontuando e fica guardada para você${r.reserva.desde?' (desde '+fmtD(String(r.reserva.desde).slice(0,10))+')':''}.</div><button class="btn sm" onclick="devolverReserva()">↩ Devolver reserva</button></div>`
+        :`<button class="btn sm ghost" style="margin-top:10px" onclick="formTrocarPlaca()">🚗 Peguei um carro reserva</button>`}
       ${r.na_oficina?`<div class="alert info" style="margin:12px 0 0"><b>🛠 Seu veículo está na oficina</b> desde ${fmtD(r.na_oficina.desde)}.</div>`:''}</div>`;
   } else {
     h+=`<div class="card"><div class="muted">Nenhum veículo vinculado ao seu cadastro ainda. Fale com a Carsz.</div></div>`;
@@ -516,20 +518,36 @@ async function enviarAgendamento(){
 function menu(){
   sheet(`<h3>${esc(S.nome||'Minha conta')}</h3><p class="muted" style="margin:0 0 12px">Carsz Motorista</p>
     ${emApp?'':`<button class="btn sec" style="margin-bottom:8px" onclick="fecharSheet();instalar()">📲 Instalar o app</button>`}
-    <button class="btn sec" style="margin-bottom:8px" onclick="formSenha()">🔑 Trocar minha senha</button>
     <button class="btn danger" style="margin-bottom:4px" onclick="fecharSheet();sair()">Sair</button>
     <button class="btn ghost" onclick="fecharSheet()">Fechar</button>`);
 }
-function formSenha(){
-  sheet(`<h3>🔑 Trocar senha</h3>
-    <label for="sn_atual">Senha atual</label><input id="sn_atual" type="password" autocomplete="current-password">
-    <label for="sn_nova">Nova senha (mín. 6 caracteres)</label><input id="sn_nova" type="password" autocomplete="new-password">
-    <div style="margin-top:14px"><button class="btn" id="sn_btn" onclick="salvarSenha()">Salvar nova senha</button><button class="btn ghost" onclick="fecharSheet()">Cancelar</button></div>`);
+// ---- carro reserva (a placa principal segue pontuando; o motorista só escolhe entre placas vagas) ----
+async function formTrocarPlaca(){
+  sheet(`<h3>🚗 Carro reserva</h3><div class="muted">Carregando placas vagas…</div>`);
+  try{
+    const vagas=await rpc('mot_placas_vagas',{p_token:S.token});
+    if(!document.getElementById('sheet_bg')) return;
+    sheet(`<h3>🚗 Peguei um carro reserva</h3><p class="muted">Escolha a placa do carro que você pegou. Só aparecem placas <b>vagas</b>. Sua placa principal <b>${esc((S.resumo.principal||{}).placa||'')}</b> continua pontuando e fica guardada para você.</p>
+      ${(vagas||[]).length?`<label for="tp_veic">Placa do carro reserva</label><select id="tp_veic">${vagas.map(v=>`<option value="${esc(v.id)}">${esc(v.placa)} · ${esc(v.modelo||'')}</option>`).join('')}</select>
+      <div style="margin-top:14px"><button class="btn" id="tp_btn" onclick="trocarPlaca()">Confirmar troca</button><button class="btn ghost" onclick="fecharSheet()">Cancelar</button></div>`
+      :`<div class="empty">Nenhuma placa vaga agora. Fale com a Carsz pelo chat.</div><button class="btn ghost" onclick="fecharSheet()">Fechar</button>`}`);
+  }catch(e){ fecharSheet(); erroGenerico(e); }
 }
-async function salvarSenha(){
-  const a=document.getElementById('sn_atual').value, n=document.getElementById('sn_nova').value; const b=document.getElementById('sn_btn'); b.disabled=true;
-  try{ const d=await rpc('mot_trocar_senha',{p_token:S.token,p_atual:a,p_nova:n}); if(d&&d.erro){ toast(d.erro); b.disabled=false; return; } fecharSheet(); toast('Senha alterada'); }
-  catch(e){ erroGenerico(e); b.disabled=false; }
+async function trocarPlaca(){
+  const sel=document.getElementById('tp_veic'); if(!sel||!sel.value) return; const b=document.getElementById('tp_btn'); b.disabled=true;
+  try{
+    const d=await rpc('mot_trocar_placa',{p_token:S.token,p_veiculo_id:sel.value});
+    if(d&&d.erro){ toast(d.erro); b.disabled=false; if(/vaga/.test(d.erro)) formTrocarPlaca(); return; }
+    fecharSheet(); toast('Carro reserva '+(d.placa||'')+' registrado'); ultimoMsgs=''; S.msgs=null; await atualizar(true);
+  }catch(e){ erroGenerico(e); b.disabled=false; }
+}
+async function devolverReserva(){
+  if(!confirm('Você devolveu o carro reserva e voltou para o seu carro?')) return;
+  try{
+    const d=await rpc('mot_devolver_reserva',{p_token:S.token});
+    if(d&&d.erro){ toast(d.erro); return; }
+    toast('Reserva devolvido. Você voltou para a sua placa.'); ultimoMsgs=''; S.msgs=null; await atualizar(true);
+  }catch(e){ erroGenerico(e); }
 }
 
 // ---- boot ----
