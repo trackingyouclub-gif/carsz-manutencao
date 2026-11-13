@@ -81,6 +81,17 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);border-co
 .login h1{text-align:center;margin:0 0 2px;font-size:24px}
 .login p.sub{text-align:center;color:var(--muted);margin:0 0 18px}
 .err{color:var(--bad);font-size:14px;min-height:20px;margin:8px 0 0}
+/* verificações obrigatórias */
+.obrig{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:auto;padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px)}
+.obrig .wrap{max-width:520px;margin:0 auto}
+.obrig h2{margin:0 0 4px;font-size:22px}
+.obrig .it{display:flex;gap:12px;align-items:flex-start}
+.obrig .it .em{font-size:30px;line-height:1}
+.obrig .it .tx{flex:1;min-width:0}
+.obrig .it .tx b{display:block;font-size:16px}
+.obrig .done{opacity:.85;border-color:var(--ok)}
+.obrig label.btn{cursor:pointer;margin:10px 0 0}
+.obrig input[type=file]{display:none}
 /* sheet */
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet{background:var(--card);width:100%;max-width:640px;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:90dvh;overflow:auto}
@@ -163,7 +174,7 @@ async function atualizar(forcar){
     if(forcar||mudouR||mudouM) render(mudouM);
   }catch(e){ if(!S.resumo) erroGenerico(e); }
 }
-setInterval(()=>{ if(S.token&&document.visibilityState==='visible'&&!S.sheetAberto) atualizar(false); }, 15000);
+setInterval(()=>{ if(S.token&&document.visibilityState==='visible'&&!S.sheetAberto&&!S.ocupado) atualizar(false); }, 15000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&S.token) atualizar(false); });
 
 // ---- navegação ----
@@ -188,6 +199,79 @@ function blocoInstalar(){
 function sheet(html){ fecharSheet(); S.sheetAberto=true; const bg=document.createElement('div'); bg.className='sheet-bg'; bg.id='sheet_bg'; bg.innerHTML=`<div class="sheet">${html}</div>`; bg.addEventListener('click',e=>{ if(e.target===bg) fecharSheet(); }); document.body.appendChild(bg); }
 function fecharSheet(){ const b=document.getElementById('sheet_bg'); if(b) b.remove(); S.sheetAberto=false; }
 
+// ---- verificações obrigatórias: água/óleo todo dia + fotos (painel e etiqueta de óleo) toda segunda ----
+const hhmm = iso => { try{ return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
+function pendencias(r){
+  const v=r.veiculo, bl=(r.motorista.bloqueio||{}).status;
+  if(!v||bl==='bloqueado'||r.na_oficina) return []; // carro parado (bloqueado ou na oficina): não cobra verificação
+  const ve=r.verificacoes||{}, f=r.fotos||{}, p=[];
+  if(!ve.agua) p.push('agua'); if(!ve.oleo) p.push('oleo');
+  if(f.status==='pendente'||f.status==='atrasada'){ if(!f.painel) p.push('painel'); if(!f.etiqueta) p.push('etiqueta'); }
+  return p;
+}
+function obrigHtml(r){
+  const pend=pendencias(r); if(!pend.length) return '';
+  const ve=r.verificacoes||{}, f=r.fotos||{}; const comFotos=f.status==='pendente'||f.status==='atrasada';
+  const item=(k,em,tit,desc,hora,acao)=> hora
+    ? `<div class="card done"><div class="it"><span class="em">✅</span><div class="tx"><b>${tit}</b><div class="muted sm">Registrado hoje às ${hhmm(hora)}</div></div></div></div>`
+    : `<div class="card"><div class="it"><span class="em">${em}</span><div class="tx"><b>${tit}</b><div class="muted sm">${desc}</div>${acao}</div></div></div>`;
+  const btn=(t,tit)=>`<button class="btn" id="vb_${t}" onclick="verificar('${t}')">Já verifiquei ${tit}</button>`;
+  const foto=t=>`<label class="btn" id="fb_${t}">📷 Tirar foto<input type="file" accept="image/*" capture="environment" data-foto="${t}" onchange="enviarFoto('${t}',this)"></label>`;
+  let h=`<div class="obrig"><div class="wrap"><h2>✋ Verificações obrigatórias</h2>
+    <p class="muted" style="margin:0 0 14px">Para continuar usando o app, confirme os itens abaixo. Fica registrado o dia e o horário de cada um.</p>`;
+  if(comFotos){
+    h+=f.status==='atrasada'
+      ? `<div class="alert bad"><b class="t">🚨 Fotos da semana atrasadas</b><div class="txt">As fotos eram para segunda-feira. O veículo está sujeito a bloqueio — envie agora.</div></div>`
+      : `<div class="alert warn"><b class="t">⚠ Hoje é dia das fotos da semana</b><div class="txt">Envie até hoje, 23:59. Sem as fotos, o veículo poderá ser bloqueado.</div></div>`;
+  }
+  h+=item('agua','💧','Água do radiador','Com o motor frio, confira o nível do reservatório de água.',ve.agua,btn('agua','a água'));
+  h+=item('oleo','🛢','Óleo do motor','Confira o nível do óleo na vareta.',ve.oleo,btn('oleo','o óleo'));
+  if(comFotos){
+    h+=item('painel','📷','Foto do painel de instrumentos','Com o carro ligado, foto do painel inteiro mostrando o km (hodômetro) e as luzes.',f.painel,foto('painel'));
+    h+=item('etiqueta','📷','Foto da etiqueta de troca de óleo','Foto da etiqueta/adesivo com o km da próxima troca de óleo.',f.etiqueta,foto('etiqueta'));
+  }
+  return h+`<div class="muted sm" style="text-align:center;margin-top:6px">Faltam ${pend.length} item${pend.length>1?'s':''}.</div></div></div>`;
+}
+async function verificar(tipo){
+  const b=document.getElementById('vb_'+tipo); if(b) b.disabled=true; S.ocupado=true;
+  try{ const r=await rpc('mot_verificar',{p_token:S.token,p_tipo:tipo}); if(r&&r.erro){ toast(r.erro); } else { toast('Registrado às '+hhmm(r.em)); } await atualizar(true); }
+  catch(e){ erroGenerico(e); if(b) b.disabled=false; }
+  finally{ S.ocupado=false; }
+}
+function lerFoto(file){
+  return new Promise((ok,erro)=>{
+    const url=URL.createObjectURL(file), img=new Image();
+    img.onload=()=>{ const max=1280; let w=img.naturalWidth, h=img.naturalHeight; const k=Math.min(1,max/Math.max(w,h)); w=Math.round(w*k); h=Math.round(h*k);
+      const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); URL.revokeObjectURL(url);
+      let q=.72, out=c.toDataURL('image/jpeg',q); while(out.length>650000&&q>.35){ q-=.1; out=c.toDataURL('image/jpeg',q); } ok(out); };
+    img.onerror=()=>{ URL.revokeObjectURL(url); erro(new Error('imagem')); };
+    img.src=url;
+  });
+}
+async function enviarFoto(tipo,input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const lb=document.getElementById('fb_'+tipo); S.ocupado=true; if(lb) lb.firstChild.textContent='Enviando…';
+  try{
+    const foto=await lerFoto(file);
+    const r=await rpc('mot_enviar_foto',{p_token:S.token,p_tipo:tipo,p_foto:foto});
+    if(r&&r.erro){ toast(r.erro); if(lb) lb.firstChild.textContent='📷 Tirar foto'; }
+    else { toast('Foto enviada às '+hhmm(r.em)); await atualizar(true); }
+  }catch(e){ if(e&&e.message==='imagem'){ toast('Não consegui ler a foto. Tire de novo.'); if(lb) lb.firstChild.textContent='📷 Tirar foto'; } else erroGenerico(e); if(lb) lb.firstChild.textContent='📷 Tirar foto'; }
+  finally{ S.ocupado=false; input.value=''; }
+}
+function cartaoVerificacoes(r){
+  const v=r.veiculo, ve=r.verificacoes||{}, f=r.fotos||{}; if(!v) return '';
+  const linha=(ic,t,h)=>`<div class="row" style="margin:4px 0"><span>${ic} ${t}</span><span class="sp"></span>${h?`<span class="tag ok">${hhmm(h)}</span>`:'<span class="tag warn">pendente</span>'}</div>`;
+  let h=`<div class="card"><h3>🧰 Verificações</h3>${linha('💧','Água hoje',ve.agua)}${linha('🛢','Óleo hoje',ve.oleo)}`;
+  h+=`<div class="muted sm" style="margin:10px 0 4px"><b>Fotos da semana</b> (toda segunda-feira)</div>${linha('📷','Painel de instrumentos',f.painel)}${linha('📷','Etiqueta de óleo',f.etiqueta)}`;
+  if(f.status==='opcional'&&(!f.painel||!f.etiqueta)){
+    h+=`<div class="muted sm" style="margin:8px 0 0">Você foi cadastrado nesta semana: as fotos passam a ser obrigatórias a partir da próxima segunda. Pode enviar já:</div>`;
+    if(!f.painel) h+=`<label class="btn sec" id="fb_painel" style="margin-top:8px">📷 Foto do painel<input type="file" accept="image/*" capture="environment" data-foto="painel" onchange="enviarFoto('painel',this)" style="display:none"></label>`;
+    if(!f.etiqueta) h+=`<label class="btn sec" id="fb_etiqueta" style="margin-top:8px">📷 Foto da etiqueta de óleo<input type="file" accept="image/*" capture="environment" data-foto="etiqueta" onchange="enviarFoto('etiqueta',this)" style="display:none"></label>`;
+  }
+  return h+'</div>';
+}
+
 // ---- telas ----
 function render(rolarChat){
   const app=document.getElementById('app');
@@ -201,7 +285,8 @@ function render(rolarChat){
     <main>${conteudo}</main>
     <nav class="tabs">
       ${[['inicio','🏠','Início',0],['avisos','🔔','Avisos',novosAvisos],['chat','💬','Cobrança',nl],['manut','🛠','Manutenção',0]].map(([k,i,l,n])=>`<button class="${S.tab===k?'on':''}" onclick="irPara('${k}')"><span class="i">${i}</span>${l}${n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
-    </nav>`;
+    </nav>${obrigHtml(r)}`;
+  document.body.style.overflow=pendencias(r).length?'hidden':'';
   restaurarCampos(keep);
   if(S.tab==='chat'&&(rolarChat||keep.novo)){ const c=document.getElementById('chat_fim'); if(c) c.scrollIntoView({block:'end'}); }
 }
@@ -242,6 +327,7 @@ function telaInicio(r){
   } else {
     h+=`<div class="alert ok"><b class="t" style="margin:0">✅ Tudo certo com o seu veículo</b></div>`;
   }
+  h+=cartaoVerificacoes(r);
   if(v){
     h+=`<div class="card"><div class="row"><span class="plate">${esc(v.placa||'')}</span><div style="flex:1"><div style="font-weight:700">${esc(v.modelo||'')}</div><div class="muted sm">${esc(v.ano||'')}${v.km?' · '+fmtKm(v.km):''}</div></div></div>
       ${r.na_oficina?`<div class="alert info" style="margin:12px 0 0"><b>🛠 Seu veículo está na oficina</b> desde ${fmtD(r.na_oficina.desde)}.</div>`:''}</div>`;
