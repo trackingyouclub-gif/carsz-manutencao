@@ -2837,12 +2837,12 @@ async function delSin(id){ if(!confirm('Excluir este sinistro?'))return; await S
 // em tabelas próprias (ver motoristas.sql). O bloqueio aqui só SINALIZA no app do motorista; o
 // bloqueio do veículo em si continua sendo feito na plataforma do rastreador.
 const podeMotoristas = () => !!S.perfil&&(ehAdminGeral()||((ehAuxiliar()||ehCobranca())&&(!S.perfil.oficinaId||S.perfil.oficinaId==='matriz')));
-Object.assign(S,{mots:[],motMsgs:[],motPromessas:[],motAgend:[],motAvisos:[],motVerif:[],motFotos:[],motAtrasos:[],motRank:[],motAtual:null,motOk:true,motBusca:'',motFiltro:''});
+Object.assign(S,{mots:[],motMsgs:[],motPromessas:[],motAgend:[],motAvisos:[],motVerif:[],motFotos:[],motAtrasos:[],motComp:[],motRank:[],motAtual:null,motOk:true,motBusca:'',motFiltro:''});
 let motIniciado=false;
 function iniciarMotoristas(){
   if(motIniciado||!podeMotoristas()) return; motIniciado=true;
   const sub=(col,key)=>S.db.collection(col).onSnapshot(snap=>{ S[key]=snap.docs.map(d=>({id:d.id,...d.data()})); S.motOk=true; render(); },e=>{ console.warn('tabela "'+col+'" indisponível (rode o motoristas.sql no Supabase):',e); S.motOk=false; });
-  sub('motoristas','mots'); sub('mot_mensagens','motMsgs'); sub('mot_promessas','motPromessas'); sub('mot_agendamentos','motAgend'); sub('mot_avisos','motAvisos'); sub('mot_verificacoes','motVerif'); sub('mot_fotos','motFotos'); sub('mot_atrasos','motAtrasos');
+  sub('motoristas','mots'); sub('mot_mensagens','motMsgs'); sub('mot_promessas','motPromessas'); sub('mot_agendamentos','motAgend'); sub('mot_avisos','motAvisos'); sub('mot_verificacoes','motVerif'); sub('mot_fotos','motFotos'); sub('mot_atrasos','motAtrasos'); sub('mot_comprovantes','motComp');
   try{ Promise.resolve(sb.rpc('mot_limpar_expirados')).catch(()=>{}); }catch(e){} // apaga fotos com mais de 30 dias
 }
 // ---- verificações diárias (água/óleo) e fotos semanais (painel + etiqueta de óleo, segundas-feiras) ----
@@ -3000,6 +3000,75 @@ function motRankingModal(){
     ${rk.length?`<div class="tbl"><table style="min-width:0"><tr><th>#</th><th>Placa</th><th>Motorista</th><th>Pontos</th><th>Semanas limpas</th></tr>${rk.map(e=>`<tr style="cursor:pointer" onclick="fechar();S.motAtual='${e.id}';render()"><td>${e.posicao===1?'🥇':e.posicao}</td><td><b>${esc(e.placa||'')}</b></td><td>${esc(e.nome||'')}</td><td><b style="color:var(--${e.pontos<0?'bad':'ok'})">${motPts(e.pontos)}</b></td><td>${e.semanas_limpas}</td></tr>`).join('')}</table></div>`:'<div class="muted">Nenhum motorista ativo com placa.</div>'}
     <div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`);
 }
+// ---- comprovantes de pagamento enviados pelo motorista (foto ou PDF). Ao dar baixa ou recusar, o arquivo é APAGADO. ----
+const MOT_COMP={pendente:['Aguardando conferência','warn'],pago:['Baixa dada','ok'],recusado:['Recusado','bad']};
+const MOT_COMP_MOTIVOS=['Comprovante ilegível (borrado, cortado ou escuro)','Valor diferente do que está em aberto','Não é comprovante deste pagamento (data, favorecido ou conta errados)','Arquivo errado ou sem comprovante','Outro motivo'];
+function motCompHtml(x){
+  const cs=S.motComp.filter(c=>c.motoristaId===x.id).sort((a,b)=>(b.em||'').localeCompare(a.em||''));
+  return `<div class="step"><h3>🧾 Comprovantes de pagamento</h3>${cs.length?cs.map(c=>{ const s=MOT_COMP[c.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>${motHora(c.em)}</b>${c.valor?' · '+fmtBRL(c.valor):''} <span class="tag ${s[1]}">${s[0]}</span> <span class="tag neu">${c.tipo==='pdf'?'PDF':'foto'}</span><div class="muted">${esc(c.obs||'')}${c.recusadoMotivo?' · Recusado: '+esc(c.recusadoMotivo):''}${c.baixaPor?' · baixa por '+esc(c.baixaPor):''}${c.promessaId?' · ligado a uma promessa':''}</div></div><span class="sp"></span><div class="row">${c.status==='pendente'?`<button class="sec" onclick="motVerComp('${c.id}')">Ver</button><button class="pri" onclick="motBaixaComp('${c.id}')">✔ Dar baixa</button><button class="ghost danger" onclick="motRecusarComp('${c.id}')">✖ Recusar</button>`:''}</div></div>`; }).join(''):'<div class="muted">Nenhum comprovante enviado.</div>'}<div class="muted" style="margin-top:6px">O arquivo é apagado quando você dá baixa ou recusa.</div></div>`;
+}
+async function motVerComp(cid){
+  const c=S.motComp.find(y=>y.id===cid); if(!c) return; const t='Comprovante — '+((S.mots.find(y=>y.id===c.motoristaId)||{}).nome||'');
+  abrir(`<h3>${esc(t)}</h3><div class="muted">Carregando…</div>`);
+  try{
+    const {data,error}=await sb.from('mot_comprovantes_img').select('arquivo').eq('id',c.fileId||'').maybeSingle(); if(error) throw error;
+    const src=data&&(data.arquivo||(data.data&&data.data.arquivo));
+    if(!src){ abrir(`<h3>${esc(t)}</h3><p class="muted">O arquivo não está mais disponível.</p><div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`); return; }
+    let corpo;
+    if(/^data:application\/pdf/.test(src)){ const bin=atob(src.split(',')[1]), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); const url=URL.createObjectURL(new Blob([u],{type:'application/pdf'}));
+      corpo=`<p><a class="btn pri" id="comp_pdf" href="${url}" target="_blank" rel="noopener" style="display:inline-block;padding:10px 16px;border-radius:10px;text-decoration:none">📄 Abrir o PDF</a></p><embed src="${url}" type="application/pdf" style="width:100%;height:55vh;border-radius:8px">`; }
+    else corpo=`<img src="${src}" style="width:100%;max-height:65vh;object-fit:contain;border-radius:8px;background:#000">`;
+    abrir(`<h3>${esc(t)}</h3>${c.valor?`<p class="muted">Valor informado: <b>${fmtBRL(c.valor)}</b>${c.obs?' · '+esc(c.obs):''}</p>`:(c.obs?`<p class="muted">${esc(c.obs)}</p>`:'')}${corpo}
+      <div class="act"><button class="sec" onclick="fechar()">Fechar</button><button class="ghost danger" onclick="motRecusarComp('${cid}')">✖ Recusar</button><button class="pri" onclick="motBaixaComp('${cid}')">✔ Dar baixa</button></div>`);
+  }catch(e){ abrir(`<h3>${esc(t)}</h3><p class="muted">Não consegui abrir o arquivo agora.</p><div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`); }
+}
+function motBaixaComp(cid){
+  const c=S.motComp.find(y=>y.id===cid); if(!c) return; const x=S.mots.find(y=>y.id===c.motoristaId)||{}; const st=(x.bloqueio||{}).status||'normal';
+  const p=c.promessaId&&S.motPromessas.find(y=>y.id===c.promessaId&&(y.status==='pendente'||y.status==='aceita'));
+  abrir(`<h3>✔ Dar baixa no pagamento</h3><p class="muted">${esc(x.nome||'')}${c.valor?' informou '+fmtBRL(c.valor):''}. O comprovante será <b>apagado</b> ao confirmar.</p>
+    ${p?`<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="bc_prom" checked style="width:auto"> Marcar a promessa de ${fmtD(p.dataPrometida)} como cumprida</label>`:''}
+    ${st!=='normal'?`<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="bc_lib" checked style="width:auto"> Liberar o veículo (situação → Liberado)</label>`:''}
+    <label>Mensagem para o motorista (opcional)</label><textarea id="bc_resp"></textarea>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motConfirmarBaixa('${cid}')">Confirmar baixa</button></div>`);
+}
+async function motApagarCompArquivo(c){
+  if(!c.fileId) return; const {error}=await sb.from('mot_comprovantes_img').delete().eq('id',c.fileId); if(error) throw error;
+}
+async function motConfirmarBaixa(cid){
+  const c=S.motComp.find(y=>y.id===cid); if(!c) return; const resp=val('bc_resp'); const bp=document.getElementById('bc_prom'), bl=document.getElementById('bc_lib'); const me=(S.perfil&&S.perfil.nome)||'';
+  try{
+    await S.db.doc('mot_comprovantes/'+cid).update({status:'pago',baixaEm:agoraIso(),baixaPor:me});
+    try{ await motApagarCompArquivo(c); await S.db.doc('mot_comprovantes/'+cid).update({fileId:''}); }catch(e){ toast('Baixa dada, mas o arquivo não foi apagado: '+(e.message||e)); }
+    if(bp&&bp.checked&&c.promessaId) await S.db.doc('mot_promessas/'+c.promessaId).update({status:'cumprida',resposta:resp,respondidoPor:me,respondidoEm:agoraIso()});
+    const txt='✔ Recebemos o seu comprovante e demos baixa no pagamento. Obrigado!'+(resp?'\n'+resp:'');
+    await motMsgEquipe(c.motoristaId,txt);
+    if(bl&&bl.checked) await S.db.doc('motoristas/'+c.motoristaId).update({bloqueio:{status:'normal',motivo:'',data:'',em:agoraIso(),por:me}});
+    fechar(); toast('Baixa dada — comprovante apagado'); await motRecarregar();
+    motWaPrompt(c.motoristaId,'',motMsgWa(S.mots.find(y=>y.id===c.motoristaId),'Pagamento confirmado',txt,false),'Pagamento confirmado');
+  }catch(e){ erroSalvar('dar baixa no pagamento',e); }
+}
+function motRecusarComp(cid){
+  const c=S.motComp.find(y=>y.id===cid); if(!c) return; const x=S.mots.find(y=>y.id===c.motoristaId)||{};
+  abrir(`<h3>✖ Recusar comprovante</h3><p class="muted">${esc(x.nome||'')}${x.placa?' · '+esc(x.placa):''}. O arquivo é apagado e o motorista é avisado para enviar outro.</p>
+    <label>Motivo</label><select id="rc_motivo">${MOT_COMP_MOTIVOS.map(m=>`<option>${esc(m)}</option>`).join('')}</select>
+    <label>Observação para o motorista (opcional)</label><textarea id="rc_obs"></textarea>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="rc_chat" checked style="width:auto"> Enviar no chat do app (aba Cobrança)</label>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="rc_aviso" checked style="width:auto"> Criar aviso urgente na aba Avisos do app</label>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" style="background:var(--bad,#b91c1c);border-color:var(--bad,#b91c1c)" onclick="motConfirmarRecusaComp('${cid}')">Recusar e avisar</button></div>`);
+}
+async function motConfirmarRecusaComp(cid){
+  const c=S.motComp.find(y=>y.id===cid); if(!c) return; const obs=val('rc_obs'); const motivo=val('rc_motivo')+(obs?': '+obs:'');
+  const chat=document.getElementById('rc_chat'), avi=document.getElementById('rc_aviso'); const me=(S.perfil&&S.perfil.nome)||'';
+  const txt=`⚠ COMPROVANTE RECUSADO: ${motivo}. Envie um novo comprovante pelo app (tela inicial → Enviar comprovante).`;
+  try{
+    await S.db.doc('mot_comprovantes/'+cid).update({status:'recusado',recusadoMotivo:motivo,recusadoEm:agoraIso(),recusadoPor:me});
+    try{ await motApagarCompArquivo(c); await S.db.doc('mot_comprovantes/'+cid).update({fileId:''}); }catch(e){}
+    if(chat&&chat.checked) await motMsgEquipe(c.motoristaId,txt);
+    let ref=null; if(avi&&avi.checked) ref=await S.db.collection('mot_avisos').add({motoristaId:c.motoristaId,tipo:'urgente',titulo:'Comprovante recusado',texto:txt,em:agoraIso(),por:me,waPendente:true});
+    fechar(); toast('Comprovante recusado — motorista avisado'); motRecarregar();
+    motWaPrompt(c.motoristaId,ref?ref.id:'',motMsgWaLivre(txt),'Comprovante recusado');
+  }catch(e){ erroSalvar('recusar o comprovante',e); }
+}
 function motBloqueioPorFotos(id){
   const sel=document.getElementById('mb_status'), mot=document.getElementById('mb_motivo'), dt=document.getElementById('mb_data'); if(!sel||!mot||!dt) return;
   const d=new Date(motHojeSP()+'T12:00:00'); d.setDate(d.getDate()+1);
@@ -3032,8 +3101,9 @@ const motLink = () => location.origin+location.pathname.replace(/[^/]*$/,'')+'mo
 const motMsgsAuto = x => x.tipo==='promessa'||x.tipo==='agendamento'; // já contadas nas pendências próprias
 const motNaoLidas = id => S.motMsgs.filter(x=>x.motoristaId===id&&x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length;
 const motPromPend = id => S.motPromessas.filter(x=>(!id||x.motoristaId===id)&&x.status==='pendente').length;
+const motCompPend = id => S.motComp.filter(x=>(!id||x.motoristaId===id)&&x.status==='pendente').length;
 const motAgPend = id => S.motAgend.filter(x=>(!id||x.motoristaId===id)&&x.status==='solicitado').length;
-const motPendTotal = () => S.motMsgs.filter(x=>x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length+motPromPend()+motAgPend();
+const motPendTotal = () => S.motMsgs.filter(x=>x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length+motPromPend()+motAgPend()+motCompPend();
 const MOT_BLOQ={normal:['Liberado','ok'],programado:['Bloqueio programado','warn'],bloqueado:['Bloqueado','bad']};
 const MOT_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
 const MOT_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Recusado','bad']};
@@ -3046,6 +3116,7 @@ const MOT_FILTROS=[
   ['bloq','🔒 Bloqueados','bad',x=>(x.bloqueio||{}).status==='bloqueado'],
   ['prog','⏳ Bloqueio programado','warn',x=>(x.bloqueio||{}).status==='programado'],
   ['prom','🤝 Promessas p/ responder','',x=>motPromPend(x.id)>0],
+  ['comp','🧾 Comprovantes p/ conferir','warn',x=>motCompPend(x.id)>0],
   ['ped','🛠 Pedidos de manutenção','',x=>motAgPend(x.id)>0],
   ['msg','💬 Mensagens novas','',x=>motNaoLidas(x.id)>0],
   ['fotoatr','📷 Fotos atrasadas','bad',x=>motFotoStatus(x)==='atrasada'],
@@ -3062,7 +3133,7 @@ function motoristasView(m){
   S.motAtual=null;
   const q=(S.motBusca||'').trim()?slug(S.motBusca):'';
   const filtroAtivo=MOT_FILTROS.find(f=>f[0]===S.motFiltro);
-  const lista=S.mots.filter(x=>!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q)).filter(x=>!filtroAtivo||filtroAtivo[3](x)).map(x=>({x,pend:motNaoLidas(x.id)+motPromPend(x.id)+motAgPend(x.id)}))
+  const lista=S.mots.filter(x=>!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q)).filter(x=>!filtroAtivo||filtroAtivo[3](x)).map(x=>({x,pend:motNaoLidas(x.id)+motPromPend(x.id)+motAgPend(x.id)+motCompPend(x.id)}))
     .sort((a,b)=>b.pend-a.pend||(a.x.nome||'').localeCompare(b.x.nome||''));
   const nBloq=S.mots.filter(x=>(x.bloqueio||{}).status==='bloqueado').length, nProg=S.mots.filter(x=>(x.bloqueio||{}).status==='programado').length;
   m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="pri" onclick="motForm('')">+ Novo motorista</button></div>
@@ -3072,7 +3143,7 @@ function motoristasView(m){
     <div id="mot_lista"></div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 
@@ -3080,7 +3151,7 @@ function motoristasView(m){
 // depois de cada ação aqui e a cada 15s enquanto a aba Motoristas está aberta, pro chat não ficar parado
 async function motRecarregar(){
   if(!podeMotoristas()||!S.db) return;
-  try{ for(const [c,k] of [['motoristas','mots'],['mot_mensagens','motMsgs'],['mot_promessas','motPromessas'],['mot_agendamentos','motAgend'],['mot_avisos','motAvisos'],['mot_verificacoes','motVerif'],['mot_fotos','motFotos'],['mot_atrasos','motAtrasos']]){ const sn=await S.db.collection(c).get(); S[k]=sn.docs.map(d=>({id:d.id,...d.data()})); }
+  try{ for(const [c,k] of [['motoristas','mots'],['mot_mensagens','motMsgs'],['mot_promessas','motPromessas'],['mot_agendamentos','motAgend'],['mot_avisos','motAvisos'],['mot_verificacoes','motVerif'],['mot_fotos','motFotos'],['mot_atrasos','motAtrasos'],['mot_comprovantes','motComp']]){ const sn=await S.db.collection(c).get(); S[k]=sn.docs.map(d=>({id:d.id,...d.data()})); }
     try{ const rk=await sb.rpc('mot_ranking'); if(!rk.error&&Array.isArray(rk.data)) S.motRank=rk.data; }catch(e){} S.motOk=true; render(); }
   catch(e){ console.warn('motoristas: não foi possível recarregar',e); }
 }
@@ -3100,6 +3171,7 @@ function motDetalhe(m){
   const wa=telWa(x.telefone);
   m.innerHTML=`<div class="bar"><button class="ghost" onclick="S.motAtual=null;render()">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
     <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}</div></div>
+    ${motCompHtml(x)}
     ${motVerifHtml(x)}
     ${motPontosHtml(x)}
     <div class="step"><h3>🔒 Bloqueio do veículo (sinalização no app)</h3>

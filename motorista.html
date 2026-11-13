@@ -349,6 +349,7 @@ function telaInicio(r){
   } else {
     h+=`<div class="alert ok"><b class="t" style="margin:0">✅ Tudo certo com o seu veículo</b></div>`;
   }
+  h+=cartaoComprovante(r);
   h+=cartaoVerificacoes(r);
   h+=cartaoPontos(r);
   if(v){
@@ -418,7 +419,57 @@ function formPromessa(){
     <label for="pm_data">Data que vou pagar (até 3 dias)</label><input id="pm_data" type="date" min="${hojeStr()}" max="${somaDias(3)}" value="${somaDias(1)}">
     <label for="pm_valor">Valor que vou pagar (opcional)</label><input id="pm_valor" inputmode="decimal" placeholder="Ex.: 699,00">
     <label for="pm_obs">Observação (opcional)</label><textarea id="pm_obs" placeholder="Ex.: recebo do aplicativo na quinta" style="min-height:70px"></textarea>
+    <label for="pm_file">Comprovante de pagamento (opcional — pode enviar depois)</label><input id="pm_file" type="file" accept="image/*,application/pdf">
     <div style="margin-top:14px"><button class="btn" id="pm_btn" onclick="enviarPromessa()">Enviar promessa</button><button class="btn ghost" onclick="fecharSheet()">Cancelar</button></div>`);
+}
+// ---- comprovante de pagamento (foto ou PDF até 2 MB) ----
+function lerArquivo(file){
+  if(file.type==='application/pdf'||/\.pdf$/i.test(file.name||'')){
+    if(file.size>2*1024*1024) return Promise.reject(new Error('pdfgrande'));
+    return new Promise((ok,erro)=>{ const fr=new FileReader(); fr.onload=()=>ok(String(fr.result).replace(/^data:[^;,]*;base64,/,'data:application/pdf;base64,')); fr.onerror=()=>erro(new Error('imagem')); fr.readAsDataURL(file); });
+  }
+  return lerFoto(file);
+}
+// devolve true se enviou; mostra o erro na tela e devolve false se não deu
+async function postComprovante(file,valor,obs){
+  try{
+    const arq=await lerArquivo(file);
+    const d=await rpc('mot_enviar_comprovante',{p_token:S.token,p_arquivo:arq,p_valor:valor,p_obs:obs||''});
+    if(d&&d.erro){ toast(d.erro); return false; }
+    return true;
+  }catch(e){
+    if(e&&e.message==='pdfgrande'){ toast('PDF muito grande (máximo 2 MB).'); return false; }
+    if(e&&e.message==='imagem'){ toast('Não consegui ler o arquivo. Tente uma foto ou PDF.'); return false; }
+    erroGenerico(e); return false;
+  }
+}
+function formComprovante(){
+  const pe=promessaEmAberto(S.resumo);
+  sheet(`<h3>🧾 Enviar comprovante</h3><p class="muted">Anexe a foto ou o PDF do comprovante do pagamento${pe?' da sua promessa':''}. A cobrança confere e dá baixa — depois disso o arquivo é apagado.</p>
+    <label for="cp_file">Foto ou PDF (até 2 MB)</label><input id="cp_file" type="file" accept="image/*,application/pdf">
+    <label for="cp_valor">Valor pago (opcional)</label><input id="cp_valor" inputmode="decimal" placeholder="Ex.: 699,00">
+    <label for="cp_obs">Observação (opcional)</label><textarea id="cp_obs" placeholder="Ex.: pix feito hoje às 14h" style="min-height:70px"></textarea>
+    <div style="margin-top:14px"><button class="btn" id="cp_btn" onclick="enviarComprovante()">Enviar comprovante</button><button class="btn ghost" onclick="fecharSheet()">Cancelar</button></div>`);
+}
+async function enviarComprovante(){
+  const inp=document.getElementById('cp_file'); const file=inp&&inp.files&&inp.files[0]; if(!file){ toast('Escolha a foto ou o PDF do comprovante'); return; }
+  const b=document.getElementById('cp_btn'); b.disabled=true; b.textContent='Enviando…';
+  const ok=await postComprovante(file,numBR(document.getElementById('cp_valor').value),document.getElementById('cp_obs').value);
+  if(ok){ fecharSheet(); toast('Comprovante enviado. A cobrança vai conferir.'); ultimoMsgs=''; S.msgs=null; await atualizar(true); }
+  else { b.disabled=false; b.textContent='Enviar comprovante'; }
+}
+const diasDesde = iso => { const t=Date.parse(iso||''); return isNaN(t)?999:(Date.now()-t)/86400000; };
+function cartaoComprovante(r){
+  const cs=r.comprovantes||[], bl=((r.motorista||{}).bloqueio||{}).status||'normal', pe=promessaEmAberto(r);
+  const pen=cs.filter(c=>c.status==='pendente'), rec=cs.filter(c=>c.status==='recusado'), pag=cs.filter(c=>c.status==='pago'&&diasDesde(c.baixaEm)<=3);
+  if(bl==='normal'&&!pe&&!pen.length&&!rec.length&&!pag.length) return '';
+  const dt=c=>fmtD((c.em||'').slice(0,10))+' '+hhmm(c.em);
+  return `<div class="card"><h3>🧾 Comprovante de pagamento</h3>
+    ${rec.map(c=>`<div class="alert bad" style="margin:8px 0"><b class="t" style="margin:0">✖ Comprovante recusado</b><div class="txt" style="margin:4px 0 0">${esc(c.recusadoMotivo||'Envie um comprovante legível.')}</div><div style="margin-top:8px"><button class="btn sm" onclick="formComprovante()">Enviar de novo</button></div></div>`).join('')}
+    ${pen.map(c=>`<div class="list-i"><b>Enviado em ${dt(c)}</b>${c.valor?' · '+fmtBRL(c.valor):''} <span class="tag warn">Aguardando conferência</span></div>`).join('')}
+    ${pag.map(c=>`<div class="list-i"><b>✔ Pagamento confirmado</b> <span class="muted sm">${dt(c)}</span> <span class="tag ok">Baixa dada</span></div>`).join('')}
+    ${rec.length?'':`<p class="muted sm" style="margin:6px 0 8px">Já pagou? Anexe o comprovante (foto ou PDF) para a cobrança dar baixa mais rápido.</p><button class="btn ${pen.length?'sec':''}" onclick="formComprovante()">🧾 Enviar comprovante</button>`}
+  </div>`;
 }
 function numBR(s){ s=String(s||'').trim(); if(!s) return null; const n=parseFloat(s.replace(/\./g,'').replace(',','.')); return isNaN(n)?null:n; }
 async function enviarPromessa(){
@@ -427,7 +478,11 @@ async function enviarPromessa(){
   try{
     const d=await rpc('mot_prometer',{p_token:S.token,p_data:data,p_valor:valor,p_obs:obs});
     if(d&&d.erro){ toast(d.erro); b.disabled=false; return; }
-    fecharSheet(); toast('Promessa enviada para a cobrança'); ultimoMsgs=''; S.msgs=null; await atualizar(true);
+    const pf=document.getElementById('pm_file'), arq=pf&&pf.files&&pf.files[0];
+    fecharSheet(); ultimoMsgs=''; S.msgs=null;
+    if(arq){ const ok=await postComprovante(arq,valor,''); toast(ok?'Promessa e comprovante enviados para a cobrança':'Promessa enviada, mas o comprovante não foi. Use "Enviar comprovante" na tela inicial.'); }
+    else toast('Promessa enviada para a cobrança');
+    await atualizar(true);
   }catch(e){ erroGenerico(e); b.disabled=false; }
 }
 
