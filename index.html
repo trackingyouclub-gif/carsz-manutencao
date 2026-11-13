@@ -2901,14 +2901,39 @@ function motAlertaBloqueio(id){
 async function motEnviarAlertaBloqueio(id,via){
   const x=S.mots.find(y=>y.id===id); if(!x) return; const txt=val('ab_txt').trim(); if(!txt){ toast('Escreva a mensagem'); return; }
   const chat=document.getElementById('ab_chat'), avi=document.getElementById('ab_aviso');
-  if(via==='wa'){ const wa=telWa(x.telefone); if(!wa){ toast('Motorista sem telefone'); return; } window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(txt+'\n\n'+motLink()),'_blank'); fechar(); return; }
+  if(via==='wa'){ const wa=telWa(x.telefone); if(!wa){ toast('Motorista sem telefone'); return; } window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(motMsgWaLivre(txt)),'_blank'); fechar(); return; }
   if(!(chat&&chat.checked)&&!(avi&&avi.checked)){ toast('Marque ao menos um destino (chat ou aviso)'); return; }
   try{
     if(chat&&chat.checked) await motMsgEquipe(id,txt);
-    if(avi&&avi.checked) await S.db.collection('mot_avisos').add({motoristaId:id,tipo:'urgente',titulo:'Alerta de bloqueio: checklist por fotos pendente',texto:txt,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''});
+    let ref=null; if(avi&&avi.checked) ref=await S.db.collection('mot_avisos').add({motoristaId:id,tipo:'urgente',titulo:'Alerta de bloqueio: checklist por fotos pendente',texto:txt,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||'',waPendente:true});
     fechar(); toast('Alerta enviado ao motorista'); motRecarregar();
+    motWaPrompt(id,ref?ref.id:'',motMsgWaLivre(txt),'Alerta de bloqueio (checklist por fotos)');
   }catch(e){ erroSalvar('enviar o alerta de bloqueio',e); }
 }
+// ---- WhatsApp automático: cada alerta individual enviado ao motorista já gera a mensagem de WhatsApp pronta
+// (com o link do app e "entre no app e resolva esta pendência"). O envio em si é um clique seu — o WhatsApp
+// não permite mandar sozinho. Se você escolher "Mais tarde", o aviso fica marcado como "WhatsApp a enviar".
+const motFechoWa = pendencia => pendencia?'👉 Entre no app e resolva esta pendência:':'👉 Veja os detalhes no app:';
+function motMsgWa(x,titulo,texto,pendencia=true){
+  const nome=((x&&x.nome)||'').split(' ')[0]; const corpo=(texto||'').trim();
+  return `🔔 *Carsz — ${titulo}*\n\nOlá${nome?', '+nome:''}! ${corpo||titulo}\n\n${motFechoWa(pendencia)}\n${motLink()}`;
+}
+const motMsgWaLivre = (txt,pendencia=true) => `${txt}\n\n${motFechoWa(pendencia)}\n${motLink()}`;
+const motWaPend = id => S.motAvisos.filter(a=>a.motoristaId===id&&a.waPendente).length;
+function motWaPrompt(motId,avisoId,mensagem,titulo){
+  const x=S.mots.find(y=>y.id===motId); if(!x) return; const wa=telWa(x.telefone);
+  abrir(`<h3>💬 Avisar também por WhatsApp</h3>
+    <p class="muted">${esc(titulo||'Alerta')} enviado no app para <b>${esc(x.nome||'')}</b>. A mensagem de WhatsApp já está pronta, com o link do app (pode editar):</p>
+    <textarea id="wa_txt" style="min-height:170px">${esc(mensagem)}</textarea>
+    ${wa?'':'<div class="hint">Este motorista está sem telefone cadastrado — não dá para enviar por WhatsApp.</div>'}
+    <div class="act"><button class="sec" onclick="fechar()">Mais tarde</button>${wa?`<button class="pri" onclick="motWaAbrir('${motId}','${avisoId||''}')">💬 Abrir WhatsApp</button>`:''}</div>`);
+}
+async function motWaAbrir(motId,avisoId){
+  const x=S.mots.find(y=>y.id===motId); const wa=x&&telWa(x.telefone); const t=val('wa_txt').trim(); if(!wa||!t) return;
+  window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(t),'_blank'); fechar();
+  if(avisoId){ try{ await S.db.doc('mot_avisos/'+avisoId).update({waPendente:false,waEnviadoEm:agoraIso()}); motRecarregar(); }catch(e){ console.warn(e); } }
+}
+function motWaDoAviso(avisoId){ const a=S.motAvisos.find(y=>y.id===avisoId); if(!a) return; const x=S.mots.find(y=>y.id===a.motoristaId); motWaPrompt(a.motoristaId,avisoId,/ALERTA DE BLOQUEIO/.test(a.texto||'')?motMsgWaLivre(a.texto):motMsgWa(x,a.titulo,a.texto,a.tipo!=='info'),a.titulo); }
 function motBloqueioPorFotos(id){
   const sel=document.getElementById('mb_status'), mot=document.getElementById('mb_motivo'), dt=document.getElementById('mb_data'); if(!sel||!mot||!dt) return;
   const d=new Date(motHojeSP()+'T12:00:00'); d.setDate(d.getDate()+1);
@@ -2966,7 +2991,7 @@ function motoristasView(m){
     </div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?'Nenhum motorista encontrado.':'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 
@@ -3009,7 +3034,7 @@ function motDetalhe(m){
       <div id="mot_chat" style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0">${msgs.length?msgs.map(t=>`<div style="align-self:${t.de==='equipe'?'flex-end':'flex-start'};max-width:85%;padding:7px 11px;border-radius:12px;background:${t.de==='equipe'?'var(--brand)':'var(--soft)'};color:${t.de==='equipe'?'#fff':'var(--ink)'};white-space:pre-wrap;word-wrap:break-word"><div style="font-size:11px;opacity:.8">${esc(t.autor||'')} · ${esc(motHora(t.em))}${t.de==='equipe'&&t.lidaMotorista?' · ✓ lida':''}</div>${esc(t.texto)}</div>`).join(''):'<div class="muted">Nenhuma mensagem ainda.</div>'}</div>
       <div class="row" style="margin-top:8px;align-items:flex-end"><textarea id="mot_txt" placeholder="Escreva para o motorista…" style="flex:1;min-height:46px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();motEnviarMsg('${x.id}')}"></textarea><button class="pri" onclick="motEnviarMsg('${x.id}')">Enviar</button></div></div>
     <div class="step"><div class="row"><h3 style="margin:0">📢 Avisos no app</h3><span class="sp"></span><button class="sec" onclick="motAvisoForm('${x.id}')">+ Aviso para ${esc((x.nome||'').split(' ')[0])}</button></div>
-      ${avs.length?avs.map(a=>`<div class="osrow" style="cursor:default"><div><b>${esc(a.titulo||'')}</b> <span class="tag neu">${a.motoristaId?'só dele':'geral'}</span>${a.ate?` <span class="muted">até ${fmtD(a.ate)}</span>`:''}<div class="muted">${esc(a.texto||'')}</div></div><span class="sp"></span><button class="ghost danger" onclick="motApagarAviso('${a.id}')">Apagar</button></div>`).join(''):'<div class="muted" style="margin-top:6px">Nenhum aviso.</div>'}</div>`;
+      ${avs.length?avs.map(a=>`<div class="osrow" style="cursor:default"><div><b>${esc(a.titulo||'')}</b> <span class="tag neu">${a.motoristaId?'só dele':'geral'}</span>${a.waPendente?' <span class="tag warn">💬 WhatsApp a enviar</span>':''}${a.ate?` <span class="muted">até ${fmtD(a.ate)}</span>`:''}<div class="muted">${esc(a.texto||'')}</div></div><span class="sp"></span>${a.waPendente?`<button class="sec" onclick="motWaDoAviso('${a.id}')">💬 Enviar</button>`:''}<button class="ghost danger" onclick="motApagarAviso('${a.id}')">Apagar</button></div>`).join(''):'<div class="muted" style="margin-top:6px">Nenhum aviso.</div>'}</div>`;
   const c=document.getElementById('mot_chat'); if(c) c.scrollTop=c.scrollHeight;
 }
 
@@ -3023,14 +3048,16 @@ async function motSalvarBloqueio(id){
   const x=S.mots.find(y=>y.id===id); if(!x) return;
   const status=val('mb_status'), motivo=val('mb_motivo'), data=val('mb_data'); const avisar=document.getElementById('mb_avisar').checked;
   if(status==='programado'&&!data){ toast('Informe a data do bloqueio programado'); return; }
-  const antes=(x.bloqueio||{}).status||'normal';
+  const antes=(x.bloqueio||{}).status||'normal'; let wa=null;
   try{
     await S.db.doc('motoristas/'+id).update({bloqueio:{status,motivo,data:status==='programado'?data:'',em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''}});
     if(avisar&&status!==antes){
       const tit=status==='bloqueado'?'Veículo bloqueado':status==='programado'?'Bloqueio programado para '+fmtD(data):'Veículo liberado';
-      await S.db.collection('mot_avisos').add({motoristaId:id,tipo:status==='normal'?'info':'urgente',titulo:tit,texto:status==='normal'?'Seu veículo foi liberado. Obrigado!':(motivo||''),em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''});
+      const tx=status==='normal'?'Seu veículo foi liberado. Obrigado!':(motivo||'');
+      const ref=await S.db.collection('mot_avisos').add({motoristaId:id,tipo:status==='normal'?'info':'urgente',titulo:tit,texto:tx,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||'',waPendente:true});
+      wa=[ref.id,motMsgWa(x,tit,tx,status!=='normal'),tit];
     }
-    toast('Situação salva'); motRecarregar();
+    toast('Situação salva'); if(wa) motWaPrompt(id,wa[0],wa[1],wa[2]); motRecarregar();
   }catch(e){ erroSalvar('salvar a situação do veículo',e); }
 }
 function motRespPromessa(pid,status){
@@ -3051,6 +3078,7 @@ async function motConfirmarPromessa(pid,status,novaSit){
     await motMsgEquipe(p.motoristaId,txt);
     if(opc&&opc.checked&&novaSit){ await S.db.doc('motoristas/'+p.motoristaId).update({bloqueio:{status:novaSit,motivo:'',data:'',em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''}}); }
     fechar(); toast('Resposta enviada'); motRecarregar();
+    motWaPrompt(p.motoristaId,'',motMsgWa(S.mots.find(y=>y.id===p.motoristaId),'Promessa de pagamento',txt,status==='quebrada'),'Resposta da promessa');
   }catch(e){ erroSalvar('responder a promessa',e); }
 }
 function motRespAgend(gid,status){
@@ -3065,8 +3093,10 @@ async function motConfirmarAgend(gid,status){
   if(status==='confirmado'&&!dc){ toast('Informe a data confirmada'); return; }
   try{
     await S.db.doc('mot_agendamentos/'+gid).update({status,resposta:resp,dataConfirmada:dc,respondidoPor:(S.perfil&&S.perfil.nome)||'',respondidoEm:agoraIso()});
-    await motMsgEquipe(g.motoristaId,(status==='confirmado'?`Sua manutenção foi CONFIRMADA para ${fmtD(dc)}.`:`Não foi possível atender o pedido de manutenção para ${fmtD(g.dataDesejada)}.`)+(resp?'\n'+resp:''));
+    const txtAg=(status==='confirmado'?`Sua manutenção foi CONFIRMADA para ${fmtD(dc)}.`:`Não foi possível atender o pedido de manutenção para ${fmtD(g.dataDesejada)}.`)+(resp?'\n'+resp:'');
+    await motMsgEquipe(g.motoristaId,txtAg);
     fechar(); toast('Resposta enviada'); motRecarregar();
+    motWaPrompt(g.motoristaId,'',motMsgWa(S.mots.find(y=>y.id===g.motoristaId),'Pedido de manutenção',txtAg,false),'Resposta do pedido de manutenção');
   }catch(e){ erroSalvar('responder o pedido de manutenção',e); }
 }
 function motAvisoForm(motId){
@@ -3079,7 +3109,9 @@ function motAvisoForm(motId){
 }
 async function motSalvarAviso(motId){
   const titulo=val('av_titulo'); if(!titulo){ toast('Informe o título'); return; }
-  try{ await S.db.collection('mot_avisos').add({motoristaId:motId||'',tipo:val('av_tipo'),titulo,texto:val('av_texto'),ate:val('av_ate')||null,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''}); fechar(); toast('Aviso publicado'); motRecarregar(); }
+  const tipo=val('av_tipo'), texto=val('av_texto');
+  try{ const ref=await S.db.collection('mot_avisos').add({motoristaId:motId||'',tipo,titulo,texto,ate:val('av_ate')||null,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||'',waPendente:!!motId}); fechar(); toast('Aviso publicado'); motRecarregar();
+    if(motId){ const x=S.mots.find(y=>y.id===motId); motWaPrompt(motId,ref.id,motMsgWa(x,titulo,texto,tipo!=='info'),titulo); } }
   catch(e){ erroSalvar('publicar o aviso',e); }
 }
 async function motApagarAviso(id){ if(!confirm('Apagar este aviso?')) return; try{ await S.db.doc('mot_avisos/'+id).delete(); motRecarregar(); }catch(e){ erroSalvar('apagar o aviso',e); } }
