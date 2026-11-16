@@ -3121,7 +3121,7 @@ function motIr(id){ const el=document.getElementById(id); if(!el) return; if(el.
 async function motRespostaRapida(id){ try{ await motMsgEquipe(id,'Recebido! Já estamos analisando e respondemos em seguida.'); toast('Resposta enviada'); motRecarregar(); }catch(e){ erroSalvar('enviar a resposta',e); } }
 function motPontosHtml(x){
   const e=(S.motRank||[]).find(y=>y.id===x.id);
-  if(!e) return `<div class="step" id="sec_pts" style="padding:10px 16px"><h3 style="margin:0;font-size:15px">🏆 Pontuação</h3><div class="muted">Sem pontuação ${x.ativo===false?'(motorista desativado)':!x.placa?'(motorista sem placa)':'ainda — atualize a página'}.</div></div>`;
+  if(!e) return `<div class="step" id="sec_pts" style="padding:10px 16px"><h3 style="margin:0;font-size:15px">🏆 Pontuação</h3><div class="muted">Sem pontuação ${x.ativo===false?'(motorista desativado)':!x.placa?'(motorista sem placa)':!x.primeiroLogin?'ainda — <b>a pontuação começa no primeiro login do motorista no app</b>':'ainda — atualize a página'}.</div></div>`;
   const pen=(e.penalidades||[]).slice().sort((a,b)=>String(b.data).localeCompare(String(a.data)));
   const gan=e.ganhos||[];
   const lin=p=>p.tipo==='promessa'
@@ -3142,7 +3142,7 @@ async function motAnularAtraso(id,anular){
 function motRankingModal(){
   const rk=S.motRank||[];
   abrir(`<h3>🏆 Ranking de motoristas</h3>
-    <p class="muted">${motHojeSP()<'2026-12-01'?'<b>Período de familiarização até 30/11: a pontuação oficial começa em 01/12 (tudo zera).</b> ':''}Mês atual (zera todo dia 1º). Pontuação = saldo: quanto maior, melhor. <b>Ganha:</b> água e óleo verificados no dia +0,1 cada · foto do painel e da etiqueta enviadas na segunda-feira +10 cada. <b>Perde:</b> atraso 1 dia −20 · 2 dias −50 · 3+ dias −100 · promessa de pagamento −10. Empate: mais semanas limpas seguidas. Os motoristas veem só a placa do 1º colocado e a própria posição.</p>
+    <p class="muted">${motHojeSP()<'2026-12-01'?'<b>Período de familiarização até 30/11: a pontuação oficial começa em 01/12 (tudo zera).</b> ':''}A pontuação de cada motorista começa no <b>primeiro login dele</b> (quem ainda não entrou não aparece aqui). Mês atual (zera todo dia 1º). Pontuação = saldo: quanto maior, melhor. <b>Ganha:</b> água e óleo verificados no dia +0,1 cada · foto do painel e da etiqueta enviadas na segunda-feira +10 cada. <b>Perde:</b> atraso 1 dia −20 · 2 dias −50 · 3+ dias −100 · promessa de pagamento −10. Empate: mais semanas limpas seguidas. Os motoristas veem só a placa do 1º colocado e a própria posição.</p>
     ${rk.length?`<div class="tbl"><table style="min-width:0"><tr><th>#</th><th>Placa</th><th>Motorista</th><th>Saldo</th><th>+</th><th>−</th><th>Semanas limpas</th></tr>${rk.map(e=>`<tr style="cursor:pointer" onclick="fechar();if(motPodeSair()){S.motAtual='${e.id}';render()}"><td>${e.posicao===1?'🥇':e.posicao}</td><td><b>${esc(e.placa||'')}</b></td><td>${esc(e.nome||'')}</td><td><b style="color:var(--${e.pontos<0?'bad':'ok'})">${motPts(e.pontos)}</b></td><td>${motPts(e.positivos||0)}</td><td>${motPts(e.negativos||0)}</td><td>${e.semanas_limpas}</td></tr>`).join('')}</table></div>`:'<div class="muted">Nenhum motorista ativo com placa.</div>'}
     <div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`);
 }
