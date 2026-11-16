@@ -116,6 +116,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth:
 const LS = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }, del(k){ try{ localStorage.removeItem(k); }catch(e){} } };
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hojeStr = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+const somaDiasData = (d,n) => { const x=new Date(d+'T12:00:00'); x.setDate(x.getDate()+n); return x.toLocaleDateString('sv-SE'); };
 const somaDias = (n) => { const d=new Date(); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const fmtD = d => d ? String(d).slice(0,10).split('-').reverse().join('/') : '—';
 const fmtKm = v => (+v||0).toLocaleString('pt-BR')+' km';
@@ -320,6 +321,7 @@ function rankingTop(k,eu){
   const dentro=top.some(t=>t.posicao===eu.posicao);
   return `<div style="margin-top:10px"><div style="font-weight:700;margin-bottom:4px">🏆 Melhores motoristas (top ${top.length})</div>${top.map(t=>lin(t,t.posicao===eu.posicao)).join('')}${dentro?'':`<div class="muted sm" style="text-align:center;margin:2px 0">⋯</div>${lin({posicao:eu.posicao,placa:eu.placa,pontos:eu.pontos},true)}`}</div>`;
 }
+const PONTUACAO_OFICIAL='2026-12-01'; // até lá é período de familiarização (a pontuação zera nessa data)
 function cartaoPontos(r){
   const k=r.ranking; if(!k||!k.eu) return ''; const eu=k.eu, lid=k.lider; const souLider=eu.posicao===1;
   const gan=eu.ganhos||[];
@@ -327,7 +329,9 @@ function cartaoPontos(r){
   const linha=p=>p.tipo==='promessa'
     ? `<div class="row" style="margin:3px 0"><span>🤝 Promessa de pagamento (${fmtD(p.data)})</span><span class="sp"></span><b>${fmtPts(p.pontos)}</b></div>`
     : `<div class="row" style="margin:3px 0"><span>⏰ Atraso de ${p.dias} dia${p.dias>1?'s':''} (${fmtD(p.data)}${p.aberto?' · em aberto':' → '+fmtD(p.fim)})</span><span class="sp"></span><b>${fmtPts(p.pontos)}</b></div>`;
+  const teste=hojeStr()<PONTUACAO_OFICIAL;
   return `<div class="card"><div class="row"><h3 style="margin:0">🏆 Sua pontuação</h3><span class="sp"></span><span class="muted sm">${mesRef(k)}</span></div>
+    ${teste?`<div class="alert info" id="faixa_teste" style="margin:10px 0 0"><b class="t" style="margin:0">🧪 Período de teste até ${fmtD(somaDiasData(PONTUACAO_OFICIAL,-1))}</b><div class="txt" style="margin:4px 0 0">A pontuação oficial começa em <b>${fmtD(PONTUACAO_OFICIAL)}</b>. Até lá, aproveite para se acostumar com o app: tudo zera no dia 1º.</div></div>`:''}
     <div class="row" style="margin:10px 0 4px;align-items:flex-end"><div style="font-size:38px;font-weight:800;line-height:1;color:${eu.pontos<0?'var(--bad)':'var(--ok)'}">${fmtPts(eu.pontos)}</div><div class="muted" style="padding-bottom:4px">pontos<br>quanto maior, melhor</div><span class="sp"></span><div style="text-align:right"><div style="font-size:22px;font-weight:800">${eu.posicao}º</div><div class="muted sm">de ${k.total}</div></div></div>
     <div class="muted sm" style="margin-top:6px">🟢 <b>${eu.semanas_limpas}</b> semana${eu.semanas_limpas===1?'':'s'} seguida${eu.semanas_limpas===1?'':'s'} sem atraso e sem usar a promessa de pagamento</div>
     ${rankingTop(k,eu)}
