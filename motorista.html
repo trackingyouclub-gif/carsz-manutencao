@@ -125,11 +125,14 @@ const fmtHora = iso => { try{ const d=new Date(iso); return d.toLocaleDateString
 const diasEntre = (isoA) => Math.floor((Date.now()-new Date(isoA).getTime())/864e5);
 const mascaraCpf = v => v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
 
-const S = { token: LS.get('mot_token'), nome: LS.get('mot_nome')||'', tab:'inicio', resumo:null, msgs:null, erroLogin:'', instalarEvt:null, sheetAberto:false };
+const MESTRE=(location.hash.match(/mestre=([a-f0-9]{20,})/)||[])[1]; // acesso rápido do master: só visualização
+if(MESTRE){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){} }
+const S = { mestre:!!MESTRE, token: MESTRE||LS.get('mot_token'), nome: LS.get('mot_nome')||'', tab:'inicio', resumo:null, msgs:null, erroLogin:'', instalarEvt:null, sheetAberto:false };
 let vistos = new Set(); try{ vistos = new Set(JSON.parse(LS.get('mot_avisos_vistos')||'[]')); }catch(e){}
 
 // ---- chamadas ao banco ----
 async function rpc(fn, args){
+  if(S.mestre&&!['mot_resumo','mot_msgs','mot_placas_vagas'].includes(fn)){ toast('👁 Modo visualização do master: nada é enviado.'); throw new Error('sessao'); }
   const { data, error } = await sb.rpc(fn, args);
   if(error){
     if(/sessao_invalida/.test(error.message||'')){ sair(true); throw new Error('sessao'); }
@@ -155,6 +158,7 @@ async function entrar(){
   }catch(e){ err.textContent='Não foi possível entrar agora. Confira a internet e tente de novo.'; btn.disabled=false; btn.textContent='Entrar'; console.error(e); }
 }
 async function sair(silencioso){
+  if(S.mestre){ window.close(); toast('Feche esta aba para voltar ao painel.'); return; }
   const t=S.token; S.token=null; S.resumo=null; S.msgs=null; LS.del('mot_token');
   if(t&&!silencioso){ try{ await sb.rpc('mot_logout',{p_token:t}); }catch(e){} }
   render();
@@ -165,7 +169,7 @@ let ultimoResumo=''; let ultimoMsgs='';
 async function atualizar(forcar){
   if(!S.token) return;
   try{
-    if(!S.lastPing||Date.now()-S.lastPing>40000){ S.lastPing=Date.now(); rpc('mot_ping',{p_token:S.token}).catch(()=>{}); }
+    if(!S.mestre&&(!S.lastPing||Date.now()-S.lastPing>40000)){ S.lastPing=Date.now(); rpc('mot_ping',{p_token:S.token}).catch(()=>{}); }
     const r=await rpc('mot_resumo',{p_token:S.token});
     const js=JSON.stringify(r);
     const mudouR = js!==ultimoResumo; S.resumo=r; ultimoResumo=js;
@@ -688,6 +692,7 @@ async function devolverReserva(){
 }
 
 // ---- boot ----
+if(S.mestre){ document.body.insertAdjacentHTML('afterbegin','<div id="mestre_bar" style="position:sticky;top:0;z-index:50;background:#7c3aed;color:#fff;padding:8px 12px;font:700 13px system-ui;text-align:center">👁 Acesso rápido do master · somente visualização (nada é enviado nem registrado como uso do motorista) · <a href="#" onclick="window.close();return false" style="color:#fff">Fechar</a></div>'); }
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(e=>console.warn('service worker não registrado:',e)); }); }
 render();
 if(S.token) atualizar(true);

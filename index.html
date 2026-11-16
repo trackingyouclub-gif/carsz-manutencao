@@ -68,6 +68,18 @@ header .lnk.on{background:#fff;color:var(--gestao);font-weight:700;border-color:
 nav{display:flex;gap:4px;background:var(--panel);border-bottom:1px solid var(--line);padding:6px 10px;overflow-x:auto}
 nav button{background:none;border:0;border-radius:8px;padding:12px 16px;min-height:44px;font:600 14px "IBM Plex Sans";color:var(--muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease}
 nav button:hover{background:var(--soft);color:var(--ink)}
+nav{align-items:center}
+nav .ic{margin-right:7px}
+nav .sep{width:1px;height:26px;background:var(--line);margin:0 8px;flex:none}
+nav .gl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-weight:800;padding:0 4px 0 6px;opacity:.75;white-space:nowrap}
+@media (max-width:900px){ nav .gl{display:none} nav .sep{margin:0 4px} }
+#vcbar{background:#7c3aed;color:#fff;padding:9px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13.5px;font-weight:600}
+#vcbar button{background:#fff;color:#7c3aed;border:0;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer}
+.ug{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.uc{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:12px}
+.uc .av{width:40px;height:40px;border-radius:50%;background:var(--soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+.uc .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:var(--muted)}.uc .dot.on{background:#22c55e}
+.ustats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}.ustats div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 12px}.ustats b{font-size:21px;display:block}
 nav button.on{color:var(--brand);background:var(--soft);box-shadow:inset 0 -3px 0 var(--brand)}
 body.mec nav button.on{color:var(--mec);box-shadow:inset 0 -3px 0 var(--mec)}
 body.ofgestao nav button.on{color:var(--gestao);box-shadow:inset 0 -3px 0 var(--gestao)}
@@ -249,6 +261,7 @@ details.step>summary::-webkit-details-marker{display:none}
   <h1 id="ttl">CARSZ · Manutenção da frota</h1>
   <span class="sub" id="subttl">Controle de revisões, custos e sinistros</span>
   <span id="status">Conectando…</span>
+  <button class="lnk" id="arBtn" onclick="acessoRapido()" style="display:none" title="Entrar rápido no painel de qualquer usuário ou motorista, sem senha">⚡ Acesso rápido</button>
   <button class="lnk" id="qrBtn" onclick="abrirQrAcesso()" title="Abrir esta oficina no celular">📱</button>
   <button class="lnk" id="gBtn" onclick="toggleGestaoOficina()">Modo gestão</button>
   <button class="lnk" id="modeBtn" onclick="toggleMode()">Modo mecânico</button>
@@ -571,9 +584,13 @@ function alertasVeic(v,kmRef,eventosOverride){
 function statusVeic(v){ const al=alertasVeic(v); return al.some(a=>a.lvl==='bad')?'bad':al.some(a=>a.lvl==='warn')?'warn':'ok'; }
 
 // ============ navegação ============
-const NAV_ADM=[['painel','Painel'],['rel','Relatórios'],['frota','Frota'],['mot','Motoristas'],['os','Ordens de serviço'],['sin','Sinistros'],['pecas','Peças'],['oficina','Oficina'],['cfg','Configurações']];
+const NAV_ADM=[['painel','Painel'],['frota','Frota'],['mot','Motoristas'],['os','Ordens de serviço'],['sin','Sinistros'],['pecas','Peças'],['rel','Relatórios'],['oficina','Usuários'],['cfg','Configurações']];
+const NAV_ICO={painel:'📊',frota:'🚗',mot:'👥',mmot:'👥',os:'🛠',sin:'💥',pecas:'🔩',rel:'📈',oficina:'👤',oficinas:'🏢',cfg:'⚙',mnova:'➕',mabertas:'📋',magenda:'📅',mconc:'✅',mhist:'🕘',matencao:'⚠',mfat:'💰',mrel:'📈'};
+const NAV_GRP={painel:'Operação',frota:'Operação',mot:'Operação',os:'Operação',sin:'Operação',pecas:'Operação',rel:'Gestão',oficina:'Administração',oficinas:'Administração',cfg:'Administração'};
+const nl=(k,l)=>`<span class="ic">${NAV_ICO[k]||''}</span>${l}`;
+const souMaster=()=>!!(((S.real&&S.real.perfil)||S.perfil||{}).papel==='superadmin');
 // aba "Oficinas" (rede de oficinas parceiras) só aparece para o administrador geral
-function navAdm(){ return ehSuperadmin()?[...NAV_ADM,['oficinas','Oficinas']]:NAV_ADM; }
+function navAdm(){ if(!ehSuperadmin()) return NAV_ADM; const n=[...NAV_ADM]; n.splice(n.findIndex(x=>x[0]==='cfg'),0,['oficinas','Oficinas']); return n; }
 const NAV_MEC=[['mnova','Nova OS'],['mabertas','OS abertas'],['magenda','Agendamentos'],['mconc','OS concluídas'],['mhist','Histórico por placa']];
 // "Atenção" é uma cópia dos alertas do painel do administrador (manutenções vencidas/próximas),
 // só da frota Carsz — visível pro mecânico chefe e pro responsável de oficina parceira, não pro
@@ -590,7 +607,7 @@ function navMec(){
     let nav=[];
     if(ehChefe()||donoOficina) nav.push(['matencao','Atenção']);
     nav.push(['mrel','Relatórios'],['mfat','Faturamento']);
-    if(ehChefe()||donoOficina) nav.push(['oficina','Oficina']);
+    if(ehChefe()||donoOficina) nav.push(['oficina','Usuários']);
     return nav;
   }
   // auxiliar administrativo não vê "OS concluídas" — só abre OS e preenche peças, não precisa (nem
@@ -601,13 +618,13 @@ function navMec(){
   if(ehAdminGeral()){
     if(ehChefe()||donoOficina) nav.push(['matencao','Atenção']);
     if(ehChefe()||ehGestor()) nav.push(['mrel','Relatórios'],['mfat','Faturamento']);
-    if(ehChefe()||donoOficina) nav.push(['oficina','Oficina']);
+    if(ehChefe()||donoOficina) nav.push(['oficina','Usuários']);
   }
   // equipe de cobrança (administrador geral, gestão da Matriz, auxiliar da Matriz): app do motorista
   if(podeMotoristas()) nav.push(['mmot','Motoristas']);
   return nav;
 }
-const PRESERVE=['lg_user','lg_pass','it_nome','it_qtd','it_custo','it_obs','os_rel','os_mo','os_of','n_placa','n_km','n_modelo','mot_txt','mot_busca','mb_status','mb_data','mb_motivo'];
+const PRESERVE=['usr_busca','lg_user','lg_pass','it_nome','it_qtd','it_custo','it_obs','os_rel','os_mo','os_of','n_placa','n_km','n_modelo','mot_txt','mot_busca','mb_status','mb_data','mb_motivo'];
 function preservar(root){ const k={vals:{},focus:null,sel:null}; for(const id of PRESERVE){ const e=document.getElementById(id); if(e&&e.value!=='') k.vals[id]=e.value; } const a=document.activeElement; if(a&&a.id&&root.contains(a)){ k.focus=a.id; try{k.sel=[a.selectionStart,a.selectionEnd];}catch(e){} } return k; }
 function restaurar(k){ for(const [id,v] of Object.entries(k.vals)){ const e=document.getElementById(id); if(e&&!e.disabled&&e.value!==v) e.value=v; } if(k.focus){ const e=document.getElementById(k.focus); if(e){ e.focus(); if(k.sel&&k.sel[0]!=null){ try{e.setSelectionRange(k.sel[0],k.sel[1]);}catch(x){} } } } }
 function toggleMode(){ S.mec=!S.mec; location.hash=S.mec?'#mecanico':''; S.view=S.mec?'mnova':'painel'; S.osAtual=null; render(); }
@@ -663,13 +680,19 @@ function render(){
   if(gestor){ mb.textContent=S.mec?'Modo gestão':'Modo mecânico'; mb.onclick=toggleMode; }
   else { mb.textContent='Sair'; mb.onclick=sairMec; }
   qb.style.display=S.mec?'':'none';
+  { const ab=document.getElementById('arBtn'); if(ab) ab.style.display=souMaster()?'':'none';
+    let vb=document.getElementById('vcbar');
+    if(S.real){ mb.textContent='⬅ Voltar ao master'; mb.onclick=voltarMaster;
+      if(!vb){ vb=document.createElement('div'); vb.id='vcbar'; document.getElementById('nav').before(vb); }
+      vb.innerHTML=`<span>👁 Você está vendo o painel de <b>${esc(S.perfil.nome||'')}</b> (${esc(papelLabel(S.perfil.papel))}) com o seu acesso de master. As ações feitas aqui ficam registradas no nome dele.</span><span class="sp" style="flex:1"></span><button onclick="acessoRapido()">⚡ Trocar de usuário</button><button onclick="voltarMaster()">⬅ Voltar ao master</button>`;
+    } else if(vb) vb.remove(); }
   // botão de gestão da própria oficina: só pro chefe/gestor de oficina (não o administrador geral,
   // que tem o seu alternador na linha acima) — ajudante nunca vê este botão
   if(S.mec&&podeAlternarGestaoOficina()){ gb.style.display=''; gb.textContent=S.oficMgestao?'Modo mecânico':'Modo gestão'; gb.classList.toggle('on',!!S.oficMgestao); }
   else { gb.style.display='none'; gb.classList.remove('on'); }
   const nomeOficina=S.oficina?S.oficina.nome:(ehSuperadmin()?'Administração geral':'');
   document.getElementById('subttl').textContent=S.mec?((ehCobranca()?'Cobrança: ':'Mecânico: ')+S.mecNome+(nomeOficina?' · '+nomeOficina:'')+(gestor?' · ':'')):('Logado como '+(S.perfil?S.perfil.nome:'')+(nomeOficina?' · '+nomeOficina:''));
-  if(gestor&&S.mec){ const sub=document.getElementById('subttl'); sub.innerHTML+='<a href="#" onclick="sairMec();return false" style="color:inherit">sair</a>'; }
+  if(gestor&&S.mec&&!S.real){ const sub=document.getElementById('subttl'); sub.innerHTML+='<a href="#" onclick="sairMec();return false" style="color:inherit">sair</a>'; }
   // marca no cabeçalho: oficinas parceiras (fora da Oficina Matriz) veem o próprio nome/logo no
   // lugar de "CARSZ" — cada uma com a sua marca, não um nome genérico compartilhado
   const marca=(S.oficina&&S.oficina.id!=='matriz')?S.oficina.nome:'CARSZ';
@@ -677,7 +700,7 @@ function render(){
   const hdrLogo=document.getElementById('hdrLogo');
   if(S.oficina&&S.oficina.logo&&S.oficina.logo.url){ hdrLogo.src=S.oficina.logo.url; hdrLogo.style.display='inline-block'; } else hdrLogo.style.display='none';
   const nav=(S.mec?navMec():navAdm());
-  document.getElementById('nav').innerHTML=nav.map(([k,l])=>`<button data-v="${k}" class="${k===S.view?'on':''}">${l}</button>`).join('');
+  let ultG=''; document.getElementById('nav').innerHTML=nav.map(([k,l])=>{ const g=S.mec?'':(NAV_GRP[k]||''); const sep=(g&&g!==ultG)?((ultG?'<span class="sep"></span>':'')+`<span class="gl">${g}</span>`):''; if(g) ultG=g; return sep+`<button data-v="${k}" class="${k===S.view?'on':''}">${nl(k,l)}</button>`; }).join('');
   // clicar em "Nova OS" no menu sempre começa uma OS do zero — antes, se já tivesse uma OS aberta
   // em edição (S.osAtual), a tela "Nova OS" continuava mostrando ela em vez do formulário de
   // identificar o veículo (a OS anterior já está salva, cada campo grava sozinho; só faltava
@@ -688,24 +711,24 @@ function render(){
     if(b.dataset.v==='mnova'&&S.osAtual){ S.osAtual=null; nova={placa:'',km:'',fotoPlaca:null,fotoKm:null,lendo:false,data:hoje(),oficinaId:'',mecanicoNome:'',agendamento:'',agendaObs:'',clienteNome:'',clienteTel:''}; }
     S.view=b.dataset.v;S.filtro='';render();
   });
-  if(podeMotoristas()){ const nm=motPendTotal(); const bm=document.querySelector('nav [data-v=mot],nav [data-v=mmot]'); if(bm) bm.innerHTML='Motoristas'+(nm?`<span class="n">${nm}</span>`:''); }
+  if(podeMotoristas()){ const nm=motPendTotal(); const bm=document.querySelector('nav [data-v=mot],nav [data-v=mmot]'); if(bm) bm.innerHTML=nl(bm.dataset.v,'Motoristas')+(nm?`<span class="n">${nm}</span>`:''); }
   const m=document.getElementById('main');
   if(!S.cfg){ m.innerHTML='<div class="empty">Carregando dados…</div>'; return; }
   const keep=preservar(m);
   ({painel,rel:relView,frota,os:osView,sin,pecas:pecasView,oficina:oficinaView,cfg,mnova,mabertas,magenda,mconc,mhist,matencao,mfat,mrel:mrelView,oficinas:oficinasView,mot:motoristasView,mmot:motoristasView})[S.view](m);
   restaurar(keep);
-  if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML='Painel'+(nb?`<span class="n">${nb}</span>`:''); }
+  if(!S.mec){ const nb=S.veic.filter(v=>statusVeic(v)==='bad').length; const b=document.querySelector('nav [data-v=painel]'); if(b) b.innerHTML=nl('painel','Painel')+(nb?`<span class="n">${nb}</span>`:''); }
   else {
-    const na=S.os.filter(o=>o.status==='Aberta').length; const b=document.querySelector('nav [data-v=mabertas]'); if(b) b.innerHTML='OS abertas'+(na?`<span class="n">${na}</span>`:'');
+    const na=S.os.filter(o=>o.status==='Aberta').length; const b=document.querySelector('nav [data-v=mabertas]'); if(b) b.innerHTML=nl('mabertas','OS abertas')+(na?`<span class="n">${na}</span>`:'');
     // badge de Agendamentos: total de agendamentos pendentes da oficina, igual ao badge de OS abertas
     const naAg=S.os.filter(o=>o.status==='Agendada'&&o.oficinaId===(S.perfil&&S.perfil.oficinaId)).length;
-    const bAg=document.querySelector('nav [data-v=magenda]'); if(bAg) bAg.innerHTML='Agendamentos'+(naAg?`<span class="n">${naAg}</span>`:'');
+    const bAg=document.querySelector('nav [data-v=magenda]'); if(bAg) bAg.innerHTML=nl('magenda','Agendamentos')+(naAg?`<span class="n">${naAg}</span>`:'');
     checarAvisosAgendamento();
     // mesmo filtro usado na tela matencao(): frota só conta placa já atendida por esta oficina
     // parceira; clientes particulares (já visíveis aqui) contam sempre
     const souParceiraNav=!!(S.perfil&&S.perfil.oficinaId&&S.perfil.oficinaId!=='matriz');
     const placasAtendidasNav=souParceiraNav?new Set(S.os.map(o=>o.veiculoId)):null;
-    const nb2=S.veic.filter(v=>statusVeic(v)==='bad'&&(!isFrota(v)||!souParceiraNav||placasAtendidasNav.has(v.id))).length; const b2=document.querySelector('nav [data-v=matencao]'); if(b2) b2.innerHTML='Atenção'+(nb2?`<span class="n">${nb2}</span>`:'');
+    const nb2=S.veic.filter(v=>statusVeic(v)==='bad'&&(!isFrota(v)||!souParceiraNav||placasAtendidasNav.has(v.id))).length; const b2=document.querySelector('nav [data-v=matencao]'); if(b2) b2.innerHTML=nl('matencao','Atenção')+(nb2?`<span class="n">${nb2}</span>`:'');
   }
 }
 
@@ -956,24 +979,89 @@ async function carregarSessao(session){
 // por "Oficinas" > Editar), mas o chefe/gestor de uma oficina parceira só vê e só cria cargo
 // dentro da PRÓPRIA oficina — nunca a equipe de outra oficina parceira
 function minhaEquipe(){ return ehAdminGeral()?S.mecs:S.mecs.filter(x=>(x.oficinaId||'')===(S.perfil.oficinaId||'')); }
+// ---- aba Usuários (antes "Oficina"): cartões, busca, filtros e acesso rápido do master ----
+const USR_ADM=['superadmin','gestor','auxiliar','cobranca'];
+const USR_FILTROS=[['todos','Todos'],['adm','Administração'],['cobranca','Cobrança'],['mec','Mecânicos'],['inativos','Inativos']];
+const usrGrupo = x => USR_ADM.includes(x.papel)?'adm':'mec';
+const usrIniciais = n => String(n||'?').trim().split(/\s+/).filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase()||'?';
+function usrAcesso(x){
+  if(!x.ultimoAcesso) return {on:false,txt:'nunca acessou'};
+  const dia=motDiaSP(x.ultimoAcesso), hj=motHojeSP();
+  if(dia===hj){ let h=''; try{ h=new Date(x.ultimoAcesso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}); }catch(e){} return {on:true,txt:'Hoje '+h}; }
+  const dias=Math.max(1,Math.round((new Date(hj)-new Date(dia))/86400000));
+  return {on:false,txt:fmtD(dia).slice(0,5)+(dias>=7?' · '+dias+' dias sem acesso':'')};
+}
+function usrCard(x,souChefeSoh){
+  const podeGerenciar = !souChefeSoh||x.id===S.perfil.id||x.papel==='ajudante'||x.papel==='auxiliar';
+  const ac=usrAcesso(x); const eu=(S.real?S.real.perfil.id:S.perfil.id)===x.id;
+  return `<div class="uc" data-uid="${x.id}"><div class="row"><div class="av">${esc(usrIniciais(x.nome))}</div><div style="min-width:0"><div style="font-weight:800">${esc(x.nome||'')}</div><div class="muted" style="overflow:hidden;text-overflow:ellipsis">${esc(x.email||'')}</div></div></div>
+    <div style="margin-top:8px"><span class="tag ${x.papel==='gestor'||x.papel==='superadmin'?'ok':(x.papel==='chefe'||x.papel==='mecanico')?'warn':'neu'}">${esc(papelLabel(x.papel))}</span>${x.ativo===false?' <span class="tag bad">Inativo</span>':''} <span class="muted"><span class="dot${ac.on?' on':''}"></span>${esc(ac.txt)}</span></div>
+    ${x.telefone?`<div class="muted">${esc(x.telefone)}</div>`:''}
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:9px">${(souMaster()&&!eu&&x.ativo!==false)?`<button class="pri" onclick="verComo('${x.id}')" title="Abre o painel deste usuário sem pedir a senha dele">⚡ Entrar</button>`:''}${podeGerenciar?`<button class="ghost" onclick="formMec('${x.id}')">✎ Editar</button>`:''}${(podeGerenciar&&x.email)?`<button class="ghost" onclick="reenviarSenhaMec('${x.id}')">✉ Reenviar senha</button>`:''}</div></div>`;
+}
 function oficinaView(m){
-  const link=LINK_MEC;
   // mecânico chefe (não gestor/dono) tem acesso a esta aba só pra criar/gerenciar cargos de
   // auxiliar administrativo e mecânico ajudante, descentralizando esse cadastro sem dar a ele
   // poder sobre contas de chefe/gestor
   const souChefeSoh = ehChefe()&&!ehGestor();
   const equipe=minhaEquipe();
-  let h=`<div class="bar"><h2>Oficina</h2></div><div class="grid" style="align-items:start">
-  <div class="card" style="text-align:center"><h4 style="margin-top:0">Acesso pelo celular</h4><div id="qr" style="display:inline-block;padding:12px;background:#fff;border-radius:8px"></div><p class="muted">O mecânico aponta a câmera do celular para o QR code, entra com e-mail e senha e cai direto na tela de abrir OS.</p><input readonly value="${esc(link)}" onclick="this.select()" style="font-size:12px"></div>
-  <div class="card"><h4 style="margin-top:0">Usuários</h4><div class="tbl"><table style="min-width:0"><tr><th>Nome</th><th>Contato</th><th>Papel</th><th>Último acesso</th><th></th></tr>`;
-  for(const x of equipe){
-    const podeGerenciar = !souChefeSoh||x.id===S.perfil.id||x.papel==='ajudante'||x.papel==='auxiliar';
-    h+=`<tr><td>${esc(x.nome)}<div class="muted">${esc(x.cpf||'')}</div></td><td class="muted">${esc(x.email||'')}${x.telefone?'<br>'+esc(x.telefone):''}</td><td><span class="tag ${x.papel==='gestor'?'ok':(x.papel==='chefe'||x.papel==='mecanico')?'warn':'neu'}">${esc(papelLabel(x.papel))}</span>${x.ativo===false?' <span class="tag bad">Inativo</span>':''}</td><td class="muted">${x.ultimoAcesso?fmtD(x.ultimoAcesso):'—'}</td><td>${podeGerenciar?`<button class="ghost" onclick="formMec('${x.id}')">Editar</button>`:''}${(podeGerenciar&&x.email)?` <button class="ghost" onclick="reenviarSenhaMec('${x.id}')">✉ Reenviar senha</button>`:''}</td></tr>`;
+  const fl=S.usrFiltro||'todos', q=(S.usrBusca||'').trim()?slug(S.usrBusca):'';
+  const ativos=equipe.filter(x=>x.ativo!==false);
+  const ok=x=>(!q||slug([x.nome,x.email,x.cpf,x.telefone].join(' ')).includes(q))&&(fl==='todos'?x.ativo!==false||false:fl==='inativos'?x.ativo===false:x.ativo!==false&&(fl==='adm'?usrGrupo(x)==='adm':fl==='cobranca'?x.papel==='cobranca':usrGrupo(x)==='mec'));
+  const lista=equipe.filter(ok).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  const nInat=equipe.length-ativos.length;
+  const hoje=ativos.filter(x=>usrAcesso(x).on).length;
+  const grupos=[['adm','Administração e cobrança'],['mec','Mecânicos']];
+  let h=`<div class="bar"><h2>Usuários</h2><span class="sp"></span><button class="sec" onclick="abrirQrAcesso()">📱 Acesso do mecânico (QR code)</button><button class="pri" onclick="formMec()">+ ${souChefeSoh?'Criar cargo':'Cadastrar usuário'}</button></div>
+  <div class="ustats"><div><b>${ativos.length}</b><span class="muted">Usuários ativos</span></div><div><b>${ativos.filter(x=>x.papel==='cobranca').length}</b><span class="muted">Auxiliares de cobrança</span></div><div><b>${ativos.filter(x=>usrGrupo(x)==='mec').length}</b><span class="muted">Mecânicos</span></div><div><b>🟢 ${hoje}</b><span class="muted">Acessaram hoje</span></div></div>
+  <div class="row" style="flex-wrap:wrap;gap:8px;margin:8px 0"><input id="usr_busca" value="${esc(S.usrBusca||'')}" placeholder="🔍 Buscar por nome, e-mail, CPF ou telefone…" oninput="S.usrBusca=this.value;render()" style="flex:1;min-width:220px">${USR_FILTROS.filter(([k])=>k!=='inativos'||nInat).map(([k,l])=>`<button type="button" class="${fl===k?'pri':'sec'}" style="padding:4px 12px" onclick="S.usrFiltro='${k}';render()">${l}${k==='inativos'?' ('+nInat+')':''}</button>`).join('')}</div>`;
+  if(fl==='todos'||fl==='inativos'||fl==='adm'||fl==='cobranca'||fl==='mec'){
+    for(const [g,tit] of grupos){ const li=lista.filter(x=>usrGrupo(x)===g); if(!li.length) continue; h+=`<div class="muted" style="font-weight:700;margin:14px 2px 6px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">${tit}</div><div class="ug">${li.map(x=>usrCard(x,souChefeSoh)).join('')}</div>`; }
   }
-  if(!equipe.length) h+='<tr><td colspan="5" class="muted">Nenhum usuário.</td></tr>';
-  h+=`</table></div><div class="act"><button class="pri" onclick="formMec()">+ ${souChefeSoh?'Criar cargo':'Cadastrar usuário'}</button></div></div></div>`;
+  if(!lista.length) h+='<div class="empty" style="margin-top:12px">Nenhum usuário encontrado.</div>';
   m.innerHTML=h;
-  if(window.QRCode){ new QRCode(document.getElementById('qr'),{text:link,width:220,height:220,correctLevel:QRCode.CorrectLevel.M}); }
+}
+// ---- acesso rápido do master: entra no painel de qualquer usuário (ou abre o app de um motorista) sem usar a senha de ninguém ----
+function verComo(id){
+  if(!souMaster()) return;
+  const x=S.mecs.find(u=>u.id===id); if(!x){ toast('Usuário não encontrado'); return; }
+  if(S.motAtual&&!motPodeSair()) return;
+  if(!S.real) S.real={perfil:S.perfil,oficina:S.oficina,mecNome:S.mecNome,mec:S.mec,view:S.view};
+  if(x.id===S.real.perfil.id){ voltarMaster(); return; }
+  S.perfil={...x}; S.oficina=x.papel==='superadmin'?null:(S.oficinas.find(o=>o.id===(x.oficinaId||'matriz'))||null);
+  S.mecNome=x.nome; S.oficMgestao=false; S.osAtual=null; S.motAtual=null; S.motFiltro=''; S.filtro='';
+  S.mec=!ehAdminGeral(); S.view=ehCobranca()?'mmot':(S.mec?'mnova':'painel');
+  fechar(); render(); window.scrollTo(0,0);
+}
+function voltarMaster(){
+  if(!S.real) return; if(S.motAtual&&!motPodeSair()) return;
+  const r=S.real; S.real=null; S.perfil=r.perfil; S.oficina=r.oficina; S.mecNome=r.mecNome; S.mec=r.mec; S.view=r.view;
+  S.osAtual=null; S.motAtual=null; S.oficMgestao=false; render(); window.scrollTo(0,0);
+}
+function acessoRapido(){
+  if(!souMaster()) return;
+  abrir(`<h3>⚡ Acesso rápido</h3><p class="muted">Abre o painel da pessoa com o seu acesso de master, sem pedir senha. Motoristas abrem o app deles só para visualizar.</p><input id="ar_busca" placeholder="🔍 Buscar usuário, motorista ou placa…" oninput="arFiltrar()" autocomplete="off"><div id="ar_lista" style="max-height:60vh;overflow:auto;margin-top:8px"></div><div class="act"><button class="sec" onclick="fechar()">Fechar</button></div>`);
+  arFiltrar(); setTimeout(()=>{ const i=document.getElementById('ar_busca'); if(i) i.focus(); },30);
+}
+function arFiltrar(){
+  const q=slug(val('ar_busca')); const q0=val('ar_busca')?q:''; const meu=(S.real?S.real.perfil.id:(S.perfil||{}).id);
+  const us=(S.mecs||[]).filter(x=>x.ativo!==false&&x.id!==meu&&(!q0||slug([x.nome,x.email,papelLabel(x.papel)].join(' ')).includes(q0))).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  const ms=(S.mots||[]).filter(x=>x.ativo!==false&&(!q0||slug([x.nome,x.placa].join(' ')).includes(q0))).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'')).slice(0,40);
+  const el=document.getElementById('ar_lista'); if(!el) return;
+  const lbl=t=>`<div class="muted" style="font-weight:700;margin:10px 2px 4px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">${t}</div>`;
+  el.innerHTML=(S.real?`<button class="osrow" style="width:100%;text-align:left" onclick="voltarMaster();fechar()">⬅ <b>Voltar ao meu painel (master)</b></button>`:'')
+    +lbl('Usuários do sistema')+(us.length?us.map(x=>`<button class="osrow" style="width:100%;text-align:left;cursor:pointer" onclick="verComo('${x.id}')"><div><b>${esc(x.nome||'')}</b> <span class="tag neu">${esc(papelLabel(x.papel))}</span><div class="muted">${esc((S.oficinas.find(o=>o.id===(x.oficinaId||''))||{}).nome||'')}</div></div><span class="sp"></span><span>⚡</span></button>`).join(''):'<div class="muted">Nenhum usuário.</div>')
+    +(S.mots&&S.mots.length?lbl('Motoristas (app do motorista)')+(ms.length?ms.map(x=>`<button class="osrow" style="width:100%;text-align:left;cursor:pointer" onclick="motAbrirApp('${x.id}')"><span class="plate">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b></div><span class="sp"></span><span>👁</span></button>`).join(''):'<div class="muted">Nenhum motorista.</div>'):'');
+}
+async function motAbrirApp(id){
+  if(!souMaster()) return; const w=window.open('about:blank','_blank');
+  try{
+    const {data,error}=await sb.rpc('mot_acesso_mestre',{p_motorista_id:id}); if(error) throw error;
+    if(data&&data.erro){ if(w) w.close(); toast(data.erro); return; }
+    const url=location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/,'')+'motorista.html#mestre='+data.token;
+    if(w) w.location.href=url; else location.href=url;
+    fechar();
+  }catch(e){ if(w) w.close(); erroSalvar('abrir o app do motorista',e); }
 }
 // oficinaId: só usado ao CRIAR um usuário novo — permite ao administrador geral cadastrar alguém
 // direto para outra oficina (a partir de Oficinas > Editar oficina); sem isso, usa a própria oficina
@@ -3294,7 +3382,7 @@ function motDetalhe(m){
   if(bl.status==='bloqueado') chips.push(['bad','🔒 veículo bloqueado','sec_bloq',0]); else if(bl.status==='programado') chips.push(['warn','⏳ bloqueio programado','sec_bloq',0]);
   if(motFotoStatus(x)==='atrasada') chips.push(['bad','📷 fotos atrasadas','sec_fotos',0]); else if(motFotoStatus(x)==='refazer') chips.push(['warn','✖ foto recusada: aguardando reenvio','sec_fotos',0]);
   const precisa=`<div class="step${pend.total?' hot':''}" id="mot_precisa"><div style="font-weight:700;margin-bottom:6px">${pend.total?'🔥 Precisa de ação agora':'✅ Nada pendente'}</div>${chips.map(([c,t,id,b])=>`<button type="button" class="tag ${c}" style="cursor:pointer;border:0;font-size:13px;padding:5px 11px;margin:2px 4px 2px 0" onclick="motIr('${id}')">${b?'● ':''}${t}</button>`).join('')}${pend.total?`<div class="muted" style="margin-top:6px">Os itens com ● precisam ser resolvidos ou respondidos antes de você sair desta tela.</div>`:(chips.length?'':'<div class="muted">Pode sair.</div>')}</div>`;
-  m.innerHTML=`<div class="bar"><button class="ghost" onclick="if(motPodeSair()){S.motAtual=null;render()}">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
+  m.innerHTML=`<div class="bar"><button class="ghost" onclick="if(motPodeSair()){S.motAtual=null;render()}">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}${souMaster()?`<button class="sec" onclick="motAbrirApp('${x.id}')" title="Abre o app deste motorista só para visualizar, sem a senha dele">👁 Ver app do motorista</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
     <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span></div></div>
     ${precisa}
     <div class="step${pend.msg?' hot':''}" id="sec_chat"><h3>💬 Conversa${pend.msg?` <span class="tag warn">${pend.msg} sem resposta</span>`:''}</h3>
