@@ -73,6 +73,17 @@ nav .ic{margin-right:7px}
 nav .sep{width:1px;height:26px;background:var(--line);margin:0 8px;flex:none}
 nav .gl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-weight:800;padding:0 4px 0 6px;opacity:.75;white-space:nowrap}
 @media (max-width:900px){ nav .gl{display:none} nav .sep{margin:0 4px} }
+.ar-sec{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);margin:14px 2px 6px}
+.ar-sec i{font-style:normal;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:0 7px;font-size:11px}
+.ar-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin:0 0 6px;color:var(--ink);cursor:pointer;font:inherit;min-height:56px;transition:border-color .12s,background .12s}
+.ar-row:hover,.ar-row:focus{border-color:var(--brand);background:var(--soft);outline:none}
+.ar-row .av{width:38px;height:38px;border-radius:50%;background:var(--soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none;border:1px solid var(--line)}
+.ar-row.mot .av{border-radius:8px;width:auto;min-width:74px;padding:0 8px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;letter-spacing:.5px;color:var(--ink)}
+.ar-row .nm{font-weight:700;color:var(--ink);line-height:1.2}
+.ar-row .sub{font-size:12.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ar-row .go{margin-left:auto;flex:none;font-size:12.5px;font-weight:700;color:var(--brand);background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:4px 12px;white-space:nowrap}
+.ar-row:hover .go,.ar-row:focus .go{background:var(--brand);color:#fff;border-color:var(--brand)}
+.ar-vazio{color:var(--muted);padding:10px 4px}
 #vcbar{background:#7c3aed;color:#fff;padding:9px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13.5px;font-weight:600}
 #vcbar button{background:#fff;color:#7c3aed;border:0;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer}
 .ug{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
@@ -1038,20 +1049,36 @@ function voltarMaster(){
   const r=S.real; S.real=null; S.perfil=r.perfil; S.oficina=r.oficina; S.mecNome=r.mecNome; S.mec=r.mec; S.view=r.view;
   S.osAtual=null; S.motAtual=null; S.oficMgestao=false; render(); window.scrollTo(0,0);
 }
+const arNome = n => String(n||'').toLowerCase().replace(/(^|[\s-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()).replace(/\b(D[aeo]s?|E)\b/g,m=>m.toLowerCase());
 function acessoRapido(){
   if(!souMaster()) return;
-  abrir(`<h3>⚡ Acesso rápido</h3><p class="muted">Abre o painel da pessoa com o seu acesso de master, sem pedir senha. Motoristas abrem o app deles só para visualizar.</p><input id="ar_busca" placeholder="🔍 Buscar usuário, motorista ou placa…" oninput="arFiltrar()" autocomplete="off"><div id="ar_lista" style="max-height:60vh;overflow:auto;margin-top:8px"></div><div class="act"><button class="sec" onclick="fechar()">Fechar</button></div>`);
+  abrir(`<h3 style="margin-top:0">⚡ Acesso rápido</h3><p class="muted" style="margin:0 0 10px">Abre o painel da pessoa com o seu acesso de master, sem pedir senha. Motoristas abrem o app deles só para visualizar.</p>
+    <input id="ar_busca" placeholder="🔍 Buscar por nome, papel, oficina ou placa…" oninput="arFiltrar()" onkeydown="arTecla(event)" autocomplete="off">
+    <div id="ar_lista" style="max-height:62vh;overflow:auto;margin-top:6px;padding-right:2px"></div><div class="act"><span class="muted" style="flex:1;font-size:12px">↵ Enter abre o primeiro · ↓ navega</span><button class="sec" onclick="fechar()">Fechar</button></div>`);
   arFiltrar(); setTimeout(()=>{ const i=document.getElementById('ar_busca'); if(i) i.focus(); },30);
 }
+function arTecla(e){
+  const rows=[...document.querySelectorAll('#ar_lista .ar-row')]; if(!rows.length) return;
+  if(e.key==='Enter'){ e.preventDefault(); const r=rows.find(x=>x.dataset.go)||rows[0]; r.click(); }
+  else if(e.key==='ArrowDown'){ e.preventDefault(); rows[0].focus(); }
+}
+function arFoco(e,el){ const rows=[...document.querySelectorAll('#ar_lista .ar-row')]; const i=rows.indexOf(el); if(e.key==='ArrowDown'){ e.preventDefault(); (rows[i+1]||rows[i]).focus(); } else if(e.key==='ArrowUp'){ e.preventDefault(); if(i<=0) document.getElementById('ar_busca').focus(); else rows[i-1].focus(); } }
 function arFiltrar(){
   const q=slug(val('ar_busca')); const q0=val('ar_busca')?q:''; const meu=(S.real?S.real.perfil.id:(S.perfil||{}).id);
-  const us=(S.mecs||[]).filter(x=>x.ativo!==false&&x.id!==meu&&(!q0||slug([x.nome,x.email,papelLabel(x.papel)].join(' ')).includes(q0))).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
-  const ms=(S.mots||[]).filter(x=>x.ativo!==false&&(!q0||slug([x.nome,x.placa].join(' ')).includes(q0))).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'')).slice(0,40);
+  const nomeOf=x=>(S.oficinas.find(o=>o.id===(x.oficinaId||''))||{}).nome||'';
+  const us=(S.mecs||[]).filter(x=>x.ativo!==false&&x.id!==meu&&(!q0||slug([x.nome,x.email,papelLabel(x.papel),nomeOf(x)].join(' ')).includes(q0))).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  const ms=(S.mots||[]).filter(x=>x.ativo!==false&&(!q0||slug([x.nome,x.placa].join(' ')).includes(q0))).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
   const el=document.getElementById('ar_lista'); if(!el) return;
-  const lbl=t=>`<div class="muted" style="font-weight:700;margin:10px 2px 4px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">${t}</div>`;
-  el.innerHTML=(S.real?`<button class="osrow" style="width:100%;text-align:left" onclick="voltarMaster();fechar()">⬅ <b>Voltar ao meu painel (master)</b></button>`:'')
-    +lbl('Usuários do sistema')+(us.length?us.map(x=>`<button class="osrow" style="width:100%;text-align:left;cursor:pointer" onclick="verComo('${x.id}')"><div><b>${esc(x.nome||'')}</b> <span class="tag neu">${esc(papelLabel(x.papel))}</span><div class="muted">${esc((S.oficinas.find(o=>o.id===(x.oficinaId||''))||{}).nome||'')}</div></div><span class="sp"></span><span>⚡</span></button>`).join(''):'<div class="muted">Nenhum usuário.</div>')
-    +(S.mots&&S.mots.length?lbl('Motoristas (app do motorista)')+(ms.length?ms.map(x=>`<button class="osrow" style="width:100%;text-align:left;cursor:pointer" onclick="motAbrirApp('${x.id}')"><span class="plate">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b></div><span class="sp"></span><span>👁</span></button>`).join(''):'<div class="muted">Nenhum motorista.</div>'):'');
+  const sec=(t,n)=>`<div class="ar-sec">${t}<i>${n}</i></div>`;
+  const kb='onkeydown="arFoco(event,this)"';
+  const rowU=x=>`<button type="button" class="ar-row" data-go="1" ${kb} onclick="verComo('${x.id}')"><span class="av">${esc(usrIniciais(x.nome))}</span><span style="min-width:0"><div class="nm">${esc(arNome(x.nome))} <span class="tag ${x.papel==='gestor'||x.papel==='superadmin'?'ok':(x.papel==='chefe'||x.papel==='mecanico')?'warn':'neu'}" style="font-weight:700">${esc(papelLabel(x.papel))}</span></div><div class="sub">${esc(nomeOf(x)||x.email||'')}</div></span><span class="go">⚡ Entrar</span></button>`;
+  const grp={adm:[],mec:[]}; us.forEach(x=>grp[usrGrupo(x)].push(x));
+  let h=S.real?`<button type="button" class="ar-row" ${kb} onclick="voltarMaster();fechar()" style="border-color:#7c3aed"><span class="av" style="color:#7c3aed">⬅</span><span><div class="nm">Voltar ao meu painel (master)</div><div class="sub">Você está vendo o painel de ${esc(arNome(S.perfil.nome))}</div></span></button>`:'';
+  if(grp.adm.length) h+=sec('Administração e cobrança',grp.adm.length)+grp.adm.map(rowU).join('');
+  if(grp.mec.length) h+=sec('Mecânicos e oficinas',grp.mec.length)+grp.mec.map(rowU).join('');
+  if(S.mots&&S.mots.length&&ms.length) h+=sec('Motoristas · app do motorista',ms.length)+ms.slice(0,40).map(x=>`<button type="button" class="ar-row mot" data-go="1" ${kb} onclick="motAbrirApp('${x.id}')"><span class="av">${esc(x.placa||'—')}</span><span style="min-width:0"><div class="nm">${esc(arNome(x.nome))}</div><div class="sub">${esc(x.telefone||'')}${x.reserva&&x.reserva.veiculoId?' · 🚗 reserva '+esc(x.reserva.placa||''):''}</div></span><span class="go">👁 Ver app</span></button>`).join('')+(ms.length>40?`<div class="muted" style="padding:4px 2px">Mostrando 40 de ${ms.length}. Refine a busca.</div>`:'');
+  if(!us.length&&!ms.length) h+='<div class="ar-vazio">Nada encontrado para essa busca.</div>';
+  el.innerHTML=h;
 }
 async function motAbrirApp(id){
   if(!souMaster()) return; const w=window.open('about:blank','_blank');
