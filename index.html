@@ -2872,6 +2872,37 @@ function motFotoStatus(x){
 }
 // só cobra "não verificou hoje" depois do meio-dia (de manhã é normal ainda não ter feito)
 const motSemVerifHoje = x => { if(motDispensado(x)) return false; const h=+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',hour12:false,timeZone:'America/Sao_Paulo'}); if(h<12) return false; const v=motVerifHoje(x.id); return !v.agua||!v.oleo||!v.lanternas||!v.farois; };
+// ---- presença: último acesso e uso diário do app ----
+const motDiaSP = iso => { try{ return new Date(iso).toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}); }catch(e){ return ''; } };
+function motPresenca(x){
+  const t=Date.parse(x.ultimoAcesso||''); if(isNaN(t)) return {k:'nunca',dias:999,txt:'Nunca abriu o app',cls:'bad',ico:'⚪'};
+  if((Date.now()-t)/60000<=3) return {k:'online',dias:0,txt:'Online agora',cls:'ok',ico:'🟢'};
+  const dias=Math.round((Date.parse(motHojeSP())-Date.parse(motDiaSP(x.ultimoAcesso)))/864e5);
+  if(dias<=0) return {k:'hoje',dias:0,txt:'Hoje às '+motHoraSP(x.ultimoAcesso),cls:'ok',ico:'🕒'};
+  if(dias===1) return {k:'ontem',dias:1,txt:'Ontem às '+motHoraSP(x.ultimoAcesso),cls:'neu',ico:'🕒'};
+  return {k:'sumido',dias,txt:'Há '+dias+' dias ('+fmtD(motDiaSP(x.ultimoAcesso))+')',cls:dias>=3?'bad':'warn',ico:'📵'};
+}
+// pedágio free flow: o motorista confere a cada 10 dias; sem conferir há 10+ dias (ou nunca, desde o 1º acesso há 10+ dias) = pendente
+const PEDAGIO_URL='https://pedagiodigital.com/consulta-avulsa';
+function motPedagio(x){ const ult=Date.parse(x.pedagioConferidoEm||''); const ref=!isNaN(ult)?ult:Date.parse(x.primeiroAcesso||x.criadoEm||''); if(isNaN(ref)) return {ref:null,dias:null,atrasado:false,nunca:isNaN(ult)}; const dias=Math.floor((Date.now()-ref)/864e5); return {ref,dias,atrasado:dias>=10,nunca:isNaN(ult)}; }
+const motPedagioAtraso = x => x.ativo!==false&&!!x.veiculoId&&motPedagio(x).atrasado;
+function motPedagioWa(id){ const x=S.mots.find(y=>y.id===id); if(!x) return; const wa=telWa(x.telefone); if(!wa){ toast('Motorista sem telefone'); return; }
+  const msg=`Olá, ${(x.nome||'').split(' ')[0]}! Lembrete: confira se há pedágios free flow a pagar no seu veículo (placa ${x.placa||''}) em ${PEDAGIO_URL}. Depois toque em "Já conferi" no app da Carsz: ${motLink()}`;
+  window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank'); }
+const motSemUso = x => x.ativo!==false&&!!x.veiculoId&&motPresenca(x).dias>=2;
+function motUsoHtml(x){
+  const p=motPresenca(x), uso=new Set(x.usoDias||[]); const h=motHojeSP(); const dias=[];
+  for(let i=13;i>=0;i--){ dias.push(new Date(Date.parse(h+'T12:00:00Z')-i*864e5).toISOString().slice(0,10)); }
+  const n7=dias.slice(-7).filter(d=>uso.has(d)).length, n14=dias.filter(d=>uso.has(d)).length;
+  return `<details class="step" id="sec_uso" ${motOp('uso',p.dias>=2)} ontoggle="S.motOpen.uso=this.open"><summary style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><b style="font-size:16px">📱 Uso do app</b><span class="tag ${p.cls}">${p.ico} ${esc(p.txt)}</span><span class="tag neu">${n7} de 7 dias</span><span class="muted">▸</span></summary>
+    <div class="muted" style="margin:6px 0">Últimos 14 dias (verde = abriu o app no dia):</div>
+    <div class="row" style="gap:4px;flex-wrap:wrap">${dias.map(d=>`<div title="${fmtD(d)}" style="text-align:center;font-size:10px"><div style="width:22px;height:22px;border-radius:5px;background:${uso.has(d)?'var(--ok,#16a34a)':'var(--soft,#374151)'}"></div>${d.slice(8)}</div>`).join('')}</div>
+    <div style="margin-top:8px">Usou em <b>${n7} dos últimos 7 dias</b> e <b>${n14} dos últimos 14</b>.</div>
+    <div class="muted" style="margin-top:4px">Último acesso: ${x.ultimoAcesso?fmtD(motDiaSP(x.ultimoAcesso))+' às '+motHoraSP(x.ultimoAcesso):'nunca'} · Último login: ${x.ultimoLogin?fmtD(motDiaSP(x.ultimoLogin))+' às '+motHoraSP(x.ultimoLogin):'—'} · Primeiro acesso: ${x.primeiroAcesso?fmtD(motDiaSP(x.primeiroAcesso)):'—'}</div>
+    ${(()=>{ const pd=motPedagio(x); return `<div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><span>🛣 Pedágio free flow:</span>${pd.nunca?'<span class="tag '+(pd.atrasado?'warn':'neu')+'">nunca conferiu</span>':'<span class="tag '+(pd.atrasado?'warn':'ok')+'">conferiu há '+pd.dias+' dia'+(pd.dias===1?'':'s')+' ('+fmtD(motDiaSP(x.pedagioConferidoEm))+')</span>'}${pd.atrasado?'<span class="tag warn">passou de 10 dias</span>':''}<span class="sp"></span><button class="sec" style="padding:2px 10px;font-size:12px" onclick="motPedagioWa('${x.id}')">💬 Lembrar por WhatsApp</button><a class="sec" style="padding:2px 10px;font-size:12px;border-radius:8px" href="${PEDAGIO_URL}" target="_blank" rel="noopener">🔎 Abrir consulta</a></div>`; })()}
+    <div class="muted" style="margin-top:4px">Conta quando o app está aberto na tela do celular. Se o motorista fecha o app, aparece “offline” em poucos minutos.</div>
+  </details>`;
+}
 const motFotosAtrasadas = () => S.mots.filter(x=>motFotoStatus(x)==='atrasada').length;
 async function motVerFoto(fotoId,titulo){
   abrir(`<h3>${esc(titulo||'Foto')}</h3><div class="muted">Carregando foto…</div>`);
@@ -3189,6 +3220,8 @@ const MOT_FILTROS=[
   ['fotoatr','📷 Fotos atrasadas','bad',x=>motFotoStatus(x)==='atrasada',2],
   ['fotorec','✖ Fotos recusadas','warn',x=>motFotoStatus(x)==='refazer',2],
   ['semverif','💧 Sem verificação hoje','warn',x=>motSemVerifHoje(x),2],
+  ['semuso','📵 Sem usar o app há 2+ dias','bad',x=>motSemUso(x),2],
+  ['pedagio','🛣 Pedágio sem conferir 10+ dias','warn',x=>motPedagioAtraso(x),2],
   ['wa','📲 WhatsApp a enviar','warn',x=>motWaPend(x.id)>0,2]];
 // importância de cada motorista na lista: chat > pagamento (promessa/comprovante) > bloqueio > resto
 const motPrioridade = x => (motNaoLidas(x.id)>0?100000:0)+((motPromPend(x.id)+motCompPend(x.id))>0?10000:0)+((x.bloqueio||{}).status==='bloqueado'?1000:(x.bloqueio||{}).status==='programado'?500:0)+(motAgPend(x.id)>0?100:0)+(motFotoStatus(x)==='atrasada'?10:0)+(motWaPend(x.id)>0?1:0);
@@ -3215,7 +3248,7 @@ function motoristasView(m){
     <div id="mot_lista"></div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 
@@ -3251,7 +3284,7 @@ function motDetalhe(m){
   if(motFotoStatus(x)==='atrasada') chips.push(['bad','📷 fotos atrasadas','sec_fotos',0]); else if(motFotoStatus(x)==='refazer') chips.push(['warn','✖ foto recusada: aguardando reenvio','sec_fotos',0]);
   const precisa=`<div class="step${pend.total?' hot':''}" id="mot_precisa"><div style="font-weight:700;margin-bottom:6px">${pend.total?'🔥 Precisa de ação agora':'✅ Nada pendente'}</div>${chips.map(([c,t,id,b])=>`<button type="button" class="tag ${c}" style="cursor:pointer;border:0;font-size:13px;padding:5px 11px;margin:2px 4px 2px 0" onclick="motIr('${id}')">${b?'● ':''}${t}</button>`).join('')}${pend.total?`<div class="muted" style="margin-top:6px">Os itens com ● precisam ser resolvidos ou respondidos antes de você sair desta tela.</div>`:(chips.length?'':'<div class="muted">Pode sair.</div>')}</div>`;
   m.innerHTML=`<div class="bar"><button class="ghost" onclick="if(motPodeSair()){S.motAtual=null;render()}">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
-    <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}</div></div>
+    <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span></div></div>
     ${precisa}
     <div class="step${pend.msg?' hot':''}" id="sec_chat"><h3>💬 Conversa${pend.msg?` <span class="tag warn">${pend.msg} sem resposta</span>`:''}</h3>
       ${msgs.length?`<div id="mot_chat_filtro" style="margin:2px 0 4px">${[['todos','Todos',msgs.length]].concat(Object.keys(MOT_ASSUNTOS).filter(k=>k!=='reserva').map(k=>[k,MOT_ASSUNTOS[k][0],msgs.filter(t=>{const a=motAssuntoMsg(t);return a===k||(k==='outros'&&(!a||a==='reserva'));}).length])).filter(([k,l,n])=>k==='todos'||n>0||S.motChatFiltro===k).map(([k,l,n])=>`<button type="button" class="${(S.motChatFiltro||'todos')===k?'pri':'sec'}" style="padding:2px 10px;font-size:12px;margin:0 4px 4px 0" onclick="motChatFiltrar('${k}')">${l} (${n})</button>`).join('')}</div>`:''}
@@ -3273,6 +3306,7 @@ function motDetalhe(m){
       <div class="act"><button class="pri" onclick="motSalvarBloqueio('${x.id}')">Salvar situação</button></div></div>
     <div class="muted" style="font-weight:700;margin:14px 2px 6px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">Acompanhamento</div>
     ${motVeiculoHtml(x)}
+    ${motUsoHtml(x)}
     ${motPontosHtml(x)}
     <div class="step${motAgPend(x.id)?' hot':''}" id="sec_ped"${ags.length?'':' style="padding:10px 16px"'}><h3${ags.length?'':' style="margin:0;font-size:15px"'}>🛠 Pedidos de manutenção${ags.length?'':' <span class="muted" style="font-weight:400">· nenhum</span>'}</h3>${ags.length?ags.map(g=>{ const s=MOT_AGEND[g.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>${fmtD(g.dataDesejada)}</b> <span class="tag ${s[1]}">${s[0]}${g.status==='confirmado'&&g.dataConfirmada?' · '+fmtD(g.dataConfirmada):''}</span><div>${esc(g.descricao||'')}${g.km?` <span class="muted">(${fmtKm(g.km)})</span>`:''}</div>${g.resposta?`<div class="muted">Resposta: ${esc(g.resposta)}</div>`:''}</div><span class="sp"></span>${g.status==='solicitado'?`<div class="row"><button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="ghost danger" onclick="motRespAgend('${g.id}','recusado')">Recusar</button></div>`:''}</div>`; }).join(''):''}</div>
     <div class="muted" style="font-weight:700;margin:14px 2px 6px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">Mais (toque para abrir)</div>
