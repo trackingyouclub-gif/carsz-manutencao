@@ -61,6 +61,7 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);border-co
 .alert{border-radius:14px;padding:14px;margin-bottom:12px;border:1px solid}
 .alert.bad{background:var(--bad-bg);border-color:var(--bad);color:var(--bad)}
 .alert.warn{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+.alert.org{background:rgba(234,88,12,.13);border-color:#ea580c;color:#ea580c}
 .alert.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
 .alert.info{background:var(--soft);border-color:var(--brand);color:var(--brand)}
 .alert b.t{display:block;font-size:17px;margin-bottom:4px}
@@ -252,7 +253,7 @@ function obrigHtml(r){
     ? `<div class="card done"><div class="it"><span class="em">✅</span><div class="tx"><b>${tit}</b><div class="muted sm">Registrado hoje às ${hhmm(hora)}</div></div></div></div>`
     : `<div class="card"><div class="it"><span class="em">${em}</span><div class="tx"><b>${tit}</b><div class="muted sm">${desc}</div>${acao}</div></div></div>`;
   const btn=(t,tit)=>`<button class="btn" id="vb_${t}" onclick="verificar('${t}')">Já verifiquei ${tit}</button>`;
-  const foto=t=>`<label class="btn" id="fb_${t}">${rec[t]?'📷 Enviar nova foto':'📷 Tirar foto'}<input type="file" accept="image/*" capture="environment" data-foto="${t}" onchange="enviarFoto('${t}',this)"></label>`;
+  const foto=t=>(t==='painel'?kmBox('km_painel',r):'')+`<label class="btn" id="fb_${t}">${rec[t]?'📷 Enviar nova foto':'📷 Tirar foto'}<input type="file" accept="image/*" capture="environment" data-foto="${t}" ${t==='painel'?'onclick="return kmOk()" ':''}onchange="enviarFoto('${t}',this)"></label>`;
   let h=`<div class="obrig"><div class="wrap"><h2>✋ Verificações obrigatórias</h2>
     <p class="muted" style="margin:0 0 14px">Para continuar usando o app, confirme os itens abaixo. Fica registrado o dia e o horário de cada um — e cada item rende pontos.</p>`;
   if(comFotos){
@@ -286,14 +287,38 @@ function lerFoto(file){
     img.src=url;
   });
 }
+// km digitado junto da foto do painel (base do alerta de troca de óleo): o botão da foto só abre depois de digitar o km
+const fmtKmN=n=>Math.round(+n||0).toLocaleString('pt-BR');
+function kmInput(el){ S.kmTxt=String(el.value||'').replace(/\D/g,'').slice(0,6); S.kmErro=''; document.querySelectorAll('.kmin').forEach(i=>{ if(i.value!==S.kmTxt) i.value=S.kmTxt; }); document.querySelectorAll('.kmerr').forEach(e=>e.remove()); }
+function kmOk(){ if(S.mestre) return false; if(!(parseInt(S.kmTxt,10)>0)){ toast('Digite o km que está no painel antes de tirar a foto'); const i=document.querySelector('.kmin'); if(i) i.focus(); return false; } return true; }
+function kmBox(id,r){
+  const ki=r.kmInformado||{};
+  return `<div class="kmbox" style="margin:8px 0"><label for="${id}" class="muted sm">Km que está no painel agora</label>
+    <input id="${id}" class="kmin" data-keep inputmode="numeric" autocomplete="off" placeholder="Ex.: 45320" value="${esc(S.kmTxt||'')}" oninput="kmInput(this)" style="${S.kmErro?'border-color:var(--bad);':''}">
+    ${ki.km?`<div class="muted sm">Último km informado: <b>${fmtKmN(ki.km)} km</b> (${fmtD(ki.em)})</div>`:''}
+    ${S.kmErro?`<div class="alert bad kmerr" style="margin:8px 0 0"><b class="t" style="font-size:15px">Km recusado</b><div class="txt" style="margin:2px 0 0">${esc(S.kmErro)}</div></div>`:''}
+    <div class="muted sm" style="margin-top:4px">O botão da foto só libera depois de digitar o km. Esse km é a base do sistema (alerta de troca de óleo).</div></div>`;
+}
+function alertaOleo(r){
+  const o=r.oleo; if(!o) return '';
+  const n=fmtKmN(Math.abs(o.faltam)); const cls=o.nivel==='amarelo'?'warn':o.nivel==='laranja'?'org':'bad';
+  const tit=o.nivel==='vencida'?`🛢 TROCA DE ÓLEO VENCIDA há ${n} km`:o.faltam<=100?`🛢 Troca de óleo em ${n} km — agende já`:`🛢 Troca de óleo em ${n} km`;
+  const txt=o.nivel==='vencida'?`Leve o carro à oficina. A próxima troca era em ${fmtKmN(o.proxima)} km.`:`Próxima troca: ${fmtKmN(o.proxima)} km. Km informado: ${fmtKmN(o.kmAtual)}${o.kmEm?' ('+fmtD(o.kmEm)+')':''}.${o.faltam<=100?'':' Agende com a Carsz.'}`;
+  return `<div class="alert ${cls}" id="alerta_oleo" data-nivel="${o.nivel}"><b class="t">${tit}</b><div class="txt">${txt}</div><button class="btn sm" onclick="irPara('manut')">🛠 Pedir manutenção</button></div>`;
+}
 async function enviarFoto(tipo,input){
   const file=input.files&&input.files[0]; if(!file) return;
   const lb=document.getElementById('fb_'+tipo); S.ocupado=true; if(lb) lb.firstChild.textContent='Enviando…';
   try{
     const foto=await lerFoto(file);
-    const r=await rpc('mot_enviar_foto',{p_token:S.token,p_tipo:tipo,p_foto:foto});
-    if(r&&r.erro){ toast(r.erro); if(lb) lb.firstChild.textContent='📷 Tirar foto'; }
-    else { toast('Foto enviada às '+hhmm(r.em)); await atualizar(true); }
+    const km=tipo==='painel'?parseInt(S.kmTxt,10):null;
+    let r=await rpc('mot_enviar_foto',{p_token:S.token,p_tipo:tipo,p_foto:foto,p_km:km,p_confirma:false});
+    if(r&&r.pedeConfirmar){
+      if(confirm(`Confirma ${fmtKmN(r.km)} km?\nSubiu ${fmtKmN(r.salto)} km desde o último registro (${fmtKmN(r.anterior)} km).`)) r=await rpc('mot_enviar_foto',{p_token:S.token,p_tipo:tipo,p_foto:foto,p_km:km,p_confirma:true});
+      else { if(lb) lb.firstChild.textContent='📷 Tirar foto'; return; }
+    }
+    if(r&&r.erro){ toast(r.erro); if(tipo==='painel'){ S.kmErro=r.erro; render(); } if(lb) lb.firstChild.textContent='📷 Tirar foto'; }
+    else { toast('Foto enviada às '+hhmm(r.em)); if(tipo==='painel'){ S.kmTxt=''; S.kmErro=''; } await atualizar(true); }
   }catch(e){ if(e&&e.message==='imagem'){ toast('Não consegui ler a foto. Tire de novo.'); if(lb) lb.firstChild.textContent='📷 Tirar foto'; } else erroGenerico(e); if(lb) lb.firstChild.textContent='📷 Tirar foto'; }
   finally{ S.ocupado=false; input.value=''; }
 }
@@ -305,7 +330,7 @@ function cartaoVerificacoes(r){
   h+=`<div class="muted sm" style="margin-top:6px">Água e óleo: +0,1 cada, lanternas e faróis: +0,05 cada, por dia. Fotos: +10 cada, só se enviadas na segunda-feira.</div>`;
   if(f.status==='opcional'&&(!f.painel||!f.etiqueta)){
     h+=`<div class="muted sm" style="margin:8px 0 0">Você foi cadastrado nesta semana: as fotos passam a ser obrigatórias a partir da próxima segunda. Pode enviar já:</div>`;
-    if(!f.painel) h+=`<label class="btn sec" id="fb_painel" style="margin-top:8px">📷 Foto do painel<input type="file" accept="image/*" capture="environment" data-foto="painel" onchange="enviarFoto('painel',this)" style="display:none"></label>`;
+    if(!f.painel) h+=kmBox('km_painel2',r)+`<label class="btn sec" id="fb_painel" style="margin-top:8px">📷 Foto do painel<input type="file" accept="image/*" capture="environment" data-foto="painel" onclick="return kmOk()" onchange="enviarFoto('painel',this)" style="display:none"></label>`;
     if(!f.etiqueta) h+=`<label class="btn sec" id="fb_etiqueta" style="margin-top:8px">📷 Foto da etiqueta de óleo<input type="file" accept="image/*" capture="environment" data-foto="etiqueta" onchange="enviarFoto('etiqueta',this)" style="display:none"></label>`;
   }
   return h+'</div>';
@@ -448,6 +473,7 @@ function telaInicio(r){
   let h=`<div style="margin:2px 2px 12px"><div class="muted">Olá,</div><div style="font-size:22px;font-weight:800">${esc((m.nome||'').split(' ')[0])}</div></div>`;
   h+=cartaoVeiculo(r);
   h+=quadroPagamento(r,true);
+  h+=alertaOleo(r);
   h+=faixaPedagio(r);
   if(r.nao_lidas) h+=`<button class="btn sec" style="margin-bottom:12px" onclick="irChat()">💬 ${r.nao_lidas} resposta${r.nao_lidas>1?'s':''} nova${r.nao_lidas>1?'s':''} da Carsz</button>`;
   h+=cartaoVerificacoes(r);
@@ -485,8 +511,8 @@ function telaAvisos(r){
   const rec=(r.comprovantes||[]).filter(c=>c.status==='recusado');
   const g1=av.filter(avisoDePagamento), g2=av.filter(a=>!avisoDePagamento(a));
   const lab=t=>`<div class="muted sm" style="font-weight:800;letter-spacing:.6px;margin:12px 2px 6px">${t}</div>`;
-  let h=`<h2 style="margin:4px 2px 4px">Avisos</h2>`;
-  if(!av.length&&!rec.length) return h+`<div class="empty">Nenhum aviso por enquanto.</div>`;
+  let h=`<h2 style="margin:4px 2px 4px">Avisos</h2>`+alertaOleo(r);
+  if(!av.length&&!rec.length) return h+(r.oleo?'':`<div class="empty">Nenhum aviso por enquanto.</div>`);
   if(g1.length||rec.length) h+=lab('🔥 PAGAMENTO E BLOQUEIO')+`<div class="card" id="av_pag">${rec.map(c=>`<div class="list-i"><div class="alert bad" style="margin:0"><b class="t" style="margin:0">✖ Comprovante recusado</b><div class="txt" style="margin:4px 0 8px">${esc(c.recusadoMotivo||'Envie um comprovante legível.')}</div><button class="btn sm" onclick="formComprovante()">Enviar de novo</button></div></div>`).join('')}${g1.map(avisoHtml).join('')}</div>`;
   if(g2.length) h+=lab('📣 GERAIS E MANUTENÇÃO')+`<div class="card" id="av_ger">${g2.map(avisoHtml).join('')}</div>`;
   return h;

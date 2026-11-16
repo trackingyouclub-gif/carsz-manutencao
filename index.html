@@ -3234,6 +3234,81 @@ async function motReservaToggle(){
   try{ const d={ativo:novo,por:(S.perfil&&S.perfil.nome)||'',em:agoraIso()}; await S.db.doc('config/reserva').set(d); S.motReservaCfg=d; toast('Carro reserva '+(novo?'ligado':'desligado')); render(); }
   catch(e){ erroSalvar('alterar o carro reserva',e); }
 }
+// ---- km do painel e troca de óleo (Kwid/Sandero: 7.000 km · demais: 10.000 km); só a equipe inicia a base, dá baixa e corrige ----
+const motOleoIntervalo = modelo => /kwid|sandero/i.test(modelo||'')?7000:10000;
+const motVeic = x => S.veic.find(v=>v.id===((x.reserva&&x.reserva.veiculoId)||x.veiculoId));
+const motKmDe = vid => (S.motKm||[]).filter(k=>k.veiculoId===vid&&k.status!=='descartado').sort((a,c)=>(c.em||'').localeCompare(a.em||''));
+const motKmConferir = x => { const v=motVeic(x); return v?(S.motKm||[]).filter(k=>k.veiculoId===v.id&&k.status==='conferir').length:0; };
+function motOleoInfo(x){
+  const v=motVeic(x); if(!v) return null; const o=v.oleo||{}; const inter=motOleoIntervalo(v.modelo);
+  if(o.base!==true) return {v,o,base:false,inter};
+  const prox=+o.proximaKm, atual=+o.kmAtual, faltam=prox-atual;
+  return {v,o,base:true,inter,prox,atual,faltam,nivel:faltam<=0?'vencida':faltam<=100?'vermelho':faltam<=300?'laranja':faltam<=500?'amarelo':'ok'};
+}
+function motOleoTag(x){
+  const i=motOleoInfo(x); if(!i||!i.base||i.faltam>500) return '';
+  return i.faltam<=0?`<span class="tag bad">🛢 vencida há ${fmtKm(-i.faltam)}</span>`:`<span class="tag ${i.faltam<=100?'bad':'warn'}">🛢 faltam ${fmtKm(i.faltam)}</span>`;
+}
+function motOleoHtml(x){
+  const i=motOleoInfo(x); if(!i||x.ativo===false) return '';
+  const v=i.v, ks=motKmDe(v.id), ult=ks.find(k=>['ok','conferir','confirmar','corrigido','inicial'].includes(k.status));
+  const dia=k=>fmtD(motDiaSP(k.em)).slice(0,5);
+  const hist=ks.slice(0,6).map(k=>`<div class="row" style="padding:3px 0;border-bottom:1px solid var(--line)"><span>${dia(k)} · <b>${fmtKm(k.km)}</b>${k.motivo?` <span class="muted">(${esc(k.motivo)} · ${esc(k.por||'')})</span>`:k.status==='inicial'?' <span class="muted">(início · '+esc(k.por||'')+')</span>':''}</span><span class="sp"></span>${k.status==='conferir'?`<span class="tag warn">⚠ conferir${k.delta?' (+'+fmtKm(k.delta).replace(' km','')+')':''}</span>`:k.status==='confirmar'?'<span class="tag neu">a confirmar</span>':k.status==='corrigido'?'<span class="tag neu">corrigido</span>':k.delta>0?`<span class="muted">+${fmtKm(k.delta).replace(' km','')}</span>`:''}</div>`).join('');
+  const row=(a,b)=>`<div class="row" style="padding:3px 0;border-bottom:1px solid var(--line)"><span class="muted">${a}</span><span class="sp"></span><b>${b}</b></div>`;
+  const tag=!i.base?'<span class="tag neu">sem base de troca</span>':i.faltam<=0?`<span class="tag bad">vencida há ${fmtKm(-i.faltam)}</span>`:`<span class="tag ${i.faltam<=100?'bad':i.faltam<=500?'warn':'ok'}">faltam ${fmtKm(i.faltam)}</span>`;
+  const conf=motKmConferir(x);
+  let h=`<div class="step${i.base&&i.faltam<=500?' hot':''}" id="sec_oleo"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🛢 Troca de óleo</h3>${tag}<span class="sp"></span></div>
+    ${row('Veículo',esc((v.placa||'')+' · '+(v.modelo||''))+' · intervalo '+fmtKm(i.inter))}`;
+  if(i.base){
+    h+=row('Km atual (último informado'+(i.o.kmEm?', '+fmtD(motDiaSP(i.o.kmEm)).slice(0,5):'')+')',fmtKm(i.atual))+row('Próxima troca (etiqueta)',fmtKm(i.prox))+row('Última troca',i.o.ultimaTrocaKm?fmtKm(i.o.ultimaTrocaKm)+((i.o.baixas||[])[0]?' · '+fmtD((i.o.baixas[0].data||'')):''):'—');
+    h+=`<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:10px"><button class="pri" onclick="motOleoModal('${x.id}','baixa')">✔ Dar baixa na troca de óleo</button><button class="sec" onclick="motOleoModal('${x.id}','etiqueta')">✎ Informar etiqueta</button><button class="ghost" onclick="motOleoModal('${x.id}','corrigir')">Corrigir km</button>${conf?`<button class="ghost" onclick="motOleoConferido('${x.id}')">✓ Marcar km como conferido</button>`:''}</div>`;
+  } else {
+    const pend=ks.find(k=>k.status==='confirmar');
+    h+=row('Km no cadastro do veículo',v.km?fmtKm(v.km):'—')+(pend?row('Km informado pelo motorista (a confirmar)',fmtKm(pend.km)):'');
+    h+=`<div class="row" style="margin-top:10px"><button class="pri" onclick="motOleoModal('${x.id}','iniciar')">▶ Iniciar km e etiqueta</button></div><div class="muted sm" style="margin-top:6px">Sem base de troca: nenhum alerta é enviado ao motorista até você informar o km e a etiqueta. O km que ele digitar nas fotos fica "a confirmar".</div>`;
+  }
+  if(conf) h+=`<div class="alert warn" style="margin:8px 0 0">⚠ ${conf} registro${conf>1?'s':''} de km com salto grande (mais de 4.000 km). Confira com o motorista.</div>`;
+  h+=`<div class="muted" style="font-weight:700;margin:10px 0 2px">Histórico de km</div>${hist||'<div class="muted">Nenhum km informado ainda.</div>'}</div>`;
+  return h;
+}
+function motOleoModal(id,acao){
+  const x=S.mots.find(y=>y.id===id), i=x&&motOleoInfo(x); if(!i) return;
+  const ks=motKmDe(i.v.id); const pend=ks.find(k=>k.status==='confirmar'); const ult=ks[0];
+  const tit={iniciar:'Iniciar km e etiqueta',etiqueta:'Informar etiqueta (próxima troca)',baixa:'Dar baixa na troca de óleo',corrigir:'Corrigir km'}[acao];
+  const kmPre=acao==='iniciar'?(pend?pend.km:(i.v.km||'')):(i.base?i.atual:'');
+  const campoKm=`<label>${acao==='baixa'?'Km em que a troca foi feita':acao==='corrigir'?'Km correto agora':'Km atual do painel (km inicial)'}</label><input id="ol_km" inputmode="numeric" value="${esc(String(kmPre||''))}" oninput="motOleoPrev(${i.inter},'${acao}')">`;
+  const campoProx=`<label>Próxima troca de óleo, conforme a etiqueta (km)</label><input id="ol_prox" inputmode="numeric" value="${acao==='etiqueta'&&i.base?esc(String(i.prox)):''}" oninput="motOleoPrev(${i.inter},'${acao}')">`;
+  abrir(`<h3>🛢 ${tit}</h3><div class="muted" style="margin-bottom:8px">${esc(i.v.placa||'')} · ${esc(i.v.modelo||'')} · intervalo ${fmtKm(i.inter)}${acao==='iniciar'&&i.v.km?` · km no cadastro: ${fmtKm(i.v.km)}`:''}</div>
+    ${acao==='iniciar'?campoKm+campoProx:acao==='etiqueta'?campoProx:campoKm}
+    ${acao==='baixa'?`<label>Data</label><input id="ol_data" type="date" value="${hoje()}">`:''}
+    ${acao==='corrigir'?`<label>Motivo da correção (fica registrado com o seu nome)</label><input id="ol_motivo" placeholder="Ex.: motorista digitou errado">`:''}
+    <div class="muted" id="ol_prev" style="margin:8px 0"></div>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motOleoSalvar('${id}','${acao}')">${acao==='baixa'?'Confirmar baixa':'Salvar'}</button></div>
+    <div class="muted sm">${acao==='baixa'?'Avisa o motorista no Chat (Manutenção) e tira o alerta do app dele.':acao==='corrigir'?'Só a equipe corrige km para baixo.':acao==='iniciar'?'Depois de iniciado, o km do motorista só sobe: o app recusa km menor que o último.':''}</div>`);
+  motOleoPrev(i.inter,acao);
+}
+function motOleoPrev(inter,acao){
+  const n=v=>{ const t=String(val(v)).replace(/\D/g,''); return t?+t:0; }; const el=document.getElementById('ol_prev'); if(!el) return;
+  if(acao==='baixa'){ const k=n('ol_km'); el.innerHTML=k?`Próxima troca será em <b>${fmtKm(k+inter)}</b> (+${fmtKm(inter).replace(' km','')}).`:''; }
+  else if(acao==='iniciar'||acao==='etiqueta'){ const p=n('ol_prox'); el.innerHTML=p?`Última troca (calculada): <b>${fmtKm(Math.max(p-inter,0))}</b> · intervalo ${fmtKm(inter)}.`:''; }
+  else el.innerHTML='';
+}
+async function motOleoSalvar(id,acao){
+  const x=S.mots.find(y=>y.id===id), i=x&&motOleoInfo(x); if(!i) return;
+  const n=v=>{ const t=String(val(v)).replace(/\D/g,''); return t?+t:null; };
+  try{
+    const {data,error}=await sb.rpc('mot_oleo_staff',{p_veiculo_id:i.v.id,p_acao:acao,p_km:n('ol_km'),p_proxima:n('ol_prox'),p_data:val('ol_data')||null,p_motivo:val('ol_motivo')||null});
+    if(error) throw error; if(data&&data.erro){ toast(data.erro); return; }
+    if(data&&data.oleo) i.v.oleo=data.oleo;
+    if(acao==='baixa'){ const o=data.oleo; await motMsgEquipe(id,`🛢 Troca de óleo registrada em ${fmtKm(o.ultimaTrocaKm)}. A próxima troca é em ${fmtKm(o.proximaKm)}. Obrigado!`,'manutencao'); }
+    fechar(); toast(acao==='baixa'?'Baixa registrada e motorista avisado':'Salvo'); motRecarregar();
+  }catch(e){ erroSalvar('salvar o km / troca de óleo',e); }
+}
+async function motOleoConferido(id){
+  const x=S.mots.find(y=>y.id===id), i=x&&motOleoInfo(x); if(!i) return;
+  try{ const {data,error}=await sb.rpc('mot_oleo_staff',{p_veiculo_id:i.v.id,p_acao:'conferido'}); if(error) throw error; toast('Marcado como conferido'); motRecarregar(); }
+  catch(e){ erroSalvar('marcar como conferido',e); }
+}
 function motReservaForm(id){
   const x=S.mots.find(y=>y.id===id); if(!x) return; const vagas=motVagas();
   abrir(`<h3>🚗 Carro reserva — ${esc(x.nome||'')}</h3><p class="muted">Só aparecem placas <b>vagas</b> (da frota, sem motorista ativo). A placa principal <b>${esc(x.placa||'')}</b> continua pontuando e é a senha do app.</p>${motReservaAtivo()?'':'<div class="alert warn" style="margin:6px 0">O carro reserva está <b>desligado</b> para os motoristas. Você ainda pode colocar este motorista manualmente.</div>'}
@@ -3313,6 +3388,9 @@ const MOT_FILTROS=[
   ['prog','⏳ Bloqueio programado','warn',x=>(x.bloqueio||{}).status==='programado',1],
   // acompanhamento
   ['ped','🛠 Pedidos de manutenção','',x=>motAgPend(x.id)>0,2],
+  ['oleo','🛢 Troca de óleo (faltam ≤ 500 km)','warn',x=>{ const i=motOleoInfo(x); return !!(i&&i.base&&i.faltam<=500&&i.faltam>0); },2],
+  ['oleovenc','🛢 Óleo vencido','bad',x=>{ const i=motOleoInfo(x); return !!(i&&i.base&&i.faltam<=0); },2],
+  ['kmconf','⚠ Km para conferir','warn',x=>motKmConferir(x)>0,2],
   ['fotoatr','📷 Fotos atrasadas','bad',x=>motFotoStatus(x)==='atrasada',2],
   ['fotorec','✖ Fotos recusadas','warn',x=>motFotoStatus(x)==='refazer',2],
   ['semverif','💧 Sem verificação hoje','warn',x=>motSemVerifHoje(x),2],
@@ -3344,7 +3422,7 @@ function motoristasView(m){
     <div id="mot_lista"></div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${motOleoTag(x)}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 
@@ -3353,6 +3431,8 @@ function motoristasView(m){
 async function motRecarregar(){
   if(!podeMotoristas()||!S.db) return;
   try{ for(const [c,k] of [['motoristas','mots'],['mot_mensagens','motMsgs'],['mot_promessas','motPromessas'],['mot_agendamentos','motAgend'],['mot_avisos','motAvisos'],['mot_verificacoes','motVerif'],['mot_fotos','motFotos'],['mot_atrasos','motAtrasos'],['mot_comprovantes','motComp']]){ const sn=await S.db.collection(c).get(); S[k]=sn.docs.map(d=>({id:d.id,...d.data()})); }
+    try{ const sv=await S.db.collection('veiculos').get(); S.veic=sv.docs.map(d=>({id:d.id,...d.data()})); }catch(e){} // km e troca de óleo mudam pelo app do motorista
+    try{ const sk=await S.db.collection('mot_km').get(); S.motKm=sk.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ S.motKm=S.motKm||[]; }
     try{ const cr=await S.db.doc('config/reserva').get(); S.motReservaCfg=(cr&&cr.exists?cr.data():null)||null; }catch(e){}
     try{ const ca=await S.db.doc('config/atendentes').get(); S.motAtendCfg=(ca&&ca.exists?ca.data():null)||null; }catch(e){}
     try{ const rk=await sb.rpc('mot_ranking'); if(!rk.error&&Array.isArray(rk.data)) S.motRank=rk.data; }catch(e){} S.motOk=true; render(); }
@@ -3406,6 +3486,7 @@ function motDetalhe(m){
       <div class="act"><button class="pri" onclick="motSalvarBloqueio('${x.id}')">Salvar situação</button></div></div>
     <div class="muted" style="font-weight:700;margin:14px 2px 6px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">Acompanhamento</div>
     ${motVeiculoHtml(x)}
+    ${motOleoHtml(x)}
     ${motUsoHtml(x)}
     ${motPontosHtml(x)}
     <div class="step${motAgPend(x.id)?' hot':''}" id="sec_ped"${ags.length?'':' style="padding:10px 16px"'}><h3${ags.length?'':' style="margin:0;font-size:15px"'}>🛠 Pedidos de manutenção${ags.length?'':' <span class="muted" style="font-weight:400">· nenhum</span>'}</h3>${ags.length?ags.map(g=>{ const s=MOT_AGEND[g.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>${fmtD(g.dataDesejada)}</b> <span class="tag ${s[1]}">${s[0]}${g.status==='confirmado'&&g.dataConfirmada?' · '+fmtD(g.dataConfirmada):''}</span><div>${esc(g.descricao||'')}${g.km?` <span class="muted">(${fmtKm(g.km)})</span>`:''}</div>${g.resposta?`<div class="muted">Resposta: ${esc(g.resposta)}</div>`:''}</div><span class="sp"></span>${g.status==='solicitado'?`<div class="row"><button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="ghost danger" onclick="motRespAgend('${g.id}','recusado')">Recusar</button></div>`:''}</div>`; }).join(''):''}</div>
