@@ -207,11 +207,38 @@ function pendencias(r){
   const v=r.veiculo, bl=(r.motorista.bloqueio||{}).status;
   if(!v||bl==='bloqueado'||r.na_oficina) return []; // carro parado (bloqueado ou na oficina): não cobra verificação
   const ve=r.verificacoes||{}, f=r.fotos||{}, p=[];
-  if(!ve.agua) p.push('agua'); if(!ve.oleo) p.push('oleo');
+  if(!ve.agua) p.push('agua'); if(!ve.oleo) p.push('oleo'); if(!ve.lanternas) p.push('lanternas'); if(!ve.farois) p.push('farois');
   if(f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'){ if(!f.painel) p.push('painel'); if(!f.etiqueta) p.push('etiqueta'); }
   return p;
 }
 const ptsFoto=()=>new Date().getDay()===1?' <b>Enviando hoje (segunda): +10 pontos.</b>':' <span class="muted">Fora da segunda a foto não pontua.</span>';
+// checklist único do dia: água, óleo, lanternas e faróis (marca o que conferiu e confirma de uma vez)
+const VERIF_ITENS=[['agua','💧','Água do radiador','Com o motor frio, confira o nível do reservatório.','+0,1'],['oleo','🛢','Óleo do motor','Confira o nível do óleo na vareta.','+0,1'],['lanternas','🔴','Lanternas','Traseiras, freio e pisca funcionando.','+0,05'],['farois','💡','Faróis','Baixo, alto e pisca funcionando.','+0,05']];
+S.ckv=S.ckv||{};
+function checklistVerif(ve){
+  const falta=VERIF_ITENS.filter(i=>!ve[i[0]]); const marc=falta.filter(i=>S.ckv[i[0]]).length;
+  return `<div class="card" id="ck_card"><h3 style="margin:0 0 4px">Verificação do dia</h3><div class="muted sm" style="margin-bottom:6px">Marque o que você conferiu e toque em Confirmar. Fica registrado o horário de cada item.</div>
+    ${VERIF_ITENS.map(([k,em,tit,desc,pts])=>ve[k]
+      ?`<div class="it ck_row done" style="padding:8px 0"><span class="em">✅</span><div class="tx"><b>${em} ${tit}</b><div class="muted sm">Registrado hoje às ${hhmm(ve[k])}</div></div></div>`
+      :`<label class="it ck_row" style="padding:8px 0;cursor:pointer"><input type="checkbox" class="ck_v" data-t="${k}" ${S.ckv[k]?'checked':''} onchange="ckVerif(this)" style="width:22px;height:22px;flex:none;margin:2px 0 0 0"><div class="tx" style="flex:1;margin-left:2px"><b>${em} ${tit}</b> <span class="tag neu" style="white-space:nowrap">${pts}</span><div class="muted sm">${desc}</div></div></label>`).join('')}
+    <button class="btn" id="vb_todos" onclick="confirmarChecklist()" ${marc===falta.length&&falta.length?'':'disabled'}>${falta.length?(marc===falta.length?'Confirmar':'Confirmar (falta'+(falta.length-marc>1?'m ':' ')+(falta.length-marc)+(falta.length-marc>1?' itens':' item')+')'):'Tudo confirmado'}</button>
+    <div class="muted sm" style="margin-top:6px;text-align:center">Água e óleo rendem +0,1; lanternas e faróis +0,05 (por dia).</div></div>`;
+}
+function ckVerif(el){
+  S.ckv[el.dataset.t]=el.checked;
+  const falta=document.querySelectorAll('.ck_v'); const marc=[...falta].filter(e=>e.checked).length; const b=document.getElementById('vb_todos');
+  if(b){ const rest=falta.length-marc; b.disabled=rest>0; b.textContent=rest>0?'Confirmar (falta'+(rest>1?'m ':' ')+rest+(rest>1?' itens':' item')+')':'Confirmar'; }
+}
+async function confirmarChecklist(){
+  const tipos=[...document.querySelectorAll('.ck_v')].filter(e=>e.checked).map(e=>e.dataset.t); if(!tipos.length) return;
+  const b=document.getElementById('vb_todos'); if(b) b.disabled=true; S.ocupado=true;
+  try{
+    let em=null;
+    for(const t of tipos){ const r=await rpc('mot_verificar',{p_token:S.token,p_tipo:t}); if(r&&r.erro){ toast(r.erro); break; } em=r.em; }
+    S.ckv={}; if(em) toast('Registrado às '+hhmm(em)); await atualizar(true);
+  }catch(e){ erroGenerico(e); if(b) b.disabled=false; }
+  finally{ S.ocupado=false; }
+}
 function obrigHtml(r){
   const pend=pendencias(r); if(!pend.length) return '';
   const ve=r.verificacoes||{}, f=r.fotos||{}; const comFotos=f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'; const rec=f.recusadas||{};
@@ -229,8 +256,7 @@ function obrigHtml(r){
       ? `<div class="alert bad"><b class="t">🚨 Fotos da semana atrasadas</b><div class="txt">As fotos eram para segunda-feira. O veículo está sujeito a bloqueio — envie agora.</div></div>`
       : `<div class="alert warn"><b class="t">⚠ Hoje é dia das fotos da semana</b><div class="txt">Envie até hoje, 23:59. Sem as fotos, o veículo poderá ser bloqueado.</div></div>`;
   }
-  h+=item('agua','💧','Água do radiador','Com o motor frio, confira o nível do reservatório de água. <b>+0,1 ponto</b>',ve.agua,btn('agua','a água'));
-  h+=item('oleo','🛢','Óleo do motor','Confira o nível do óleo na vareta. <b>+0,1 ponto</b>',ve.oleo,btn('oleo','o óleo'));
+  h+=checklistVerif(ve);
   if(comFotos){
     const motivo=t=>rec[t]?`<div class="alert bad" style="margin:6px 0"><b>Foto recusada:</b> ${esc(rec[t].motivo||'ilegível ou informação errada')}</div>`:'';
     h+=item('painel','📷','Foto do painel de instrumentos',motivo('painel')+'Com o carro ligado, foto do painel inteiro mostrando o km (hodômetro) e as luzes. Deve ficar nítida e legível.'+ptsFoto(),f.painel,foto('painel'));
@@ -267,10 +293,10 @@ async function enviarFoto(tipo,input){
 }
 function cartaoVerificacoes(r){
   const v=r.veiculo, ve=r.verificacoes||{}, f=r.fotos||{}; if(!v) return '';
-  const rc=f.recusadas||{}; const seg=new Date().getDay()===1; const linha=(ic,t,h,rec,pts)=>`<div class="row" style="margin:4px 0"><span>${ic} ${t}</span><span class="sp"></span>${rec?'<span class="tag bad">recusada — enviar de novo</span>':h?`<span class="tag ok">✓ ${hhmm(h)}${pts==='+0,1'?' '+pts:''}</span>`:`<span class="tag warn">pendente</span>${pts?` <span class="tag neu">${pts}</span>`:''}`}</div>`;
-  let h=`<div class="card"><h3>📋 Para fazer hoje <span class="muted sm" style="font-weight:400">(ganhe pontos)</span></h3>${linha('💧','Água hoje',ve.agua,0,'+0,1')}${linha('🛢','Óleo hoje',ve.oleo,0,'+0,1')}`;
+  const rc=f.recusadas||{}; const seg=new Date().getDay()===1; const linha=(ic,t,h,rec,pts)=>`<div class="row" style="margin:4px 0"><span>${ic} ${t}</span><span class="sp"></span>${rec?'<span class="tag bad">recusada — enviar de novo</span>':h?`<span class="tag ok">✓ ${hhmm(h)}${pts&&pts.startsWith('+0,')?' '+pts:''}</span>`:`<span class="tag warn">pendente</span>${pts?` <span class="tag neu">${pts}</span>`:''}`}</div>`;
+  let h=`<div class="card"><h3>📋 Para fazer hoje <span class="muted sm" style="font-weight:400">(ganhe pontos)</span></h3>${linha('💧','Água hoje',ve.agua,0,'+0,1')}${linha('🛢','Óleo hoje',ve.oleo,0,'+0,1')}${linha('🔴','Lanternas hoje',ve.lanternas,0,'+0,05')}${linha('💡','Faróis hoje',ve.farois,0,'+0,05')}`;
   h+=`<div class="muted sm" style="margin:10px 0 4px"><b>Fotos da semana</b> (toda segunda-feira)</div>${linha('📷','Painel de instrumentos',f.painel,rc.painel,'+10 (segunda)')}${linha('📷','Etiqueta de óleo',f.etiqueta,rc.etiqueta,'+10 (segunda)')}`;
-  h+=`<div class="muted sm" style="margin-top:6px">Água e óleo: +0,1 cada, por dia. Fotos: +10 cada, só se enviadas na segunda-feira.</div>`;
+  h+=`<div class="muted sm" style="margin-top:6px">Água e óleo: +0,1 cada, lanternas e faróis: +0,05 cada, por dia. Fotos: +10 cada, só se enviadas na segunda-feira.</div>`;
   if(f.status==='opcional'&&(!f.painel||!f.etiqueta)){
     h+=`<div class="muted sm" style="margin:8px 0 0">Você foi cadastrado nesta semana: as fotos passam a ser obrigatórias a partir da próxima segunda. Pode enviar já:</div>`;
     if(!f.painel) h+=`<label class="btn sec" id="fb_painel" style="margin-top:8px">📷 Foto do painel<input type="file" accept="image/*" capture="environment" data-foto="painel" onchange="enviarFoto('painel',this)" style="display:none"></label>`;
@@ -280,8 +306,17 @@ function cartaoVerificacoes(r){
 }
 
 // ---- pontuação (negativa: quanto menos pontos, melhor) e líder do ranking ----
-const fmtPts = n => { n=Math.round((+n||0)*10)/10; return n===0?'0':(n<0?'−':'+')+Math.abs(n).toLocaleString('pt-BR',{maximumFractionDigits:1}); };
-const rotGanho=g=>({agua:'💧 Água verificada no dia',oleo:'🛢 Óleo verificado no dia',painel:'📷 Foto do painel na segunda',etiqueta:'📷 Foto da etiqueta na segunda'})[g.tipo]||g.tipo;
+const fmtPts = n => { n=Math.round((+n||0)*100)/100; return n===0?'0':(n<0?'−':'+')+Math.abs(n).toLocaleString('pt-BR',{maximumFractionDigits:2}); };
+const rotGanho=g=>({agua:'💧 Água verificada no dia',oleo:'🛢 Óleo verificado no dia',lanternas:'🔴 Lanternas verificadas no dia',farois:'💡 Faróis verificados no dia',painel:'📷 Foto do painel na segunda',etiqueta:'📷 Foto da etiqueta na segunda'})[g.tipo]||g.tipo;
+// ranking: os 5 melhores (posição, placa e pontos); se o motorista está fora do top, a linha dele aparece logo abaixo
+function rankingTop(k,eu){
+  const top=(k.top&&k.top.length)?k.top:(k.lider?[{posicao:1,placa:k.lider.placa,pontos:k.lider.pontos}]:[]);
+  if(!top.length) return '';
+  const medal=n=>n===1?'🥇':n===2?'🥈':n===3?'🥉':n+'º';
+  const lin=(t,eh)=>`<div class="row rk_row${eh?' rk_eu':''}" data-pos="${t.posicao}" style="padding:6px 8px;margin:3px 0;border-radius:8px;${eh?'background:var(--brand);color:#fff;font-weight:700':'background:var(--soft,rgba(127,127,127,.12))'}"><span style="width:34px">${medal(t.posicao)}</span><span style="font-family:monospace;letter-spacing:1px;font-weight:700">${esc(t.placa||'')}</span>${eh?'<span class="sm">&nbsp;(você)</span>':''}<span class="sp"></span><b>${fmtPts(t.pontos)}</b></div>`;
+  const dentro=top.some(t=>t.posicao===eu.posicao);
+  return `<div style="margin-top:10px"><div style="font-weight:700;margin-bottom:4px">🏆 Melhores motoristas (top ${top.length})</div>${top.map(t=>lin(t,t.posicao===eu.posicao)).join('')}${dentro?'':`<div class="muted sm" style="text-align:center;margin:2px 0">⋯</div>${lin({posicao:eu.posicao,placa:eu.placa,pontos:eu.pontos},true)}`}</div>`;
+}
 function cartaoPontos(r){
   const k=r.ranking; if(!k||!k.eu) return ''; const eu=k.eu, lid=k.lider; const souLider=eu.posicao===1;
   const gan=eu.ganhos||[];
@@ -292,10 +327,9 @@ function cartaoPontos(r){
   return `<div class="card"><div class="row"><h3 style="margin:0">🏆 Sua pontuação</h3><span class="sp"></span><span class="muted sm">últimas ${k.semanas} semanas</span></div>
     <div class="row" style="margin:10px 0 4px;align-items:flex-end"><div style="font-size:38px;font-weight:800;line-height:1;color:${eu.pontos<0?'var(--bad)':'var(--ok)'}">${fmtPts(eu.pontos)}</div><div class="muted" style="padding-bottom:4px">pontos<br>quanto maior, melhor</div><span class="sp"></span><div style="text-align:right"><div style="font-size:22px;font-weight:800">${eu.posicao}º</div><div class="muted sm">de ${k.total}</div></div></div>
     <div class="muted sm" style="margin-top:6px">🟢 <b>${eu.semanas_limpas}</b> semana${eu.semanas_limpas===1?'':'s'} seguida${eu.semanas_limpas===1?'':'s'} sem atraso e sem usar a promessa de pagamento</div>
-    ${souLider?`<div class="alert ok" style="margin:10px 0 0"><b class="t" style="margin:0">🥇 Você é o melhor motorista!</b><div class="txt" style="margin:4px 0 0">A sua placa aparece para todos os motoristas.</div></div>`
-      :lid?`<div class="alert info" style="margin:10px 0 0"><b class="t" style="margin:0">🥇 Melhor motorista agora</b><div class="txt" style="margin:6px 0 0"><span class="plate">${esc(lid.placa||'')}</span> &nbsp;${fmtPts(lid.pontos)} pts · ${lid.semanas_limpas} semana${lid.semanas_limpas===1?'':'s'} limpa${lid.semanas_limpas===1?'':'s'}</div></div>`:''}
+    ${rankingTop(k,eu)}
     <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700;color:var(--brand)">Como funciona</summary>
-      <div class="muted sm" style="margin-top:6px"><b>Você ganha:</b><br>💧 Verificar a água no dia: +0,1 · 🛢 verificar o óleo no dia: +0,1<br>📷 Foto do painel enviada na segunda-feira: +10 · 📷 foto da etiqueta de óleo na segunda-feira: +10<br><b>Você perde:</b><br>Atraso de <b>1 dia</b>: −20 · <b>2 dias</b>: −50 · <b>3 dias ou mais</b>: −100 · cada <b>Prometer pagamento</b>: −10<br>Vale o que aconteceu nas últimas ${k.semanas} semanas. Fica no topo quem tem mais pontos; em empate, quem tem mais semanas seguidas sem atraso e sem promessa.</div></details>
+      <div class="muted sm" style="margin-top:6px"><b>Você ganha:</b><br>💧 Verificar a água no dia: +0,1 · 🛢 verificar o óleo no dia: +0,1<br>🔴 Lanternas no dia: +0,05 · 💡 faróis no dia: +0,05<br>📷 Foto do painel enviada na segunda-feira: +10 · 📷 foto da etiqueta de óleo na segunda-feira: +10<br><b>Você perde:</b><br>Atraso de <b>1 dia</b>: −20 · <b>2 dias</b>: −50 · <b>3 dias ou mais</b>: −100 · cada <b>Prometer pagamento</b>: −10<br>Vale o que aconteceu nas últimas ${k.semanas} semanas. Fica no topo quem tem mais pontos; em empate, quem tem mais semanas seguidas sem atraso e sem promessa.</div></details>
     <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700;color:var(--brand)">O que gerou meus pontos</summary>
       <div style="margin-top:6px">${gan.map(g=>`<div class="row" style="margin:3px 0"><span>${rotGanho(g)} (${g.qtd}×)</span><span class="sp"></span><b style="color:var(--ok)">${fmtPts(g.pontos)}</b></div>`).join('')}${pen.map(linha).join('')}${(gan.length||pen.length)?'':'<div class="muted sm">Nada até agora. Verifique água e óleo todo dia e envie as fotos na segunda! 👏</div>'}</div></details></div>`;
 }
