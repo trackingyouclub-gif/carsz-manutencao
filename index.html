@@ -2954,17 +2954,41 @@ function detVeic(id){
 // ---- WhatsApp: o número que ENVIA é o do WhatsApp conectado no aparelho/navegador (links wa.me não escolhem o remetente).
 // O sistema avisa e pede conferência: tem que ser o (11) 96316-6971.
 const WA_SAIDA_NUM='11963166971', WA_SAIDA_TXT='(11) 96316-6971'; let waSaidaOk=false;
+const waAndroid=/android/i.test(navigator.userAgent);
+const waCelular=waAndroid||/iphone|ipad|ipod/i.test(navigator.userAgent);
+// qual WhatsApp abrir no celular: o número de saída é WhatsApp BUSINESS (app separado), então o padrão é o Business
+function waModo(){ try{ return localStorage.getItem('wa_app')==='std'?'std':'biz'; }catch(e){ return 'biz'; } }
+function waSetModo(m){ try{ localStorage.setItem('wa_app',m); }catch(e){} }
+// converte o link wa.me no link que abre o app certo (Android: força o pacote do WhatsApp Business; iPhone: esquema do Business)
+function waLinkApp(url,android=waAndroid,celular=waCelular,modo=waModo()){
+  const m=String(url).match(/^https:\/\/wa\.me\/(\d*)(?:\?text=(.*))?$/); if(!m||!celular||modo!=='biz') return {url,app:false};
+  const ph=m[1], tx=m[2]?'&text='+m[2]:'';
+  if(android) return {app:true,url:`intent://send/?phone=${ph}${tx}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url=${encodeURIComponent(url)};end`};
+  return {app:true,fb:url,url:`whatsapp-business://send?phone=${ph}${tx}`};
+}
+function waIr(url){
+  const l=waLinkApp(url);
+  if(!l.app){ window.open(url,'_blank'); return; }
+  if(l.fb){ location.href=l.url; setTimeout(()=>{ if(document.visibilityState==='visible') location.href=l.fb; },1600); return; }
+  location.href=l.url;
+}
 function waAbrir(url){
-  if(waSaidaOk){ window.open(url,'_blank'); return; }
+  if(waSaidaOk){ waIr(url); return; }
+  waDialogo(url);
+}
+function waDialogo(url){
   const old=document.getElementById('wa_conf'); if(old) old.remove();
+  const modo=waModo();
   const d=document.createElement('div'); d.id='wa_conf'; d.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
   d.innerHTML=`<div role="dialog" aria-modal="true" style="background:var(--card,#fff);color:var(--ink,#111);border-radius:14px;max-width:420px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4)"><h3 style="margin:0 0 8px">📲 Enviar pelo número da Carsz</h3>
-    <p style="margin:0 0 8px">As mensagens precisam sair do número <b style="font-size:18px">${WA_SAIDA_TXT}</b>.</p>
-    <p class="muted" style="margin:0 0 12px;font-size:13px">O WhatsApp que abrir agora é o que está conectado neste aparelho/navegador. Se aparecer outro número, <b>não envie</b>: troque a conta (no WhatsApp Business, toque no nome no topo para alternar; no WhatsApp Web, saia e conecte o ${WA_SAIDA_TXT}).</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="sec" id="wa_conf_nao" style="min-height:44px">Cancelar</button><button class="pri" id="wa_conf_ok" style="min-height:44px">✔ Está no ${WA_SAIDA_TXT} — abrir</button></div></div>`;
+    <p style="margin:0 0 8px">As mensagens precisam sair do número <b style="font-size:18px">${WA_SAIDA_TXT}</b> (WhatsApp Business).</p>
+    ${waCelular?`<div style="margin:0 0 10px"><label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="radio" name="wa_modo" value="biz" style="width:auto" ${modo==='biz'?'checked':''}> <span><b>WhatsApp Business</b> (o do ${WA_SAIDA_TXT})</span></label>
+      <label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="radio" name="wa_modo" value="std" style="width:auto" ${modo==='std'?'checked':''}> <span>WhatsApp comum</span></label></div>`
+    :`<p class="muted" style="margin:0 0 12px;font-size:13px">No computador, abre o WhatsApp Web: ele precisa estar conectado ao ${WA_SAIDA_TXT}. Se aparecer outro número, <b>não envie</b> — saia e conecte o ${WA_SAIDA_TXT}.</p>`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="sec" id="wa_conf_nao" style="min-height:44px">${url?'Cancelar':'Fechar'}</button><button class="pri" id="wa_conf_ok" style="min-height:44px">${url?'✔ Abrir no '+WA_SAIDA_TXT:'Salvar'}</button></div></div>`;
   document.body.appendChild(d);
   document.getElementById('wa_conf_nao').onclick=()=>d.remove();
-  document.getElementById('wa_conf_ok').onclick=()=>{ waSaidaOk=true; d.remove(); window.open(url,'_blank'); };
+  document.getElementById('wa_conf_ok').onclick=()=>{ const r=d.querySelector('input[name=wa_modo]:checked'); if(r) waSetModo(r.value); waSaidaOk=true; d.remove(); if(url) waIr(url); else toast('WhatsApp: '+(waModo()==='biz'?'Business':'comum')); };
 }
 function abrir(h){ const md=document.getElementById('md'); md.style.maxWidth=''; md.innerHTML=h; document.getElementById('ov').classList.add('on'); }
 function fechar(){ document.getElementById('ov').classList.remove('on'); }
@@ -3673,7 +3697,7 @@ function motoristasView(m){
   }
   m.innerHTML=`<div class="mx-pad"><div class="mx-barra"><h2>Motoristas</h2><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="sec" id="mot_reserva_btn" onclick="motReservaToggle()" title="Liga ou desliga o botão de carro reserva no app dos motoristas">${motReservaAtivo()?'🚗 Reserva: ligado':'🚗 Reserva: desligado'}</button>${ehSuperadmin()?'<button class="sec" onclick="motAtendModal()">👥 Atendentes</button>':''}${motPodeCriar()?`<button class="sec" onclick="impAbrir()" title="Cadastra vários motoristas e placas de uma vez a partir da planilha">📥 Importar planilha</button><button class="pri" onclick="motForm('')">+ Novo motorista</button>`:''}</div>
     ${S.motOk?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>As tabelas do app do motorista ainda não existem no banco.</b> Rode o arquivo <b>motoristas.sql</b> (versão mais recente) no SQL Editor do Supabase e recarregue esta página.</div>`}
-    <div class="muted" id="wa_saida" style="margin:0 0 8px;font-size:13px">📲 WhatsApp: as mensagens devem sair do número <b>${WA_SAIDA_TXT}</b> (conferimos antes de abrir)</div><div class="mx-seg" id="mx_seg"><button type="button" data-aba="fazer" class="${aba==='fazer'?'on':''}" onclick="motAba('fazer')">Fazer agora${tarefas.length?`<b>${tarefas.length}</b>`:''}</button><button type="button" data-aba="acomp" class="${aba==='acomp'?'on':''}" onclick="motAba('acomp')">Acompanhar${nAcomp?`<b style="background:var(--warn)">${nAcomp}</b>`:''}</button><button type="button" data-aba="todos" class="${aba==='todos'?'on':''}" onclick="motAba('todos')">Todos</button></div>
+    <div class="muted" id="wa_saida" style="margin:0 0 8px;font-size:13px">📲 WhatsApp: as mensagens devem sair do número <b>${WA_SAIDA_TXT}</b> (conferimos antes de abrir) · <a href="#" onclick="waDialogo('');return false">escolher o app</a></div><div class="mx-seg" id="mx_seg"><button type="button" data-aba="fazer" class="${aba==='fazer'?'on':''}" onclick="motAba('fazer')">Fazer agora${tarefas.length?`<b>${tarefas.length}</b>`:''}</button><button type="button" data-aba="acomp" class="${aba==='acomp'?'on':''}" onclick="motAba('acomp')">Acompanhar${nAcomp?`<b style="background:var(--warn)">${nAcomp}</b>`:''}</button><button type="button" data-aba="todos" class="${aba==='todos'?'on':''}" onclick="motAba('todos')">Todos</button></div>
     ${corpo}</div><button type="button" class="mx-fab" id="mx_fab" onclick="motIniciarCobranca()">＋ Bloqueio / Cobrança</button>`;
 }
 
