@@ -466,26 +466,32 @@ function telaLogin(){
   </div>`;
 }
 
-// cobrança em atraso = bloqueio programado/bloqueado que a equipe ainda NÃO resolveu:
-// some quando a promessa de pagamento é aceita ou quando um comprovante é aceito (baixa) depois do bloqueio
+// débito pendente = bloqueio programado/bloqueado que ainda NÃO foi pago: a promessa aceita só dá um novo prazo (o app continua vermelho);
+// só some quando a equipe dá baixa no comprovante (aceito depois do bloqueio)
+function pagoDepoisDoBloqueio(r){
+  const bl=((r.motorista||{}).bloqueio)||{}; const em=bl.em||'';
+  return (r.comprovantes||[]).some(c=>c.status==='pago'&&c.baixaEm&&(em?String(c.baixaEm)>=String(em):diasDesde(c.baixaEm)<=3));
+}
 function emAtraso(r){
   const bl=(r.motorista||{}).bloqueio||{}; if(bl.status!=='bloqueado'&&bl.status!=='programado') return false;
-  const pe=promessaEmAberto(r); if(pe&&pe.status==='aceita') return false;
-  const em=bl.em||''; if((r.comprovantes||[]).some(c=>c.status==='pago'&&c.baixaEm&&(em?String(c.baixaEm)>=String(em):diasDesde(c.baixaEm)<=3))) return false;
-  return true;
+  return !pagoDepoisDoBloqueio(r);
 }
+function promessaAceita(r){ const pe=promessaEmAberto(r); return pe&&pe.status==='aceita'?pe:null; }
 function faixaAtraso(r,clicavel,idx){
-  const st=((r.motorista||{}).bloqueio||{}).status, tit=st==='bloqueado'?'VEÍCULO BLOQUEADO':'BLOQUEIO PROGRAMADO';
-  const sub=clicavel?'Toque para resolver: prometer pagamento ou enviar comprovante':(idx?'Resolva depois das verificações, na aba Cobrança':'Resolva abaixo: prometa o pagamento ou envie o comprovante');
-  const id=idx?'faixa_atraso_obrig':'faixa_atraso';
-  return `<${clicavel?'button onclick="irPara(\'cobranca\')"':'div'} class="faixa-atraso${clicavel?'':' fixa'}" id="${id}"><span style="font-size:20px">🔴</span><span>COBRANÇA EM ATRASO · ${tit}<small>${sub}</small></span></${clicavel?'button':'div'}>`;
+  const bl=((r.motorista||{}).bloqueio)||{}, st=bl.status, pa=promessaAceita(r);
+  const dataB=bl.data||(pa&&pa.dataPrometida)||'';
+  const tit=pa?'PAGAMENTO PENDENTE':(st==='bloqueado'?'VEÍCULO BLOQUEADO':'BLOQUEIO PROGRAMADO');
+  const aviso=dataB&&st!=='bloqueado'?`Envie o comprovante até ${fmtD(dataB)} ou o veículo será bloqueado sem aviso prévio.`:'';
+  const sub=pa?(aviso+(clicavel?' Toque para enviar.':idx?'':' Envie abaixo.')):(clicavel?(aviso?aviso+' Toque para resolver.':'Toque para resolver: prometer pagamento ou enviar comprovante'):(idx?'Resolva depois das verificações, na aba Cobrança':(aviso||'Resolva abaixo: prometa o pagamento ou envie o comprovante')));
+  const id=idx?'faixa_atraso_obrig':'faixa_atraso'; const oc=pa?'formComprovante()':"irPara(\'cobranca\')";
+  return `<${clicavel?`button onclick="${oc}"`:'div'} class="faixa-atraso${clicavel?'':' fixa'}" id="${id}"><span style="font-size:20px">🔴</span><span>COBRANÇA EM ATRASO · ${tit}<small>${sub}</small></span></${clicavel?'button':'div'}>`;
 }
 function promessaEmAberto(r){ const h=hojeStr(); return (r.promessas||[]).find(p=>(p.status==='pendente'||p.status==='aceita')&&(p.dataPrometida||'')>=h)||null; }
 // promessa de pagamento ACEITA adia o bloqueio programado: o alerta e os avisos de "bloqueio programado" somem do app
 // (voltam sozinhos se a promessa deixar de valer e a situação continuar "programado")
-function promessaAceitaAdia(r){ const bl=((r.motorista||{}).bloqueio||{}).status; const pe=promessaEmAberto(r); return bl==='programado'&&!!pe&&pe.status==='aceita'?pe:null; }
+function promessaAceitaAdia(r){ return null; }
 // o aviso "Bloqueio programado…" some quando a promessa é aceita OU quando a situação deixa de ser "programado" (liberado)
-function avisosVisiveis(r){ const adia=promessaAceitaAdia(r), prog=((r.motorista||{}).bloqueio||{}).status==='programado'; return (r.avisos||[]).filter(a=>!(/^bloqueio programado/i.test(a.titulo||'')&&(adia||!prog))); }
+function avisosVisiveis(r){ const prog=((r.motorista||{}).bloqueio||{}).status==='programado'; return (r.avisos||[]).filter(a=>!(/^bloqueio programado/i.test(a.titulo||'')&&!prog)); }
 const STATUS_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
 const STATUS_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Não foi possível','bad'],concluido:['Concluído','neu']};
 
@@ -520,22 +526,25 @@ async function pedagioConferido(){
 }
 // quadro de pagamento e bloqueio. comAcoes=true (Início) inclui os botões de promessa e comprovante.
 function quadroPagamento(r,comAcoes){
-  const bl=(r.motorista||{}).bloqueio||{status:'normal'}; const pe=promessaEmAberto(r), adia=promessaAceitaAdia(r);
+  const bl=(r.motorista||{}).bloqueio||{status:'normal'}; const pe=promessaEmAberto(r), pa=promessaAceita(r);
   const cs=r.comprovantes||[]; const pen=cs.filter(c=>c.status==='pendente'), rec=cs.filter(c=>c.status==='recusado'), pag=cs.filter(c=>c.status==='pago'&&diasDesde(c.baixaEm)<=3);
-  const bloq=bl.status==='bloqueado', prog=bl.status==='programado';
+  const bloq=bl.status==='bloqueado', pend=emAtraso(r);
   const dt=c=>fmtD((c.em||'').slice(0,10))+' '+hhmm(c.em);
   const extras=rec.map(c=>`<div class="txt"><b>✖ Comprovante recusado</b> — ${esc(c.recusadoMotivo||'envie um comprovante legível.')}</div>`).join('')
     +pen.map(c=>`<div class="txt">🧾 Comprovante enviado em ${dt(c)}${c.valor?' ('+fmtBRL(c.valor)+')':''} — <b>Aguardando conferência</b></div>`).join('')
     +pag.map(c=>`<div class="txt">✔ <b>Pagamento confirmado</b> em ${dt(c)}</div>`).join('');
-  const btnProm=comAcoes&&!pe&&emAtraso(r)?`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`:'';
-  const btnComp=comAcoes&&(bloq||prog||pe||pen.length||rec.length)?`<button class="btn ${btnProm||!rec.length?'sec':''}" onclick="formComprovante()">🧾 ${rec.length?'Enviar de novo':'Enviar comprovante'}</button>`:'';
-  const btnBloq=(comAcoes&&(bloq||prog))?`<button class="btn sec" onclick="irChat('bloqueio')">🔒 Falar sobre o bloqueio</button>`:'';
+  const btnProm=comAcoes&&!pe&&pend?`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`:'';
+  const btnComp=comAcoes&&(pend||pe||pen.length||rec.length)?`<button class="btn ${btnProm||(!rec.length&&!pa)?'sec':''}" onclick="formComprovante()">🧾 ${rec.length?'Enviar de novo':'Enviar comprovante'}</button>`:'';
+  const btnBloq=(comAcoes&&pend&&!pa)?`<button class="btn sec" onclick="irChat('bloqueio')">🔒 Falar sobre o bloqueio</button>`:'';
   const acoes=(btnProm||btnComp||btnBloq)?`<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${btnProm}${btnComp}${btnBloq}</div>`:'';
-  if(adia) return `<div class="alert ok"><b class="t">🤝 Promessa de pagamento aceita</b><div class="txt">Pagamento combinado para <b>${fmtD(adia.dataPrometida)}</b>${adia.resposta?' — '+esc(adia.resposta):''}. O aviso de bloqueio foi suspenso. Se não pagar até lá, ele volta.</div>${extras}${acoes}</div>`;
-  if(bloq||prog){
+  if(pend&&pa){
+    const dB=bl.data||pa.dataPrometida;
+    return `<div class="alert bad" id="quadro_promessa"><b class="t">⏳ Pagamento pendente · prazo até ${fmtD(dB)}</b><div class="txt">A cobrança aceitou a sua promessa${pa.resposta?' — '+esc(pa.resposta):''}. <b>Envie o comprovante do pagamento até ${fmtD(pa.dataPrometida)}, ou o veículo será bloqueado sem aviso prévio.</b></div>${extras}${acoes}</div>`;
+  }
+  if(pend){
     return `<div class="alert ${bloq?'bad':'warn'}"><b class="t">${bloq?'🔒 Veículo bloqueado':'⚠ Bloqueio programado'}${!bloq&&bl.data?' para '+fmtD(bl.data):''}</b>
       ${bl.motivo?`<div class="txt">${esc(bl.motivo)}</div>`:''}
-      ${pe?`<div class="txt"><b>Promessa de pagamento registrada para ${fmtD(pe.dataPrometida)}</b> — ${pe.status==='aceita'?'aceita pela cobrança.':'aguardando resposta da cobrança.'}</div>`
+      ${pe?`<div class="txt"><b>Promessa de pagamento registrada para ${fmtD(pe.dataPrometida)}</b> — aguardando resposta da cobrança.</div>`
           :`<div class="txt">${bloq?'Para pedir o desbloqueio, informe quando vai pagar.':'Para evitar o bloqueio, regularize ou informe quando vai pagar.'}</div>`}${extras}${acoes}</div>`;
   }
   if(rec.length) return `<div class="alert bad"><b class="t">🧾 Pagamento</b>${extras}${acoes}</div>`;
@@ -547,8 +556,19 @@ function avisosInicio(r){
   const recC=(r.comprovantes||[]).some(c=>c.status==='recusado'), recF=Object.keys((r.fotos||{}).recusadas||{}).length>0;
   return avisosVisiveis(r).filter(a=>{ const t=a.titulo||''; if(vistos.has(a.id)) return false; if(/comprovante recusado/i.test(t)&&!recC) return false; if(/foto recusada/i.test(t)&&!recF) return false; const d=Date.parse(a.em||''); return isNaN(d)||(Date.now()-d)/864e5<=7; });
 }
-function pagamentoOk(r){
-  const bl=((r.motorista||{}).bloqueio||{}).status; return bl!=='bloqueado'&&bl!=='programado'&&!promessaAceitaAdia(r)&&!(r.comprovantes||[]).some(c=>c.status==='recusado');
+function pagamentoOk(r){ return !emAtraso(r)&&!(r.comprovantes||[]).some(c=>c.status==='recusado'); }
+// chip do resumo de pagamento: em dia / pendente com a nova data / em atraso
+function chipPagamento(r){
+  const cs=r.comprovantes||[], pen=cs.filter(c=>c.status==='pendente'), pa=promessaAceita(r), bl=(r.motorista||{}).bloqueio||{};
+  const pag=cs.filter(c=>c.status==='pago').sort((a,b)=>String(b.baixaEm||'').localeCompare(String(a.baixaEm||'')))[0];
+  if(cs.some(c=>c.status==='recusado')) return '<span class="chip2 r">✖ Comprovante recusado</span>';
+  if(emAtraso(r)){
+    if(pen.length) return '<span class="chip2 p">🧾 Comprovante em conferência</span>';
+    if(pa) return `<span class="chip2 r" id="chip_pend">⏳ Pendente · pagar até ${fmtD(pa.dataPrometida)}</span>`;
+    return `<span class="chip2 r" id="chip_pend">⚠ Em atraso${bl.status==='programado'&&bl.data?' · bloqueio '+fmtD(bl.data):''}</span>`;
+  }
+  if(pen.length) return '<span class="chip2 p">🧾 Comprovante em conferência</span>';
+  return `<span class="chip2">✔ Em dia${pag&&pag.baixaEm&&diasDesde(pag.baixaEm)<=3?' · confirmado '+fmtD(String(pag.baixaEm).slice(0,10))+' '+hhmm(pag.baixaEm):''}</span>`;
 }
 function telaInicio(r){
   const m=r.motorista; const sec=(t,red)=>`<div class="sec-t${red?' red':''}">${t}</div>`;
@@ -582,11 +602,7 @@ function telaInicio(r){
   }
   if(man) h+=sec(confirmadas.length||(r.agendadas||[]).length?'Próximo compromisso':'Manutenção')+man;
   // 4) RESUMO: pagamento em uma linha + pontuação compacta
-  const cs=r.comprovantes||[], pen=cs.filter(c=>c.status==='pendente'), pag=cs.filter(c=>c.status==='pago').sort((a,b)=>String(b.baixaEm||'').localeCompare(String(a.baixaEm||'')))[0];
-  let resumo='';
-  if(pagamentoOk(r)){
-    resumo+=`<div class="card" id="resumo_pag"><div class="row"><span class="t3">💳 Pagamento</span><span class="sp"></span>${pen.length?`<span class="chip2 p">🧾 Comprovante em conferência</span>`:`<span class="chip2">✔ Em dia${pag&&pag.baixaEm&&diasDesde(pag.baixaEm)<=3?' · confirmado '+fmtD(String(pag.baixaEm).slice(0,10))+' '+hhmm(pag.baixaEm):''}</span>`}</div></div>`;
-  }
+  let resumo=`<div class="card" id="resumo_pag"><div class="row"><span class="t3">💳 Pagamento</span><span class="sp"></span>${chipPagamento(r)}</div></div>`;
   resumo+=cartaoPontos(r);
   h+=sec('Resumo')+resumo;
   // 5) AVISOS NOVOS
@@ -630,11 +646,10 @@ function telaCobranca(r){
   const acoesH=(bProm||bComp)?`<div class="row" id="cob_acoes" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">${bProm}${bComp}</div>`:`<div class="t4" id="cob_sematraso" style="margin:2px 2px 10px">✔ Nenhuma cobrança em atraso. Se algo atrasar, os botões de promessa e comprovante aparecem aqui.</div>`;
   if(!ok){ h+=sec('Resolver agora',true)+quadroPagamento(r,false)+acoesH; }
   else {
-    const pen=cs.filter(c=>c.status==='pendente'), pag=cs.filter(c=>c.status==='pago').sort((a,b)=>String(b.baixaEm||'').localeCompare(String(a.baixaEm||'')))[0];
-    h+=sec('Situação')+`<div class="card"><div class="row"><span class="t3">💳 Pagamento</span><span class="sp"></span>${pen.length?`<span class="chip2 p">🧾 Comprovante em conferência</span>`:`<span class="chip2">✔ Em dia${pag&&pag.baixaEm&&diasDesde(pag.baixaEm)<=3?' · confirmado '+fmtD(String(pag.baixaEm).slice(0,10))+' '+hhmm(pag.baixaEm):''}</span>`}</div></div>`+acoesH;
+    h+=sec('Situação')+`<div class="card"><div class="row"><span class="t3">💳 Pagamento</span><span class="sp"></span>${chipPagamento(r)}</div></div>`+acoesH;
   }
   const prom=pe||ps[0];
-  if(prom){ const [t,c]=STATUS_PROM[prom.status]||['—','neu']; const cl=prom.status==='aceita'?'g':prom.status==='pendente'?'y':'';
+  if(prom){ let [t,c]=STATUS_PROM[prom.status]||['—','neu']; const aberta=prom.status==='aceita'&&emAtraso(r); if(aberta){ t='Aceita · pagamento pendente'; c='bad'; } const cl=aberta?'y':prom.status==='aceita'?'g':prom.status==='pendente'?'y':'';
     h+=sec(pe?'Minha promessa':'Última promessa')+`<div class="hero ${cl}" style="${cl?'':'background:var(--card);border-color:var(--line)'}"><div class="row"><div class="t2">🤝 Até ${fmtD(prom.dataPrometida)}${prom.valor?' · '+fmtBRL(prom.valor):''}</div><span class="sp"></span><span class="tag ${c}">${t}</span></div>${prom.resposta?`<div class="t4" style="margin-top:6px">Resposta da cobrança: ${esc(prom.resposta)}</div>`:''}</div>`; }
   const ST_C={pendente:['Aguardando conferência','warn'],pago:['Confirmado','ok'],recusado:['Recusado','bad']};
   h+=sec('Meus comprovantes')+`<div class="card">${cs.length?cs.slice(0,6).map(c=>{ const [t,k]=ST_C[c.status]||[c.status||'—','neu']; return `<div class="list-i"><div class="row"><span class="t3">${fmtD((c.em||'').slice(0,10))}${c.valor?' · '+fmtBRL(c.valor):''}</span><span class="sp"></span><span class="tag ${k}">${t}</span></div>${c.status==='recusado'&&c.recusadoMotivo?`<div class="t4" style="margin-top:3px">${esc(c.recusadoMotivo)}</div>`:''}</div>`; }).join(''):'<div class="t4">Nenhum comprovante enviado.</div>'}</div>`;

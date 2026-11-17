@@ -3794,21 +3794,33 @@ function motRespPromessa(pid,status){
   const p=S.motPromessas.find(y=>y.id===pid); if(!p) return;
   const x=S.mots.find(y=>y.id===p.motoristaId)||{}; const st=(x.bloqueio||{}).status||'normal';
   const rot={aceita:'Aceitar a promessa',recusada:'Recusar a promessa',cumprida:'Marcar como paga',quebrada:'Marcar como não paga'}[status];
-  const opc=status==='aceita'&&st!=='normal'?['Liberar o veículo agora (situação → Liberado)','normal']:status==='cumprida'&&st!=='normal'?['Liberar o veículo (situação → Liberado)','normal']:status==='quebrada'&&st!=='bloqueado'?['Bloquear o veículo de novo (situação → Bloqueado)','bloqueado']:null;
+  const opc=status==='cumprida'&&st!=='normal'?['Liberar o veículo (situação → Liberado)','normal']:status==='quebrada'&&st!=='bloqueado'?['Bloquear o veículo de novo (situação → Bloqueado)','bloqueado']:null;
+  const hoje=motDiaSP(agoraIso());
   abrir(`<h3>${rot}</h3><p class="muted">${esc(x.nome||'')} prometeu pagar até <b>${fmtD(p.dataPrometida)}</b>${p.valor?' ('+fmtBRL(p.valor)+')':''}.</p>
+    ${status==='aceita'?`<label>Data final de pagamento</label><input id="pr_data" type="date" value="${esc(p.dataPrometida>=hoje?p.dataPrometida:hoje)}" min="${hoje}">
+      <div class="hint" style="margin-top:6px">Nessa data o app do motorista fica com <b>bloqueio programado em vermelho</b> e a única ação dele é enviar o comprovante. O app só volta ao normal quando você der baixa no comprovante. Se o veículo está bloqueado no rastreador, lembre de liberá-lo até lá.</div>`:''}
     <label>Resposta para o motorista (opcional)</label><textarea id="pr_resp" placeholder="${status==='aceita'?'Ex.: Ok, aguardamos o pagamento até lá.':''}"></textarea>
     ${opc?`<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="pr_opc" checked style="width:auto"> ${opc[0]}</label>`:''}
     <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motConfirmarPromessa('${pid}','${status}','${opc?opc[1]:''}')">Confirmar</button></div>`);
 }
 async function motConfirmarPromessa(pid,status,novaSit){
   const p=S.motPromessas.find(y=>y.id===pid); if(!p) return; const resp=val('pr_resp'); const opc=document.getElementById('pr_opc');
+  const por=(S.perfil&&S.perfil.nome)||''; let dataFinal=p.dataPrometida;
   try{
-    await S.db.doc('mot_promessas/'+pid).update({status,resposta:resp,respondidoPor:(S.perfil&&S.perfil.nome)||'',respondidoEm:agoraIso()});
-    const txt={aceita:`Sua promessa de pagamento para ${fmtD(p.dataPrometida)} foi ACEITA.`,recusada:`Sua promessa de pagamento para ${fmtD(p.dataPrometida)} não foi aceita.`,cumprida:`Recebemos seu pagamento. Obrigado!`,quebrada:`O pagamento prometido para ${fmtD(p.dataPrometida)} não foi identificado.`}[status]+(resp?'\n'+resp:'');
+    if(status==='aceita'){
+      dataFinal=val('pr_data'); if(!dataFinal||dataFinal<motDiaSP(agoraIso())){ toast('Informe a data final de pagamento (hoje ou depois)'); return; }
+      // a promessa aceita vira bloqueio programado na data final: o app do motorista fica vermelho até a baixa do comprovante
+      const okB=await motAplicarBloqueio(p.motoristaId,{status:'programado',motivo:'Envie o comprovante do pagamento até '+fmtD(dataFinal)+', ou o veículo será bloqueado sem aviso prévio.',data:dataFinal,avisar:true,wa:false,forcar:true});
+      if(!okB) return;
+    }
+    const upd={status,resposta:resp,respondidoPor:por,respondidoEm:agoraIso()};
+    if(status==='aceita'&&dataFinal!==p.dataPrometida){ upd.dataOriginal=p.dataPrometida; upd.dataPrometida=dataFinal; }
+    await S.db.doc('mot_promessas/'+pid).update(upd);
+    const txt={aceita:`Sua promessa de pagamento foi ACEITA. Prazo final: ${fmtD(dataFinal)}.\nEnvie o comprovante do pagamento pelo app até essa data, ou o veículo será bloqueado sem aviso prévio.`,recusada:`Sua promessa de pagamento para ${fmtD(p.dataPrometida)} não foi aceita.`,cumprida:`Recebemos seu pagamento. Obrigado!`,quebrada:`O pagamento prometido para ${fmtD(p.dataPrometida)} não foi identificado.`}[status]+(resp?'\n'+resp:'');
     await motMsgEquipe(p.motoristaId,txt,'pagamento');
-    if(opc&&opc.checked&&novaSit){ await S.db.doc('motoristas/'+p.motoristaId).update({bloqueio:{status:novaSit,motivo:'',data:'',em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''}}); }
+    if(opc&&opc.checked&&novaSit){ await S.db.doc('motoristas/'+p.motoristaId).update({bloqueio:{status:novaSit,motivo:'',data:'',em:agoraIso(),por}}); }
     fechar(); toast('Resposta enviada'); motRecarregar();
-    motWaPrompt(p.motoristaId,'',motMsgWa(S.mots.find(y=>y.id===p.motoristaId),'Promessa de pagamento',txt,status==='quebrada'),'Resposta da promessa');
+    motWaPrompt(p.motoristaId,'',motMsgWa(S.mots.find(y=>y.id===p.motoristaId),'Promessa de pagamento',txt,status==='quebrada'||status==='aceita'),'Resposta da promessa');
   }catch(e){ erroSalvar('responder a promessa',e); }
 }
 function motRespAgend(gid,status){
