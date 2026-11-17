@@ -113,7 +113,14 @@ body.atraso header h1::before{background:#fff}
 body.atraso main{animation:contornoAtraso 1s ease-in-out infinite}
 @keyframes piscaAtraso{0%,100%{background:#ff2d32}50%{background:#8f1216}}
 @keyframes contornoAtraso{0%,100%{box-shadow:inset 0 0 0 2px rgba(255,45,50,.9)}50%{box-shadow:inset 0 0 0 2px rgba(255,45,50,.15)}}
-@media (prefers-reduced-motion:reduce){.faixa-atraso,body.atraso main{animation:none}}
+/* algo marcado para o motorista (manutenção confirmada, fotos do checklist): app amarelo + faixa (some quando a equipe dá baixa) */
+body.amarelo{--bg:#1f1808;--card:#2e240a;--line:#6a5516;--brand:#f5b50a;--brand-ink:#2a1d00;--head:#3a2c06;--soft:#43340b;--muted:#e3cf93;--mine:#f5b50a;--mine-ink:#2a1d00;--theirs:#4c3a0f}
+.faixa-av{display:flex;align-items:center;gap:10px;width:100%;border:0;text-align:left;color:#2a1d00;background:#f5b50a;padding:10px 16px;font-weight:800;font-size:14px;letter-spacing:.2px;position:sticky;top:calc(env(safe-area-inset-top) + 60px);z-index:4;animation:piscaAv 2s ease-in-out infinite}
+.faixa-av small{display:block;font-weight:600;font-size:12px}
+.faixa-av.fixa{cursor:default}
+.faixa-av.conf{background:#a97800;color:#fff;animation:none}
+@keyframes piscaAv{0%,100%{background:#f5b50a}50%{background:#c98f00}}
+@media (prefers-reduced-motion:reduce){.faixa-atraso,body.atraso main,.faixa-av{animation:none}}
 .obrig{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:auto;padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px)}
 .obrig .wrap{max-width:520px;margin:0 auto}
 .obrig h2{margin:0 0 4px;font-size:22px}
@@ -430,15 +437,15 @@ function cartaoPontos(r){
 // ---- telas ----
 function render(rolarChat){
   const app=document.getElementById('app');
-  if(!S.token){ document.body.classList.remove('atraso'); app.innerHTML=telaLogin(); return; }
+  if(!S.token){ document.body.classList.remove('atraso','amarelo'); app.innerHTML=telaLogin(); return; }
   if(!S.resumo){ app.innerHTML=`<header><h1>Carsz Motorista</h1></header><main><div class="empty">Carregando…</div></main>`; return; }
   const keep=guardarCampos();
   const r=S.resumo; const nl=r.nao_lidas||0;
   const novosAvisos=avisosVisiveis(r).filter(a=>!vistos.has(a.id)).length; const nRec=(r.comprovantes||[]).filter(c=>c.status==='recusado').length;
-  const atr=emAtraso(r); document.body.classList.toggle('atraso',atr);
+  const atr=emAtraso(r); document.body.classList.toggle('atraso',atr); const amar=!atr&&avisosAmarelos(r).length>0; document.body.classList.toggle('amarelo',amar);
   const conteudo={inicio:telaInicio,avisos:telaAvisos,cobranca:telaCobranca,chat:telaChat,manut:telaManut}[S.tab](r);
   app.innerHTML=`<header><h1>Carsz Motorista</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
-    ${atr&&S.tab!=='cobranca'?faixaAtraso(r,true):atr?faixaAtraso(r,false):''}<main>${conteudo}</main>
+    ${atr&&S.tab!=='cobranca'?faixaAtraso(r,true):atr?faixaAtraso(r,false):''}${amar?faixaAmarela(r,S.tab):''}<main>${conteudo}</main>
     <nav class="tabs">
       ${[['inicio','🏠','Início',0],['avisos','🔔','Avisos',novosAvisos],['cobranca','💳','Cobrança',nRec],['chat','💬','Chat',nl],['manut','🛠','Manutenção',0]].map(([k,i,l,n])=>`<button class="${S.tab===k?'on':''}" onclick="irPara('${k}')"><span class="i">${i}</span>${l}${n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
     </nav>${obrigHtml(r)}`;
@@ -485,6 +492,23 @@ function faixaAtraso(r,clicavel,idx){
   const sub=pa?(aviso+(clicavel?' Toque para enviar.':idx?'':' Envie abaixo.')):(clicavel?(aviso?aviso+' Toque para resolver.':'Toque para resolver: prometer pagamento ou enviar comprovante'):(idx?'Resolva depois das verificações, na aba Cobrança':(aviso||'Resolva abaixo: prometa o pagamento ou envie o comprovante')));
   const id=idx?'faixa_atraso_obrig':'faixa_atraso'; const oc=pa?'formComprovante()':"irPara(\'cobranca\')";
   return `<${clicavel?`button onclick="${oc}"`:'div'} class="faixa-atraso${clicavel?'':' fixa'}" id="${id}"><span style="font-size:20px">🔴</span><span>COBRANÇA EM ATRASO · ${tit}<small>${sub}</small></span></${clicavel?'button':'div'}>`;
+}
+// ---- faixa amarela: coisas marcadas para o motorista que ficam até a equipe dar baixa ----
+function avisosAmarelos(r){
+  if(emAtraso(r)||!r.motorista) return [];
+  const L=[], f=r.fotos||{}, hj=hojeStr(); const nRec=Object.keys(f.recusadas||{}).length;
+  if(nRec) L.push({id:'fotos',tit:'REFAZER '+nRec+(nRec>1?' FOTOS':' FOTO'),sub:'Foto recusada — toque para enviar de novo',ir:'fotos'});
+  else if(f.status==='pendente'||f.status==='atrasada') L.push({id:'fotos',tit:'FOTOS DO CHECKLIST PENDENTES',sub:f.status==='atrasada'?'Atrasadas desde segunda — toque para enviar':'Enviar até hoje 23:59 · toque para enviar',ir:'fotos'});
+  const prox=(r.agendamentos||[]).filter(a=>a.status==='confirmado'&&a.dataConfirmada&&a.dataConfirmada>=hj).sort((x,y)=>(x.dataConfirmada+(x.horaConfirmada||'')).localeCompare(y.dataConfirmada+(y.horaConfirmada||'')))[0];
+  if(prox){ const q=prox.dataConfirmada===hj?'HOJE':prox.dataConfirmada===somaDias(1)?'AMANHÃ':fmtD(prox.dataConfirmada); L.push({id:'manut',tit:'MANUTENÇÃO MARCADA · '+q+(prox.horaConfirmada?' '+prox.horaConfirmada:''),sub:'Toque para ver local e detalhes',ir:'manut'}); }
+  if(f.aguardando_conferencia) L.push({id:'conf',tit:'FOTOS ENVIADAS · EM CONFERÊNCIA',sub:'A equipe confere e dá baixa',ir:'inicio',calma:true});
+  return L;
+}
+function irAv(d){ if(d==='manut'){ irPara('manut'); return; } irPara('inicio'); setTimeout(()=>{ const e=document.getElementById('fotos_semana')||document.getElementById('ver_hoje'); if(e&&e.scrollIntoView) e.scrollIntoView({behavior:'smooth',block:'center'}); },80); }
+function faixaAmarela(r,aba){
+  const L=avisosAmarelos(r); if(!L.length) return ''; const a=L[0]; const mais=L.length>1?' · +'+(L.length-1)+(L.length>2?' avisos':' aviso'):'';
+  const aqui=(a.ir==='manut'&&aba==='manut')||(a.ir==='inicio'&&aba==='inicio'&&a.calma);
+  return `<${aqui?'div':`button onclick="irAv('${a.ir}')"`} class="faixa-av${aqui?' fixa':''}${a.calma?' conf':''}" id="faixa_amarela" data-av="${a.id}"><span style="font-size:20px">🟡</span><span>${a.tit}<small>${a.sub}${mais}</small></span></${aqui?'div':'button'}>`;
 }
 function promessaEmAberto(r){ const h=hojeStr(); return (r.promessas||[]).find(p=>(p.status==='pendente'||p.status==='aceita')&&(p.dataPrometida||'')>=h)||null; }
 // promessa de pagamento ACEITA adia o bloqueio programado: o alerta e os avisos de "bloqueio programado" somem do app
