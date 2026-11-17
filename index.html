@@ -3539,7 +3539,7 @@ function motDetalhe(m){
     ${motOleoHtml(x)}
     ${motUsoHtml(x)}
     ${motPontosHtml(x)}
-    <div class="step${motAgPend(x.id)?' hot':''}" id="sec_ped"${ags.length?'':' style="padding:10px 16px"'}><h3${ags.length?'':' style="margin:0;font-size:15px"'}>🛠 Pedidos de manutenção${ags.length?'':' <span class="muted" style="font-weight:400">· nenhum</span>'}</h3>${ags.length?ags.map(g=>{ const s=MOT_AGEND[g.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>${fmtD(g.dataDesejada)}</b> <span class="tag ${s[1]}">${s[0]}${g.status==='confirmado'&&g.dataConfirmada?' · '+fmtD(g.dataConfirmada):''}</span><div>${esc(g.descricao||'')}${g.km?` <span class="muted">(${fmtKm(g.km)})</span>`:''}</div>${g.resposta?`<div class="muted">Resposta: ${esc(g.resposta)}</div>`:''}</div><span class="sp"></span>${g.status==='solicitado'?`<div class="row"><button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="ghost danger" onclick="motRespAgend('${g.id}','recusado')">Recusar</button></div>`:''}</div>`; }).join(''):''}</div>
+    <div class="step${motAgPend(x.id)?' hot':''}" id="sec_ped"${ags.length?'':' style="padding:10px 16px"'}><h3${ags.length?'':' style="margin:0;font-size:15px"'}>🛠 Pedidos de manutenção${ags.length?'':' <span class="muted" style="font-weight:400">· nenhum</span>'}</h3>${ags.length?ags.map(g=>{ const s=MOT_AGEND[g.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>${fmtD(g.dataDesejada)}</b> <span class="tag ${s[1]}">${s[0]}${g.status==='confirmado'&&g.dataConfirmada?' · '+fmtD(g.dataConfirmada)+(g.horaConfirmada?' às '+esc(g.horaConfirmada):''):''}</span><div>${esc(g.descricao||'')}${g.km?` <span class="muted">(${fmtKm(g.km)})</span>`:''}</div>${g.status==='confirmado'&&g.localConfirmado?`<div>📍 ${esc(g.localConfirmado)}</div>`:''}${g.resposta?`<div class="muted">Resposta: ${esc(g.resposta)}</div>`:''}</div><span class="sp"></span>${g.status==='solicitado'?`<div class="row"><button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="ghost danger" onclick="motRespAgend('${g.id}','recusado')">Recusar</button></div>`:''}</div>`; }).join(''):''}</div>
     <div class="muted" style="font-weight:700;margin:14px 2px 6px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">Mais (toque para abrir)</div>
     ${motVerifHtml(x)}
     <details class="step" id="sec_avisos" ${motOp('avisos',false)} ontoggle="S.motOpen.avisos=this.open"><summary class="row"><b style="font-size:16px">📢 Avisos no app</b><span class="muted">${avs.length} ▸</span></summary>
@@ -3654,17 +3654,22 @@ async function motConfirmarPromessa(pid,status,novaSit){
 }
 function motRespAgend(gid,status){
   const g=S.motAgend.find(y=>y.id===gid); if(!g) return;
+  const jaConf=S.motAgend.filter(y=>y.localConfirmado).sort((a,b)=>String(b.respondidoEm||'').localeCompare(String(a.respondidoEm||'')));
+  const ultAg={hora:'',local:(jaConf[0]||{}).localConfirmado||''}; const locais=[...new Set(jaConf.map(y=>y.localConfirmado))].slice(0,8);
   abrir(`<h3>${status==='confirmado'?'Confirmar manutenção':'Recusar pedido'}</h3><p class="muted">${esc(g.motoristaNome||'')} · ${esc(g.placa||'')}: ${esc(g.descricao||'')}</p>
-    ${status==='confirmado'?`<label>Data confirmada</label><input id="ag_conf" type="date" value="${esc(g.dataDesejada||'')}">`:''}
+    ${status==='confirmado'?`<div class="grid"><div><label>Data confirmada</label><input id="ag_conf" type="date" value="${esc(g.dataDesejada||'')}"></div><div><label>Horário</label><input id="ag_hora" type="time" value="${esc(ultAg.hora||'09:00')}"></div>
+      <div class="full"><label>Local</label><input id="ag_local" list="ag_locais" value="${esc(ultAg.local||'')}" placeholder="Ex.: Auto Mecânica Valdeci — Rua tal, 123, bairro, cidade"><datalist id="ag_locais">${locais.map(l=>`<option value="${esc(l)}">`).join('')}</datalist></div></div>`:''}
     <label>Mensagem para o motorista (opcional)</label><textarea id="ag_resp" placeholder="${status==='confirmado'?'Ex.: Pode vir às 9h.':'Ex.: Nessa data não temos vaga, sugiro outra.'}"></textarea>
     <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motConfirmarAgend('${gid}','${status}')">Confirmar</button></div>`);
 }
 async function motConfirmarAgend(gid,status){
-  const g=S.motAgend.find(y=>y.id===gid); if(!g) return; const resp=val('ag_resp'); const dc=status==='confirmado'?val('ag_conf'):'';
+  const g=S.motAgend.find(y=>y.id===gid); if(!g) return; const resp=val('ag_resp'); const dc=status==='confirmado'?val('ag_conf'):''; const hora=status==='confirmado'?val('ag_hora'):''; const local=status==='confirmado'?val('ag_local').trim():'';
   if(status==='confirmado'&&!dc){ toast('Informe a data confirmada'); return; }
+  if(status==='confirmado'&&!hora){ toast('Informe o horário'); return; }
+  if(status==='confirmado'&&local.length<3){ toast('Informe o local da manutenção'); return; }
   try{
-    await S.db.doc('mot_agendamentos/'+gid).update({status,resposta:resp,dataConfirmada:dc,respondidoPor:(S.perfil&&S.perfil.nome)||'',respondidoEm:agoraIso()});
-    const txtAg=(status==='confirmado'?`Sua manutenção foi CONFIRMADA para ${fmtD(dc)}.`:`Não foi possível atender o pedido de manutenção para ${fmtD(g.dataDesejada)}.`)+(resp?'\n'+resp:'');
+    await S.db.doc('mot_agendamentos/'+gid).update({status,resposta:resp,dataConfirmada:dc,horaConfirmada:hora,localConfirmado:local,respondidoPor:(S.perfil&&S.perfil.nome)||'',respondidoEm:agoraIso()});
+    const txtAg=(status==='confirmado'?`Sua manutenção foi CONFIRMADA para ${fmtD(dc)} às ${hora}.\n📍 Local: ${local}`:`Não foi possível atender o pedido de manutenção para ${fmtD(g.dataDesejada)}.`)+(resp?'\n'+resp:'');
     await motMsgEquipe(g.motoristaId,txtAg,'manutencao');
     fechar(); toast('Resposta enviada'); motRecarregar();
     motWaPrompt(g.motoristaId,'',motMsgWa(S.mots.find(y=>y.id===g.motoristaId),'Pedido de manutenção',txtAg,false),'Resposta do pedido de manutenção');

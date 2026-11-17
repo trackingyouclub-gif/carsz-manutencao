@@ -498,6 +498,10 @@ function telaInicio(r){
   if(av.length){
     h+=`<div class="card"><div class="row"><h3 style="margin:0">Últimos avisos</h3><span class="sp"></span><button class="btn sm ghost" style="padding:4px 8px" onclick="irPara('avisos')">ver todos</button></div>${av.map(avisoHtml).join('')}</div>`;
   }
+  const confirmadas=(r.agendamentos||[]).filter(a=>a.status==='confirmado'&&a.dataConfirmada&&a.dataConfirmada>=hojeStr()).sort((x,y)=>(x.dataConfirmada+(x.horaConfirmada||'')).localeCompare(y.dataConfirmada+(y.horaConfirmada||'')));
+  if(confirmadas.length){
+    h+=`<div class="alert ok" id="ag_confirmada"><b class="t">📅 Manutenção confirmada</b>${confirmadas.map(a=>`<div class="txt"><b>${fmtD(a.dataConfirmada)}${a.horaConfirmada?' às '+esc(a.horaConfirmada):''}</b>${a.localConfirmado?`<br>📍 ${esc(a.localConfirmado)}`:''}${a.descricao?`<div class="muted sm">${esc(a.descricao)}</div>`:''}</div>`).join('')}</div>`;
+  }
   if((r.agendadas||[]).length){
     h+=`<div class="card"><h3>📅 Manutenção agendada</h3>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="muted sm">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
   }
@@ -675,7 +679,7 @@ function telaManut(r){
   let h=`<h2 style="margin:4px 2px 10px">Manutenção</h2>`;
   if((r.agendadas||[]).length) h+=`<div class="card"><h3>📅 Já agendado</h3>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="muted sm">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
   if(ag.length){
-    h+=`<div class="card"><h3>🛠 Meus pedidos</h3>${ag.map(a=>{ const [t,c]=STATUS_AGEND[a.status]||['—','neu']; return `<div class="list-i"><div class="row"><b>${fmtD(a.dataDesejada)}</b><span class="tag ${c}">${t}${a.status==='confirmado'&&a.dataConfirmada?' · '+fmtD(a.dataConfirmada):''}</span></div><div class="sm">${esc(a.descricao||'')}</div>${a.resposta?`<div class="muted sm">Resposta: ${esc(a.resposta)}</div>`:''}</div>`; }).join('')}</div>`;
+    h+=`<div class="card"><h3>🛠 Meus pedidos</h3>${ag.map(a=>{ const [t,c]=STATUS_AGEND[a.status]||['—','neu']; return `<div class="list-i"><div class="row"><b>${fmtD(a.dataDesejada)}</b><span class="tag ${c}">${t}${a.status==='confirmado'&&a.dataConfirmada?' · '+fmtD(a.dataConfirmada)+(a.horaConfirmada?' às '+esc(a.horaConfirmada):''):''}</span></div><div class="sm">${esc(a.descricao||'')}</div>${a.status==='confirmado'&&a.localConfirmado?`<div class="sm">📍 <b>${esc(a.localConfirmado)}</b></div>`:''}${a.resposta?`<div class="muted sm">Resposta: ${esc(a.resposta)}</div>`:''}</div>`; }).join('')}</div>`;
   }
   h+=`<div class="card"><h3>Pedir uma manutenção</h3><p class="muted sm" style="margin:0 0 4px">A Carsz confirma a data pelo app e pelo WhatsApp.</p>
     <label for="ag_data">Data desejada</label><input id="ag_data" data-keep type="date" min="${hojeStr()}" value="${somaDias(2)}">
