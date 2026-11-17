@@ -87,6 +87,16 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);border-co
 .login p.sub{text-align:center;color:var(--muted);margin:0 0 18px}
 .err{color:var(--bad);font-size:14px;min-height:20px;margin:8px 0 0}
 /* verificações obrigatórias */
+/* cobrança em atraso: app todo vermelho + faixa piscando (some quando a equipe aceita promessa ou comprovante) */
+body.atraso{--bg:#1d0e11;--card:#2b1519;--line:#5a2830;--brand:#ff4d4f;--brand-ink:#fff;--head:#3a0d12;--soft:#3d1a1f;--muted:#d9aeb2;--mine:#ff4d4f;--mine-ink:#fff;--theirs:#3a1d22}
+body.atraso header h1::before{background:#fff}
+.faixa-atraso{display:flex;align-items:center;gap:10px;width:100%;border:0;text-align:left;color:#fff;background:#ff2d32;padding:10px 16px;font-weight:800;font-size:14px;letter-spacing:.2px;position:sticky;top:calc(env(safe-area-inset-top) + 60px);z-index:4;animation:piscaAtraso 1s ease-in-out infinite}
+.faixa-atraso small{display:block;font-weight:500;font-size:12px;opacity:.95}
+.faixa-atraso.fixa{cursor:default}
+body.atraso main{animation:contornoAtraso 1s ease-in-out infinite}
+@keyframes piscaAtraso{0%,100%{background:#ff2d32}50%{background:#8f1216}}
+@keyframes contornoAtraso{0%,100%{box-shadow:inset 0 0 0 2px rgba(255,45,50,.9)}50%{box-shadow:inset 0 0 0 2px rgba(255,45,50,.15)}}
+@media (prefers-reduced-motion:reduce){.faixa-atraso,body.atraso main{animation:none}}
 .obrig{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:auto;padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px)}
 .obrig .wrap{max-width:520px;margin:0 auto}
 .obrig h2{margin:0 0 4px;font-size:22px}
@@ -269,7 +279,7 @@ function obrigHtml(r){
     : `<div class="card"><div class="it"><span class="em">${em}</span><div class="tx"><b>${tit}</b><div class="muted sm">${desc}</div>${acao}</div></div></div>`;
   const btn=(t,tit)=>`<button class="btn" id="vb_${t}" onclick="verificar('${t}')">Já verifiquei ${tit}</button>`;
   const foto=t=>(t==='painel'?kmBox('km_painel',r):'')+`<label class="btn" id="fb_${t}">${rec[t]?'📷 Enviar nova foto':'📷 Tirar foto'}<input type="file" accept="image/*" capture="environment" data-foto="${t}" ${t==='painel'?'onclick="return kmOk()" ':''}onchange="enviarFoto('${t}',this)"></label>`;
-  let h=`<div class="obrig"><div class="wrap"><h2>✋ Verificações obrigatórias</h2>
+  let h=`<div class="obrig">${emAtraso(r)?faixaAtraso(r,false,true).replace('class="faixa-atraso','style="position:static;margin:-18px -16px 14px;width:auto" class="faixa-atraso'):''}<div class="wrap"><h2>✋ Verificações obrigatórias</h2>
     <p class="muted" style="margin:0 0 14px">Para continuar usando o app, confirme os itens abaixo. Fica registrado o dia e o horário de cada um — e cada item rende pontos.</p>`;
   if(comFotos){
     h+=f.status==='refazer'
@@ -388,14 +398,15 @@ function cartaoPontos(r){
 // ---- telas ----
 function render(rolarChat){
   const app=document.getElementById('app');
-  if(!S.token){ app.innerHTML=telaLogin(); return; }
+  if(!S.token){ document.body.classList.remove('atraso'); app.innerHTML=telaLogin(); return; }
   if(!S.resumo){ app.innerHTML=`<header><h1>Carsz Motorista</h1></header><main><div class="empty">Carregando…</div></main>`; return; }
   const keep=guardarCampos();
   const r=S.resumo; const nl=r.nao_lidas||0;
   const novosAvisos=avisosVisiveis(r).filter(a=>!vistos.has(a.id)).length; const nRec=(r.comprovantes||[]).filter(c=>c.status==='recusado').length;
+  const atr=emAtraso(r); document.body.classList.toggle('atraso',atr);
   const conteudo={inicio:telaInicio,avisos:telaAvisos,cobranca:telaCobranca,chat:telaChat,manut:telaManut}[S.tab](r);
   app.innerHTML=`<header><h1>Carsz Motorista</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
-    <main>${conteudo}</main>
+    ${atr&&S.tab!=='cobranca'?faixaAtraso(r,true):atr?faixaAtraso(r,false):''}<main>${conteudo}</main>
     <nav class="tabs">
       ${[['inicio','🏠','Início',0],['avisos','🔔','Avisos',novosAvisos],['cobranca','💳','Cobrança',nRec],['chat','💬','Chat',nl],['manut','🛠','Manutenção',0]].map(([k,i,l,n])=>`<button class="${S.tab===k?'on':''}" onclick="irPara('${k}')"><span class="i">${i}</span>${l}${n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
     </nav>${obrigHtml(r)}`;
@@ -423,6 +434,20 @@ function telaLogin(){
   </div>`;
 }
 
+// cobrança em atraso = bloqueio programado/bloqueado que a equipe ainda NÃO resolveu:
+// some quando a promessa de pagamento é aceita ou quando um comprovante é aceito (baixa) depois do bloqueio
+function emAtraso(r){
+  const bl=(r.motorista||{}).bloqueio||{}; if(bl.status!=='bloqueado'&&bl.status!=='programado') return false;
+  const pe=promessaEmAberto(r); if(pe&&pe.status==='aceita') return false;
+  const em=bl.em||''; if((r.comprovantes||[]).some(c=>c.status==='pago'&&c.baixaEm&&(em?String(c.baixaEm)>=String(em):diasDesde(c.baixaEm)<=3))) return false;
+  return true;
+}
+function faixaAtraso(r,clicavel,idx){
+  const st=((r.motorista||{}).bloqueio||{}).status, tit=st==='bloqueado'?'VEÍCULO BLOQUEADO':'BLOQUEIO PROGRAMADO';
+  const sub=clicavel?'Toque para resolver: prometer pagamento ou enviar comprovante':(idx?'Resolva depois das verificações, na aba Cobrança':'Resolva abaixo: prometa o pagamento ou envie o comprovante');
+  const id=idx?'faixa_atraso_obrig':'faixa_atraso';
+  return `<${clicavel?'button onclick="irPara(\'cobranca\')"':'div'} class="faixa-atraso${clicavel?'':' fixa'}" id="${id}"><span style="font-size:20px">🔴</span><span>COBRANÇA EM ATRASO · ${tit}<small>${sub}</small></span></${clicavel?'button':'div'}>`;
+}
 function promessaEmAberto(r){ const h=hojeStr(); return (r.promessas||[]).find(p=>(p.status==='pendente'||p.status==='aceita')&&(p.dataPrometida||'')>=h)||null; }
 // promessa de pagamento ACEITA adia o bloqueio programado: o alerta e os avisos de "bloqueio programado" somem do app
 // (voltam sozinhos se a promessa deixar de valer e a situação continuar "programado")
@@ -469,7 +494,7 @@ function quadroPagamento(r,comAcoes){
   const extras=rec.map(c=>`<div class="txt"><b>✖ Comprovante recusado</b> — ${esc(c.recusadoMotivo||'envie um comprovante legível.')}</div>`).join('')
     +pen.map(c=>`<div class="txt">🧾 Comprovante enviado em ${dt(c)}${c.valor?' ('+fmtBRL(c.valor)+')':''} — <b>Aguardando conferência</b></div>`).join('')
     +pag.map(c=>`<div class="txt">✔ <b>Pagamento confirmado</b> em ${dt(c)}</div>`).join('');
-  const btnProm=comAcoes&&!pe&&(bloq||prog)?`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`:'';
+  const btnProm=comAcoes&&!pe&&emAtraso(r)?`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`:'';
   const btnComp=comAcoes&&(bloq||prog||pe||pen.length||rec.length)?`<button class="btn ${btnProm||!rec.length?'sec':''}" onclick="formComprovante()">🧾 ${rec.length?'Enviar de novo':'Enviar comprovante'}</button>`:'';
   const btnBloq=(comAcoes&&(bloq||prog))?`<button class="btn sec" onclick="irChat('bloqueio')">🔒 Falar sobre o bloqueio</button>`:'';
   const acoes=(btnProm||btnComp||btnBloq)?`<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${btnProm}${btnComp}${btnBloq}</div>`:'';
@@ -543,12 +568,17 @@ function telaCobranca(r){
   const ps=r.promessas||[], pe=promessaEmAberto(r), cs=r.comprovantes||[];
   let h=`<h2 style="margin:4px 2px 10px">Cobrança</h2>`;
   h+=quadroPagamento(r,false);
+  // botões só aparecem com cobrança em atraso (bloqueio programado/bloqueado); comprovante também se há promessa em aberto ou comprovante recusado
+  const atraso=emAtraso(r);
+  const bProm=atraso&&!pe?`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`:'';
+  const bComp=(atraso||pe||cs.some(c=>c.status==='recusado'))?`<button class="btn ${bProm?'sec':''}" onclick="formComprovante()">🧾 Enviar comprovante</button>`:'';
+  const acoesH=(bProm||bComp)?`<div class="row" id="cob_acoes" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">${bProm}${bComp}</div>`:`<div class="muted sm" id="cob_sematraso" style="margin:0 2px 10px">✔ Nenhuma cobrança em atraso. Se algo atrasar, os botões de promessa e comprovante aparecem aqui.</div>`;
+  h+=acoesH;
   const prom=pe||ps[0];
   if(prom){ const [t,c]=STATUS_PROM[prom.status]||['—','neu'];
     h+=`<div class="card"><h3>🤝 ${pe?'Minha promessa':'Última promessa'}</h3><div>Até <b>${fmtD(prom.dataPrometida)}</b>${prom.valor?' · '+fmtBRL(prom.valor):''} <span class="tag ${c}">${t}</span></div>${prom.resposta?`<div class="muted sm">Resposta: ${esc(prom.resposta)}</div>`:''}</div>`; }
   const ST_C={pendente:['Aguardando conferência','warn'],pago:['Confirmado','ok'],recusado:['Recusado','bad']};
   h+=`<div class="card"><h3>🧾 Meus comprovantes</h3>${cs.length?cs.slice(0,6).map(c=>{ const [t,k]=ST_C[c.status]||[c.status||'—','neu']; return `<div class="list-i"><div class="row"><span>${fmtD((c.em||'').slice(0,10))}${c.valor?' · '+fmtBRL(c.valor):''}</span><span class="sp"></span><span class="tag ${k}">${t}</span></div>${c.status==='recusado'&&c.recusadoMotivo?`<div class="muted sm">${esc(c.recusadoMotivo)}</div>`:''}</div>`; }).join(''):'<div class="muted sm">Nenhum comprovante enviado.</div>'}</div>`;
-  h+=`<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">${pe?'':`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`}<button class="btn sec" onclick="formComprovante()">🧾 Enviar comprovante</button></div>`;
   h+=`<div class="card"><div class="row"><span>💬 Dúvida sobre este pagamento?</span><span class="sp"></span><button class="btn sm" onclick="irChat('pagamento')">Falar no chat</button></div><div class="muted sm">Abre o Chat já com o assunto “Pagamento”.</div></div>`;
   return h;
 }
