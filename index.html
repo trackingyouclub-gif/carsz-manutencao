@@ -140,6 +140,58 @@ input.xl{font-size:26px;font-weight:600;text-align:center;letter-spacing:2px;pad
 .cardbtn:hover{border-color:var(--brand);box-shadow:0 2px 8px rgba(0,0,0,.14)} .cardbtn:active{transform:scale(.98)}
 .cardbtn.on{outline:3px solid var(--brand);outline-offset:-1px;border-color:var(--brand)}
 .cardbtn.zero{opacity:.6}
+/* ===== painel do auxiliar (celular primeiro): fila de tarefas, chips, abas da ficha, botão de bloqueio ===== */
+.mx-barra{display:flex;gap:8px;align-items:center;overflow-x:auto;margin-bottom:10px;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+.mx-barra h2{margin:0 6px 0 0;font:700 20px "IBM Plex Sans";white-space:nowrap}
+.mx-barra button{white-space:nowrap;flex:none}
+.mx-seg{display:flex;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:10px;gap:3px}
+.mx-seg button{flex:1;border:0;background:none;color:var(--muted);font:700 14px "IBM Plex Sans";padding:11px 6px;border-radius:9px;min-height:44px;cursor:pointer}
+.mx-seg button.on{background:var(--brand);color:var(--brand-ink)}
+.mx-seg b{background:var(--bad);color:#fff;border-radius:99px;padding:1px 7px;font-size:12px;margin-left:4px}
+.mx-fil{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+.mx-chip{flex:none;white-space:nowrap;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:99px;padding:8px 13px;font:700 13px "IBM Plex Sans";cursor:pointer;min-height:38px}
+.mx-chip.bad{border-color:var(--bad);color:var(--bad)} .mx-chip.warn{border-color:var(--warn)}
+.mx-chip.on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.mx-sec{font:800 11px/1 "IBM Plex Sans";letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:16px 2px 8px}
+.mx-sec.red{color:var(--bad)}
+.mx-task{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--warn);border-radius:12px;padding:12px;margin-bottom:10px}
+.mx-task.r{border-left-color:var(--bad);background:var(--bad-bg)}
+.mx-task .t{font:800 16px "IBM Plex Sans"}
+.mx-task .m{font-size:13px;color:var(--muted);margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;cursor:pointer}
+.mx-task .m b{color:var(--ink)}
+.mx-task .q{font-size:14px;margin-top:6px;white-space:pre-wrap;word-break:break-word}
+.mx-bt{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.mx-bt button{flex:1 1 120px;min-height:46px;font-size:15px}
+.mx-bt .danger{background:var(--bad);color:#fff;border-color:var(--bad)}
+.mx-fab{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:8;background:var(--bad);color:#fff;border:0;border-radius:99px;padding:14px 20px;font:800 15px "IBM Plex Sans";box-shadow:0 6px 18px rgba(0,0,0,.35);min-height:52px;cursor:pointer}
+.mx-pad{padding-bottom:84px}
+.mx-row .mx-tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.mx-row .mx-sub{flex:1 0 100%;display:flex;gap:6px;flex-wrap:wrap;opacity:.85}
+.mx-row .mx-sub .tag{font-size:11px;font-weight:500}
+.mx-tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);margin:0 0 12px;position:sticky;top:0;z-index:6;background:var(--bg);-webkit-overflow-scrolling:touch}
+.mx-tabs button{flex:1 0 auto;border:0;background:none;color:var(--muted);font:700 14px "IBM Plex Sans";padding:12px 12px;min-height:46px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.mx-tabs button.on{color:var(--brand);border-bottom-color:var(--brand)}
+.mx-tabs b{background:var(--bad);color:#fff;border-radius:99px;padding:0 7px;font-size:11.5px;margin-left:4px}
+.mtab{display:none}.mtab.on{display:block}
+.mx-acoes{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--panel);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px}
+.mx-acoes button{flex:1;min-height:48px;font-size:15px}
+.mx-acoes .danger{flex:1.5;background:var(--bad);color:#fff;border-color:var(--bad)}
+.mx-opt{display:flex;gap:6px;margin:4px 0 2px;flex-wrap:wrap}
+.mx-opt button{flex:1 1 0;min-width:84px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:10px 6px;font:700 13.5px "IBM Plex Sans";min-height:50px;cursor:pointer;line-height:1.25}
+.mx-opt button small{display:block;font-weight:500;font-size:11.5px;color:var(--muted)}
+.mx-opt button.on{border-color:var(--warn);background:var(--warn-bg)}
+.mx-opt button.on.b{border-color:var(--bad);background:var(--bad-bg)}
+.mx-opt button.on.o{border-color:var(--ok);background:var(--ok-bg)}
+.mx-hist{max-height:30vh;overflow:auto;display:flex;flex-direction:column;gap:6px;margin:6px 0;padding:6px;background:var(--soft);border-radius:10px}
+.mx-hist div{max-width:88%;padding:6px 10px;border-radius:10px;font-size:13.5px;background:var(--panel)}
+.mx-hist .eq{align-self:flex-end;background:var(--brand);color:var(--brand-ink)}
+.mx-chat-comp{position:sticky;bottom:0;background:var(--panel);padding-top:6px}
+.mx-bt button.danger,.mx-acoes button.danger,button.pri.danger{background:var(--bad)!important;color:#fff!important;border-color:var(--bad)!important}
+@media (max-width:600px){
+  .mx-barra h2{display:none}.step{padding:12px}.mx-seg button{font-size:13px}
+  header{padding:8px 12px;gap:8px}header h1{font-size:17px}header .sub{font-size:11.5px;flex:1 1 100%;order:3}header .lnk{padding:6px 10px;min-height:36px}
+  .mx-row .mx-tags{flex:1 0 100%;justify-content:flex-start}.mx-row>div:nth-child(2){flex:1 1 150px}
+}
 .motcards{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 @media (max-width:600px){.motcards{grid-template-columns:repeat(2,1fr);gap:8px}.motcards .card{padding:10px}.motcards .card .v{font-size:26px}.motcards .card .l{font-size:12px}}
 .tbl{width:100%;overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px}
@@ -3162,7 +3214,7 @@ function motPodeSair(){
   return false;
 }
 const motOp = (k,padrao) => (S.motOpen[k]===undefined?padrao:S.motOpen[k])?'open':'';
-function motIr(id){ const el=document.getElementById(id); if(!el) return; if(el.tagName==='DETAILS'){ el.open=true; S.motOpen[id.replace('sec_','')]=true; } el.scrollIntoView({behavior:'smooth',block:'start'}); }
+function motIr(id){ let el=document.getElementById(id); if(!el) return; const tb=el.closest('.mtab'); if(tb&&S.motTab!==tb.dataset.t){ S.motTab=tb.dataset.t; render(); el=document.getElementById(id); if(!el) return; } if(el.tagName==='DETAILS'){ el.open=true; S.motOpen[id.replace('sec_','')]=true; } el.scrollIntoView({behavior:'smooth',block:'start'}); }
 async function motRespostaRapida(id){ try{ await motMsgEquipe(id,'Recebido! Já estamos analisando e respondemos em seguida.'); toast('Resposta enviada'); motRecarregar(); }catch(e){ erroSalvar('enviar a resposta',e); } }
 function motPontosHtml(x){
   const e=(S.motRank||[]).find(y=>y.id===x.id);
@@ -3448,31 +3500,136 @@ const MOT_FILTROS=[
   ['wa','📲 WhatsApp a enviar','warn',x=>motWaPend(x.id)>0,2]];
 // importância de cada motorista na lista: chat > pagamento (promessa/comprovante) > bloqueio > resto
 const motPrioridade = x => (motBloqPend(x.id).some(t=>t.pedidoTipo==='roubo')?1000000:motBloqPend(x.id).length?200000:0)+(motNaoLidas(x.id)>0?100000:0)+((motPromPend(x.id)+motCompPend(x.id))>0?10000:0)+((x.bloqueio||{}).status==='bloqueado'?1000:(x.bloqueio||{}).status==='programado'?500:0)+(motAgPend(x.id)>0?100:0)+(motFotosPend(x.id).length?5000:0)+(motFotoStatus(x)==='atrasada'?10:0)+(motWaPend(x.id)>0?1:0);
+// ===== painel do auxiliar: fila de tarefas =====
+const motAgo = iso => { const t=Date.parse(iso||''); if(isNaN(t)) return ''; const m=Math.max(0,Math.round((Date.now()-t)/60000)); if(m<1) return 'agora'; if(m<60) return 'há '+m+' min'; const h=Math.round(m/60); if(h<24) return 'há '+h+' h'; return 'há '+Math.round(h/24)+' d'; };
+function motMsgsSemResposta(id){
+  const ms=S.motMsgs.filter(t=>t.motoristaId===id); const ultEq=ms.filter(t=>t.de==='equipe').map(t=>t.em||'').sort().pop()||'';
+  return ms.filter(t=>t.de==='motorista'&&t.tipo!=='bloqueio'&&!motMsgAuto2(t)&&(t.em||'')>ultEq).sort((a,b)=>(a.em||'').localeCompare(b.em||''));
+}
+// tarefas do auxiliar, já na ordem de prioridade (0 roubo · 1 pedido de bloqueio · 2 mensagem · 3 promessa/comprovante · 4 manutenção/fotos)
+function motTarefas(id){
+  const T=[]; const lista=id?S.mots.filter(y=>y.id===id):S.mots.filter(y=>y.ativo!==false);
+  for(const x of lista){ const i=x.id;
+    for(const p of motBloqPend(i)) T.push({k:'pedbloq',pr:p.pedidoTipo==='roubo'?0:1,x,em:p.em,p});
+    const sem=motMsgsSemResposta(i); if(sem.length) T.push({k:'msg',pr:2,x,em:sem[0].em,n:sem.length,m:sem[sem.length-1]});
+    for(const p of S.motPromessas.filter(t=>t.motoristaId===i&&t.status==='pendente')) T.push({k:'prom',pr:3,x,em:p.criadoEm,p});
+    for(const c of S.motComp.filter(t=>t.motoristaId===i&&t.status==='pendente')) T.push({k:'comp',pr:3,x,em:c.em,c});
+    for(const g of S.motAgend.filter(t=>t.motoristaId===i&&t.status==='solicitado')) T.push({k:'ag',pr:4,x,em:g.criadoEm,g});
+    const nf=motFotosPend(i).length; if(nf) T.push({k:'foto',pr:4,x,em:'',n:nf});
+  }
+  return T.sort((a,b)=>a.pr-b.pr||String(a.em||'￿').localeCompare(String(b.em||'￿')));
+}
+function motTaskHtml(t,ficha){
+  const x=t.x, wa=telWa(x.telefone), st=(x.bloqueio||{}).status||'normal';
+  const meta=ficha?`<div class="m" style="cursor:default">${esc(motAgo(t.em))}</div>`:`<div class="m" onclick="motAbrirFicha('${x.id}','pend')"><span class="plate">${esc(x.placa||'—')}</span><b>${esc(x.nome||'')}</b>${t.em?'<span>· '+esc(motAgo(t.em))+'</span>':''}</div>`;
+  const bWa=wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:'';
+  let tit='', q='', bt='', cls='';
+  if(t.k==='pedbloq'){ const p=t.p, rb=p.pedidoTipo==='roubo'; cls=rb?' r':'';
+    tit=rb?'🚨 Pedido de bloqueio · ROUBO / FURTO':'🔒 '+esc(MOT_PEDBLOQ[p.pedidoTipo]||'Pedido de bloqueio'); q=esc(String(p.texto||'').split('\n').slice(1).join('\n'));
+    bt=rb?`<button class="pri danger" onclick="motPedBloqAcao('${p.id}','bloquear')">Bloquear agora</button><button class="sec" onclick="motPedBloqAcao('${p.id}','responder')">Responder</button>`
+      :`${st!=='normal'?`<button class="pri" onclick="motPedBloqAcao('${p.id}','liberar')">Liberar veículo</button>`:''}<button class="sec" onclick="motPedBloqAcao('${p.id}','responder')">Responder</button><button class="sec" onclick="motPedBloqAcao('${p.id}','recusar')">Recusar</button>`; }
+  else if(t.k==='msg'){ tit='💬 Mensagem sem resposta'+(t.n>1?' · '+t.n+' mensagens':''); q=esc(String(t.m.texto||'').slice(0,160)); bt=`<button class="pri" onclick="motResponder('${x.id}')">Responder</button>${bWa}`; }
+  else if(t.k==='prom'){ const p=t.p; tit='🤝 Promessa para responder'; q='Até <b>'+fmtD(p.dataPrometida)+'</b>'+(p.valor?' · '+fmtBRL(p.valor):'')+(p.obs?' · '+esc(p.obs):''); bt=`<button class="pri" onclick="motRespPromessa('${p.id}','aceita')">Aceitar</button><button class="sec" onclick="motRespPromessa('${p.id}','recusada')">Recusar</button>`; }
+  else if(t.k==='comp'){ const c=t.c; tit='🧾 Comprovante para conferir'; q=(c.valor?fmtBRL(c.valor)+' · ':'')+(c.tipo==='pdf'?'PDF':'foto')+(c.obs?' · '+esc(c.obs):''); bt=`<button class="pri" onclick="motVerComp('${c.id}')">Ver e dar baixa</button>`; }
+  else if(t.k==='ag'){ const g=t.g; tit='🛠 Pedido de manutenção · '+fmtD(g.dataDesejada); q=esc(g.descricao||'')+(g.km?' <span class="muted">('+fmtKm(g.km)+')</span>':''); bt=`<button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="sec" onclick="motRespAgend('${g.id}','recusado')">Recusar</button>`; }
+  else if(t.k==='foto'){ tit='📷 '+t.n+' foto'+(t.n>1?'s':'')+' para conferir'; bt=`<button class="pri" onclick="motAbrirFicha('${x.id}','mais','fotos')">Abrir fotos</button>`; }
+  return `<div class="mx-task${cls}" data-task="${t.k}"><div class="t">${tit}</div>${meta}${q?`<div class="q">${q}</div>`:''}<div class="mx-bt">${bt}</div></div>`;
+}
+function motAbrirFicha(id,tab,sec){ S.motAtual=id; S.motTab=tab||'pend'; render(); if(sec) setTimeout(()=>motIr('sec_'+sec),30); }
+function motAba(a){ S.motAba=a; S.motFiltro=''; S.motAtual=null; render(); }
+function motResponder(id){
+  const x=S.mots.find(y=>y.id===id); if(!x) return;
+  const ms=S.motMsgs.filter(t=>t.motoristaId===id).sort((a,c)=>(a.em||'').localeCompare(c.em||'')).slice(-4);
+  abrir(`<h3>💬 Responder ${esc(x.nome||'')}</h3><div class="mx-hist">${ms.map(t=>`<div class="${t.de==='equipe'?'eq':''}">${esc(t.texto||'')}<div style="font-size:11px;opacity:.7">${esc(motHora(t.em))}</div></div>`).join('')}</div>
+    <label>Assunto</label><select id="mr_ass">${Object.keys(MOT_ASSUNTOS).filter(k=>k!=='reserva').map(k=>`<option value="${k}"${k===motAssuntoPadrao(id)?' selected':''}>${MOT_ASSUNTOS[k][0]}</option>`).join('')}</select>
+    <label>Sua resposta</label><textarea id="mr_txt" placeholder="Escreva para o motorista…" style="min-height:90px"></textarea>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="sec" onclick="document.getElementById('mr_txt').value='Recebido! Já estamos analisando e respondemos em seguida.'">✔ Recebido</button><button class="pri" onclick="motResponderEnviar('${id}')">Enviar</button></div>`);
+  setTimeout(()=>{ const t=document.getElementById('mr_txt'); if(t) t.focus(); },50);
+}
+async function motResponderEnviar(id){
+  const txt=val('mr_txt').trim(); if(!txt){ toast('Escreva a resposta'); return; }
+  try{ await motMsgEquipe(id,txt,val('mr_ass')); const nl=S.motMsgs.filter(t=>t.motoristaId===id&&t.de==='motorista'&&!t.lidaEquipe); if(nl.length) motMarcarLidas(nl); fechar(); toast('Resposta enviada'); motRecarregar(); }
+  catch(e){ erroSalvar('enviar a resposta',e); }
+}
+// ---- iniciar bloqueio / cobrança (folha curta) ----
+const motSomaDia = n => { const d=new Date(motDiaSP(agoraIso())+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); };
+function motIniciarCobranca(id){
+  const x0=id&&S.mots.find(y=>y.id===id); const st=x0?((x0.bloqueio||{}).status||'normal'):'normal';
+  const acao=st==='normal'?'programado':st==='programado'?'bloqueado':'normal';
+  const ativos=S.mots.filter(y=>y.ativo!==false).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  S.cobr={acao};
+  abrir(`<h3>🔒 Iniciar bloqueio / cobrança</h3>
+    <label>Motorista</label>${x0?`<div class="step" style="margin:0;padding:10px"><span class="plate">${esc(x0.placa||'—')}</span> <b>${esc(x0.nome||'')}</b> <span class="tag ${(MOT_BLOQ[st]||MOT_BLOQ.normal)[1]}">${(MOT_BLOQ[st]||MOT_BLOQ.normal)[0]}</span></div><input type="hidden" id="cb_mot" value="${x0.id}">`
+      :`<select id="cb_mot" onchange="motCobrSel()"><option value="">Escolha o motorista…</option>${ativos.map(y=>`<option value="${y.id}">${esc(y.placa||'—')} · ${esc(y.nome||'')}</option>`).join('')}</select>`}
+    <label>O que fazer</label><div class="mx-opt" id="cb_acao"><button type="button" data-a="programado" onclick="motCobrAcao('programado')">⏳ Cobrança<small>bloqueio programado</small></button><button type="button" data-a="bloqueado" onclick="motCobrAcao('bloqueado')">🔒 Bloquear<small>agora</small></button><button type="button" data-a="normal" onclick="motCobrAcao('normal')">🔓 Liberar</button></div>
+    <div id="cb_data_box"><label>Bloquear em</label><div class="mx-opt" id="cb_dias"><button type="button" onclick="motCobrDia(0)">Hoje</button><button type="button" onclick="motCobrDia(1)">Amanhã</button><button type="button" onclick="motCobrDia(2)">+2 dias</button></div><input id="cb_data" type="date" value="${motSomaDia(1)}" min="${motDiaSP(agoraIso())}" style="margin-top:6px"></div>
+    <div id="cb_motivo_box"><label>Motivo (o motorista vê)</label><input id="cb_motivo" placeholder="Ex.: Semanalidade em atraso"><div class="mx-opt" style="margin-top:6px"><button type="button" onclick="motCobrMotivo('Semanalidade em atraso')">Semanalidade</button><button type="button" onclick="motCobrMotivo('Multa ou pedágio em aberto')">Multa / pedágio</button><button type="button" onclick="motCobrMotivo('Pendência de documentos')">Documentos</button></div></div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="cb_app" checked style="width:auto"> Avisar no app (o app do motorista fica vermelho)</label>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="cb_wa" checked style="width:auto"> Abrir o WhatsApp já com a mensagem</label>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" id="cb_go" onclick="motCobrGo()">Iniciar cobrança</button></div>`);
+  motCobrAcao(acao);
+}
+function motCobrSel(){ const id=val('cb_mot'), x=S.mots.find(y=>y.id===id); if(!x) return; const st=(x.bloqueio||{}).status||'normal'; motCobrAcao(st==='normal'?'programado':st==='programado'?'bloqueado':'normal'); }
+function motCobrAcao(a){
+  S.cobr=S.cobr||{}; S.cobr.acao=a;
+  document.querySelectorAll('#cb_acao button').forEach(b=>{ const on=b.dataset.a===a; b.className=on?('on '+(a==='bloqueado'?'b':a==='normal'?'o':'')):''; });
+  const bx=document.getElementById('cb_data_box'), mb=document.getElementById('cb_motivo_box'), go=document.getElementById('cb_go');
+  if(bx) bx.style.display=a==='programado'?'':'none'; if(mb) mb.style.display=a==='normal'?'none':'';
+  if(go){ go.textContent=a==='programado'?'Iniciar cobrança':a==='bloqueado'?'Bloquear veículo agora':'Liberar veículo'; go.style.background=a==='bloqueado'?'var(--bad)':a==='normal'?'var(--ok)':''; go.style.color=a==='programado'?'':'#fff'; }
+}
+function motCobrDia(n){ const d=document.getElementById('cb_data'); if(d) d.value=motSomaDia(n); }
+function motCobrMotivo(t){ const i=document.getElementById('cb_motivo'); if(i) i.value=t; }
+async function motCobrGo(){
+  const id=val('cb_mot'); const x=S.mots.find(y=>y.id===id); if(!x){ toast('Escolha o motorista'); return; }
+  const status=(S.cobr&&S.cobr.acao)||'programado'; const data=val('cb_data'); const motivo=status==='normal'?'':val('cb_motivo').trim();
+  if(status==='programado'&&(!data||data<motDiaSP(agoraIso()))){ toast('Informe a data do bloqueio (hoje ou depois)'); return; }
+  if(status!=='normal'&&!motivo){ toast('Escolha ou escreva o motivo'); return; }
+  const b=document.getElementById('cb_go'); if(b) b.disabled=true;
+  const ok=await motAplicarBloqueio(id,{status,motivo,data,avisar:document.getElementById('cb_app').checked,wa:document.getElementById('cb_wa').checked,forcar:true});
+  if(ok) fechar(); else if(b) b.disabled=false;
+}
 function motFiltrar(k){
-  S.motFiltro=(S.motFiltro===k)?'':k; S.motAtual=null; render();
+  S.motFiltro=(S.motFiltro===k)?'':k; if(S.motFiltro){ const f=MOT_FILTROS.find(y=>y[0]===k); S.motAba=f&&f[4]===1?'fazer':'acomp'; } S.motAtual=null; render();
   if(S.motFiltro){ const el=document.getElementById('mot_lista'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
+}
+function motRowHtml(x){
+  const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
+  const core=`${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${motFotosPend(x.id).length?`<span class="tag warn">📷 ${motFotosPend(x.id).length} p/ conferir</span>`:''}`;
+  const sub=`${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${motOleoTag(x)}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}`;
+  return `<div class="osrow mx-row" onclick="motAbrirFicha('${x.id}','pend')"><span class="plate lg">${esc(x.placa||'—')}</span><div style="flex:1;min-width:0"><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="tag ${b[1]}">${b[0]}</span>${core?`<div class="mx-tags">${core}</div>`:''}<div class="mx-sub">${sub}</div>${x.ativo===false?'':motBtnAcesso(x)}</div>`;
 }
 function motoristasView(m){
   if(!podeMotoristas()){ m.innerHTML='<div class="empty">Sem permissão para ver Motoristas.</div>'; return; }
   if(S.motAtual&&S.mots.find(x=>x.id===S.motAtual)) return motDetalhe(m);
   S.motAtual=null; S.motChatFiltro='todos';
-  const q=(S.motBusca||'').trim()?slug(S.motBusca):'';
+  const aba=S.motAba||'fazer'; const q=(S.motBusca||'').trim()?slug(S.motBusca):'';
   const filtroAtivo=MOT_FILTROS.find(f=>f[0]===S.motFiltro);
-  const lista=S.mots.filter(x=>!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q)).filter(x=>!filtroAtivo||filtroAtivo[3](x)).map(x=>({x,pend:motPrioridade(x)}))
-    .sort((a,b)=>b.pend-a.pend||(a.x.nome||'').localeCompare(b.x.nome||''));
-  const nBloq=S.mots.filter(x=>(x.bloqueio||{}).status==='bloqueado').length, nProg=S.mots.filter(x=>(x.bloqueio||{}).status==='programado').length;
-  m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="sec" id="mot_reserva_btn" onclick="motReservaToggle()" title="Liga ou desliga o botão de carro reserva no app dos motoristas">${motReservaAtivo()?'🚗 Reserva: ligado':'🚗 Reserva: desligado'}</button>${ehSuperadmin()?'<button class="sec" onclick="motAtendModal()">👥 Atendentes</button>':''}${motPodeCriar()?`<button class="sec" onclick="impAbrir()" title="Cadastra vários motoristas e placas de uma vez a partir da planilha">📥 Importar planilha</button><button class="pri" onclick="motForm('')">+ Novo motorista</button>`:''}</div>
+  const tarefas=motTarefas(); const g1=MOT_FILTROS.filter(f=>f[4]===1), g2=MOT_FILTROS.filter(f=>f[4]===2);
+  const nAcomp=S.mots.filter(x=>x.ativo!==false&&g2.some(f=>f[3](x))).length;
+  const chips=g=>`<div class="mx-fil">${g.map(([k,rot,cls,fn])=>{ const n=S.mots.filter(fn).length; if(!n&&S.motFiltro!==k) return ''; return `<button type="button" class="mx-chip ${cls}${S.motFiltro===k?' on':''}" aria-pressed="${S.motFiltro===k}" onclick="motFiltrar('${k}')">${rot} <b>${n}</b></button>`; }).join('')}</div>`;
+  const rows=lst=>lst.length?lst.map(({x})=>motRowHtml(x)).join(''):'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>';
+  const ord=f=>S.mots.filter(f).map(x=>({x,pend:motPrioridade(x)})).sort((a,b)=>b.pend-a.pend||(a.x.nome||'').localeCompare(b.x.nome||''));
+  const limpar=(f,n)=>`<div class="lastinfo" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Mostrando só: <b>${f[1]}</b> (${n})<span class="sp"></span><button class="sec" style="padding:4px 12px;min-height:36px" onclick="motFiltrar('')">✕ Limpar filtro</button></div>`;
+  let corpo='';
+  if(aba==='fazer'){
+    if(filtroAtivo&&filtroAtivo[4]===1){
+      const l=ord(filtroAtivo[3]); corpo=chips(g1)+limpar(filtroAtivo,l.length)+`<div id="mot_lista"></div>`+rows(l);
+    } else {
+      const grupo=pr=>pr<=1?0:pr<=3?1:2; const rot=['🚨 Urgente','💬 Responder e conferir','🛠 Manutenção e fotos']; let ult=-1; let h='';
+      for(const t of tarefas){ const g=grupo(t.pr); if(g!==ult){ h+=`<div class="mx-sec${g===0?' red':''}">${rot[g]}</div>`; ult=g; } h+=motTaskHtml(t); }
+      corpo=chips(g1)+(tarefas.length?`<div id="mot_lista"></div>${h}`:`<div class="step" id="mot_lista" style="text-align:center"><div style="font-size:30px">✅</div><b>Tudo respondido</b><div class="muted">Nenhuma tarefa pendente agora.</div></div>`);
+    }
+  } else if(aba==='acomp'){
+    const ativo=filtroAtivo&&filtroAtivo[4]===2; const f=ativo?filtroAtivo[3]:(x=>x.ativo!==false&&g2.some(z=>z[3](x))); const l=ord(f);
+    corpo=chips(g2)+(ativo?limpar(filtroAtivo,l.length):'')+`<div id="mot_lista"></div>`+rows(l);
+  } else {
+    const f=x=>(!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q));
+    corpo=`<div id="mot_lista"></div><input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+rows(ord(f));
+  }
+  m.innerHTML=`<div class="mx-pad"><div class="mx-barra"><h2>Motoristas</h2><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="sec" id="mot_reserva_btn" onclick="motReservaToggle()" title="Liga ou desliga o botão de carro reserva no app dos motoristas">${motReservaAtivo()?'🚗 Reserva: ligado':'🚗 Reserva: desligado'}</button>${ehSuperadmin()?'<button class="sec" onclick="motAtendModal()">👥 Atendentes</button>':''}${motPodeCriar()?`<button class="sec" onclick="impAbrir()" title="Cadastra vários motoristas e placas de uma vez a partir da planilha">📥 Importar planilha</button><button class="pri" onclick="motForm('')">+ Novo motorista</button>`:''}</div>
     ${S.motOk?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>As tabelas do app do motorista ainda não existem no banco.</b> Rode o arquivo <b>motoristas.sql</b> (versão mais recente) no SQL Editor do Supabase e recarregue esta página.</div>`}
-    <div class="muted" style="font-weight:700;margin:4px 2px">🔥 Prioridade — chat, pagamento e bloqueio</div>
-    <div class="cards motcards">${MOT_FILTROS.filter(f=>f[4]===1).map(([k,rot,cls,fn])=>{ const n=S.mots.filter(fn).length; return `<button type="button" class="card cardbtn ${cls}${S.motFiltro===k?' on':''}${n?'':' zero'}" aria-pressed="${S.motFiltro===k}" onclick="motFiltrar('${k}')"><div class="v">${n}</div><div class="l">${rot}</div></button>`; }).join('')}</div>
-    <div class="muted" style="font-weight:700;margin:10px 2px 4px">Acompanhamento</div>
-    <div class="cards motcards">${MOT_FILTROS.filter(f=>f[4]===2).map(([k,rot,cls,fn])=>{ const n=S.mots.filter(fn).length; return `<button type="button" class="card cardbtn ${cls}${S.motFiltro===k?' on':''}${n?'':' zero'}" aria-pressed="${S.motFiltro===k}" onclick="motFiltrar('${k}')"><div class="v">${n}</div><div class="l">${rot}</div></button>`; }).join('')}</div>
-    ${filtroAtivo?`<div class="lastinfo" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Mostrando só: <b>${filtroAtivo[1]}</b> (${lista.length})<span class="sp"></span><button class="sec" style="padding:4px 12px;min-height:32px" onclick="motFiltrar('')">✕ Limpar filtro</button></div>`:''}
-    <div id="mot_lista"></div>
-    <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
-    (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${motFotosPend(x.id).length?`<span class="tag warn">📷 ${motFotosPend(x.id).length} p/ conferir</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${motOleoTag(x)}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div>${x.ativo===false?'':motBtnAcesso(x)}</div>`; }).join('')
-      :'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
+    <div class="mx-seg" id="mx_seg"><button type="button" data-aba="fazer" class="${aba==='fazer'?'on':''}" onclick="motAba('fazer')">Fazer agora${tarefas.length?`<b>${tarefas.length}</b>`:''}</button><button type="button" data-aba="acomp" class="${aba==='acomp'?'on':''}" onclick="motAba('acomp')">Acompanhar${nAcomp?`<b style="background:var(--warn)">${nAcomp}</b>`:''}</button><button type="button" data-aba="todos" class="${aba==='todos'?'on':''}" onclick="motAba('todos')">Todos</button></div>
+    ${corpo}</div><button type="button" class="mx-fab" id="mx_fab" onclick="motIniciarCobranca()">＋ Bloqueio / Cobrança</button>`;
 }
 
 // relê as tabelas na hora (além do tempo real do banco, que pode demorar ou estar desligado) — chamado
@@ -3502,26 +3659,25 @@ function motDetalhe(m){
   const ags=S.motAgend.filter(t=>t.motoristaId===x.id).sort((a,c)=>(c.criadoEm||'').localeCompare(a.criadoEm||''));
   const avs=S.motAvisos.filter(t=>!t.motoristaId||t.motoristaId===x.id).sort((a,c)=>(c.em||'').localeCompare(a.em||'')).slice(0,8);
   const wa=telWa(x.telefone); const pend=motPendencias(x.id);
-  const chips=[]; const pl=(n,a,b)=>n+' '+(n>1?b:a);
-  if(pend.bloq) chips.push([motBloqPend(x.id).some(t=>t.pedidoTipo==='roubo')?'bad':'warn','🔒 '+pl(pend.bloq,'pedido de bloqueio','pedidos de bloqueio'),'sec_pedbloq',1]);
-  if(pend.msg) chips.push(['warn','💬 '+pl(pend.msg,'mensagem sem resposta','mensagens sem resposta'),'sec_chat',1]);
-  if(pend.prom) chips.push(['warn','🤝 '+pl(pend.prom,'promessa p/ responder','promessas p/ responder'),'sec_prom',1]);
-  if(pend.comp) chips.push(['warn','🧾 '+pl(pend.comp,'comprovante p/ conferir','comprovantes p/ conferir'),'sec_comp',1]);
-  if(pend.ped) chips.push(['warn','🛠 '+pl(pend.ped,'pedido de manutenção','pedidos de manutenção'),'sec_ped',1]);
-  if(bl.status==='bloqueado') chips.push(['bad','🔒 veículo bloqueado','sec_bloq',0]); else if(bl.status==='programado') chips.push(['warn','⏳ bloqueio programado','sec_bloq',0]);
-  if(motFotosPend(x.id).length) chips.push(['warn','📷 '+motFotosPend(x.id).length+' foto'+(motFotosPend(x.id).length>1?'s':'')+' para conferir','sec_fotos',0]);
-  if(motFotoStatus(x)==='atrasada') chips.push(['bad','📷 fotos atrasadas','sec_fotos',0]); else if(motFotoStatus(x)==='refazer') chips.push(['warn','✖ foto recusada: aguardando reenvio','sec_fotos',0]);
-  const precisa=`<div class="step${pend.total?' hot':''}" id="mot_precisa"><div style="font-weight:700;margin-bottom:6px">${pend.total?'🔥 Precisa de ação agora':'✅ Nada pendente'}</div>${chips.map(([c,t,id,b])=>`<button type="button" class="tag ${c}" style="cursor:pointer;border:0;font-size:13px;padding:5px 11px;margin:2px 4px 2px 0" onclick="motIr('${id}')">${b?'● ':''}${t}</button>`).join('')}${pend.total?`<div class="muted" style="margin-top:6px">Os itens com ● precisam ser resolvidos ou respondidos antes de você sair desta tela.</div>`:(chips.length?'':'<div class="muted">Pode sair.</div>')}</div>`;
+  const tb=S.motTab||'pend'; const tarefasX=motTarefas(x.id);
+  const nTarefas=tarefasX.length;
+  const infos=[]; if(bl.status==='bloqueado') infos.push(['bad','🔒 veículo bloqueado','sec_bloq']); else if(bl.status==='programado') infos.push(['warn','⏳ bloqueio programado'+(bl.data?' para '+fmtD(bl.data):''),'sec_bloq']);
+  if(motFotoStatus(x)==='atrasada') infos.push(['bad','📷 fotos atrasadas','sec_fotos']); else if(motFotoStatus(x)==='refazer') infos.push(['warn','✖ foto recusada: aguardando reenvio','sec_fotos']);
+  const precisa=`<div class="${nTarefas?'':'step '}" id="mot_precisa">${infos.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${infos.map(([c,t,id])=>`<button type="button" class="tag ${c}" style="cursor:pointer;border:0;font-size:13px;padding:7px 12px" onclick="motIr('${id}')">${t} ›</button>`).join('')}</div>`:''}
+    ${nTarefas?tarefasX.map(t=>motTaskHtml(t,true)).join(''):`<div style="font-weight:700">✅ Nada pendente</div><div class="muted">Sem mensagens, promessas, comprovantes ou pedidos para responder.</div>`}</div>`;
+  const tabsDef=[['pend','Pendências',nTarefas],['conv','Conversa',pend.msg],['pag','Pagamento',0],['veic','Veículo',0],['mais','Mais',0]];
+  const tabsNav=`<div class="mx-tabs" id="mx_tabs">${tabsDef.map(([k,n,c])=>`<button type="button" data-tab="${k}" class="${tb===k?'on':''}" onclick="S.motTab='${k}';render()">${n}${c?`<b>${c}</b>`:''}</button>`).join('')}</div>`;
+  const barraAcoes=tb==='conv'?'':`<div style="height:84px"></div><div class="mx-acoes" id="mx_acoes"><button type="button" class="pri danger" onclick="motIniciarCobranca('${x.id}')">🔒 Bloqueio / Cobrança</button>${wa?`<button type="button" class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}</div>`;
   m.innerHTML=`<div class="bar"><button class="ghost" onclick="if(motPodeSair()){S.motAtual=null;render()}">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}${souMaster()?`<button class="sec" onclick="motAbrirApp('${x.id}')" title="Abre o app deste motorista só para visualizar, sem a senha dele">👁 Ver app do motorista</button>`:''}${motPodeExcluir()?`<button class="ghost danger" onclick="motApagar('${x.id}')" title="Exclui o motorista (só o master)">🗑 Excluir motorista</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
     <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span></div></div>
-    ${precisa}
+    ${tabsNav}<div class="mtab${tb==='pend'?' on':''}" data-t="pend">${precisa}</div><div class="mtab${tb==='conv'?' on':''}" data-t="conv">
     <div class="step${pend.msg?' hot':''}" id="sec_chat"><h3>💬 Conversa${pend.msg?` <span class="tag warn">${pend.msg} sem resposta</span>`:''}</h3>
       ${msgs.length?`<div id="mot_chat_filtro" style="margin:2px 0 4px">${[['todos','Todos',msgs.length]].concat(Object.keys(MOT_ASSUNTOS).filter(k=>k!=='reserva').map(k=>[k,MOT_ASSUNTOS[k][0],msgs.filter(t=>{const a=motAssuntoMsg(t);return a===k||(k==='outros'&&(!a||a==='reserva'));}).length])).filter(([k,l,n])=>k==='todos'||n>0||S.motChatFiltro===k).map(([k,l,n])=>`<button type="button" class="${(S.motChatFiltro||'todos')===k?'pri':'sec'}" style="padding:2px 10px;font-size:12px;margin:0 4px 4px 0" onclick="motChatFiltrar('${k}')">${l} (${n})</button>`).join('')}</div>`:''}
       <div id="mot_chat" style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0">${msgsVis.length?msgsVis.map(t=>{ const as=motAssuntoMsg(t); return `<div style="align-self:${t.de==='equipe'?'flex-end':'flex-start'};max-width:85%;padding:7px 11px;border-radius:12px;background:${t.de==='equipe'?'var(--brand)':'var(--soft)'};color:${t.de==='equipe'?'#fff':'var(--ink)'};white-space:pre-wrap;word-wrap:break-word"><div style="font-size:11px;opacity:.85">${as?`<b data-assunto="${as}" style="background:rgba(0,0,0,.18);border-radius:5px;padding:0 5px;margin-right:4px">${esc(MOT_ASSUNTOS[as][0])}</b>`:''}${esc(t.autor||'')}${t.de==='equipe'&&t.setor?' <span style="opacity:.8">('+esc(MOT_SETORES[t.setor]||t.setor)+')</span>':''} · ${esc(motHora(t.em))}${t.de==='equipe'&&t.lidaMotorista?' · ✓ lida':''}${t.de==='equipe'&&t.enviadoPor?' · <i>enviado por '+esc(t.enviadoPor)+'</i>':''}</div>${esc(t.texto)}</div>`; }).join(''):'<div class="muted">Nenhuma mensagem'+(msgs.length?' neste assunto':' ainda')+'.</div>'}</div>
       <div style="margin-top:6px"><button class="sec" style="padding:2px 10px;font-size:12px" onclick="motRespostaRapida('${x.id}')">✔ Recebido, já estamos analisando</button></div>
       <div class="row" style="margin-top:8px;align-items:center"><span class="muted">Assunto</span><select id="mot_ass" style="width:auto" onchange="motAliasPrev('${x.id}')">${Object.keys(MOT_ASSUNTOS).filter(k=>k!=='reserva').map(k=>`<option value="${k}"${k===motAssuntoPadrao(x.id)?' selected':''}>${MOT_ASSUNTOS[k][0]}</option>`).join('')}</select><span class="muted" id="mot_alias_prev" style="font-size:13px">Será enviado como: <b>${esc(motAlias(x.id,motAssuntoPadrao(x.id)))}</b> · ${esc(MOT_SETORES[MOT_SETOR_DE[motAssuntoPadrao(x.id)]||'operacoes'])}</span></div>
-      <div class="row" style="margin-top:6px;align-items:flex-end"><textarea id="mot_txt" placeholder="Escreva para o motorista…" style="flex:1;min-height:46px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();motEnviarMsg('${x.id}')}"></textarea><button class="pri" onclick="motEnviarMsg('${x.id}')">Enviar</button></div></div>
-    <div class="muted" style="font-weight:700;margin:14px 2px 6px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">Pagamento e bloqueio</div>
+      <div class="row mx-chat-comp" style="margin-top:6px;align-items:flex-end"><textarea id="mot_txt" placeholder="Escreva para o motorista…" style="flex:1;min-height:46px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();motEnviarMsg('${x.id}')}"></textarea><button class="pri" onclick="motEnviarMsg('${x.id}')">Enviar</button></div></div>
+    </div><div class="mtab${tb==='pag'?' on':''}" data-t="pag">
     <div class="step${motPromPend(x.id)?' hot':''}" id="sec_prom"${proms.length?'':' style="padding:10px 16px"'}><h3${proms.length?'':' style="margin:0;font-size:15px"'}>🤝 Promessas de pagamento${proms.length?'':' <span class="muted" style="font-weight:400">· nenhuma</span>'}</h3>${proms.length?proms.map(p=>{ const s=MOT_PROM[p.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>Até ${fmtD(p.dataPrometida)}</b>${p.valor?' · '+fmtBRL(p.valor):''} <span class="tag ${s[1]}">${s[0]}</span><div class="muted">${esc(p.obs||'')}${p.resposta?' · Resposta: '+esc(p.resposta):''}</div></div><span class="sp"></span><div class="row">${p.status==='pendente'?`<button class="pri" onclick="motRespPromessa('${p.id}','aceita')">Aceitar</button><button class="ghost danger" onclick="motRespPromessa('${p.id}','recusada')">Recusar</button>`:''}${p.status==='aceita'?`<button class="pri" onclick="motRespPromessa('${p.id}','cumprida')">Pagou</button><button class="ghost danger" onclick="motRespPromessa('${p.id}','quebrada')">Não pagou</button>`:''}</div></div>`; }).join(''):''}</div>
     ${motCompHtml(x)}
     ${motPedBloqHtml(x)}
@@ -3534,17 +3690,17 @@ function motDetalhe(m){
         <div class="full"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="mb_avisar" checked style="width:auto"> Mandar também um aviso no app quando a situação mudar</label></div>
       </div>
       <div class="act"><button class="pri" onclick="motSalvarBloqueio('${x.id}')">Salvar situação</button></div></div>
-    <div class="muted" style="font-weight:700;margin:14px 2px 6px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">Acompanhamento</div>
+    </div><div class="mtab${tb==='veic'?' on':''}" data-t="veic">
     ${motVeiculoHtml(x)}
     ${motOleoHtml(x)}
+    <div class="step${motAgPend(x.id)?' hot':''}" id="sec_ped"${ags.length?'':' style="padding:10px 16px"'}><h3${ags.length?'':' style="margin:0;font-size:15px"'}>🛠 Pedidos de manutenção${ags.length?'':' <span class="muted" style="font-weight:400">· nenhum</span>'}</h3>${ags.length?ags.map(g=>{ const s=MOT_AGEND[g.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>${fmtD(g.dataDesejada)}</b> <span class="tag ${s[1]}">${s[0]}${g.status==='confirmado'&&g.dataConfirmada?' · '+fmtD(g.dataConfirmada)+(g.horaConfirmada?' às '+esc(g.horaConfirmada):''):''}</span><div>${esc(g.descricao||'')}${g.km?` <span class="muted">(${fmtKm(g.km)})</span>`:''}</div>${g.status==='confirmado'&&g.localConfirmado?`<div>📍 ${esc(g.localConfirmado)}</div>`:''}${g.resposta?`<div class="muted">Resposta: ${esc(g.resposta)}</div>`:''}</div><span class="sp"></span>${g.status==='solicitado'?`<div class="row"><button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="ghost danger" onclick="motRespAgend('${g.id}','recusado')">Recusar</button></div>`:''}</div>`; }).join(''):''}</div>
+    </div><div class="mtab${tb==='mais'?' on':''}" data-t="mais">
     ${motUsoHtml(x)}
     ${motPontosHtml(x)}
-    <div class="step${motAgPend(x.id)?' hot':''}" id="sec_ped"${ags.length?'':' style="padding:10px 16px"'}><h3${ags.length?'':' style="margin:0;font-size:15px"'}>🛠 Pedidos de manutenção${ags.length?'':' <span class="muted" style="font-weight:400">· nenhum</span>'}</h3>${ags.length?ags.map(g=>{ const s=MOT_AGEND[g.status]||['—','neu']; return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>${fmtD(g.dataDesejada)}</b> <span class="tag ${s[1]}">${s[0]}${g.status==='confirmado'&&g.dataConfirmada?' · '+fmtD(g.dataConfirmada)+(g.horaConfirmada?' às '+esc(g.horaConfirmada):''):''}</span><div>${esc(g.descricao||'')}${g.km?` <span class="muted">(${fmtKm(g.km)})</span>`:''}</div>${g.status==='confirmado'&&g.localConfirmado?`<div>📍 ${esc(g.localConfirmado)}</div>`:''}${g.resposta?`<div class="muted">Resposta: ${esc(g.resposta)}</div>`:''}</div><span class="sp"></span>${g.status==='solicitado'?`<div class="row"><button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="ghost danger" onclick="motRespAgend('${g.id}','recusado')">Recusar</button></div>`:''}</div>`; }).join(''):''}</div>
-    <div class="muted" style="font-weight:700;margin:14px 2px 6px;text-transform:uppercase;font-size:12px;letter-spacing:.6px">Mais (toque para abrir)</div>
     ${motVerifHtml(x)}
     <details class="step" id="sec_avisos" ${motOp('avisos',false)} ontoggle="S.motOpen.avisos=this.open"><summary class="row"><b style="font-size:16px">📢 Avisos no app</b><span class="muted">${avs.length} ▸</span></summary>
       <div class="row" style="margin:8px 0"><span class="sp"></span><button class="sec" onclick="motAvisoForm('${x.id}')">+ Aviso para ${esc((x.nome||'').split(' ')[0])}</button></div>
-      ${avs.length?avs.map(a=>`<div class="osrow" style="cursor:default"><div><b>${esc(a.titulo||'')}</b> <span class="tag neu">${a.motoristaId?'só dele':'geral'}</span>${a.waPendente?' <span class="tag warn">💬 WhatsApp a enviar</span>':''}${a.ate?` <span class="muted">até ${fmtD(a.ate)}</span>`:''}<div class="muted">${esc(a.texto||'')}</div></div><span class="sp"></span>${a.waPendente?`<button class="sec" onclick="motWaDoAviso('${a.id}')">💬 Enviar</button>`:''}<button class="ghost danger" onclick="motApagarAviso('${a.id}')">Apagar</button></div>`).join(''):'<div class="muted" style="margin-top:6px">Nenhum aviso.</div>'}</div>`;
+      ${avs.length?avs.map(a=>`<div class="osrow" style="cursor:default"><div><b>${esc(a.titulo||'')}</b> <span class="tag neu">${a.motoristaId?'só dele':'geral'}</span>${a.waPendente?' <span class="tag warn">💬 WhatsApp a enviar</span>':''}${a.ate?` <span class="muted">até ${fmtD(a.ate)}</span>`:''}<div class="muted">${esc(a.texto||'')}</div></div><span class="sp"></span>${a.waPendente?`<button class="sec" onclick="motWaDoAviso('${a.id}')">💬 Enviar</button>`:''}<button class="ghost danger" onclick="motApagarAviso('${a.id}')">Apagar</button></div>`).join(''):'<div class="muted" style="margin-top:6px">Nenhum aviso.</div>'}</div></div>${barraAcoes}`;
   const c=document.getElementById('mot_chat'); if(c) c.scrollTop=c.scrollHeight;
 }
 
@@ -3616,20 +3772,23 @@ async function motPedBloqFinal(pid,acao,txt){
 }
 function motChatFiltrar(f){ S.motChatFiltro=f; render(); setTimeout(()=>{ const c=document.getElementById('mot_chat'); if(c) c.scrollTop=c.scrollHeight; },0); }
 async function motSalvarBloqueio(id){
-  const x=S.mots.find(y=>y.id===id); if(!x) return;
   const status=val('mb_status'), motivo=val('mb_motivo'), data=val('mb_data'); const avisar=document.getElementById('mb_avisar').checked;
-  if(status==='programado'&&!data){ toast('Informe a data do bloqueio programado'); return; }
+  await motAplicarBloqueio(id,{status,motivo,data,avisar,wa:true,forcar:false});
+}
+async function motAplicarBloqueio(id,o){
+  const x=S.mots.find(y=>y.id===id); if(!x) return false; const {status,motivo,data,avisar,wa:abrirWa,forcar}=o;
+  if(status==='programado'&&!data){ toast('Informe a data do bloqueio programado'); return false; }
   const antes=(x.bloqueio||{}).status||'normal'; let wa=null;
   try{
     await S.db.doc('motoristas/'+id).update({bloqueio:{status,motivo,data:status==='programado'?data:'',em:agoraIso(),por:(S.perfil&&S.perfil.nome)||''}});
-    if(avisar&&status!==antes){
+    if(avisar&&(status!==antes||forcar)){
       const tit=status==='bloqueado'?'Veículo bloqueado':status==='programado'?'Bloqueio programado para '+fmtD(data):'Veículo liberado';
       const tx=status==='normal'?'Seu veículo foi liberado. Obrigado!':(motivo||'');
       const ref=await S.db.collection('mot_avisos').add({motoristaId:id,tipo:status==='normal'?'info':'urgente',titulo:tit,texto:tx,em:agoraIso(),por:(S.perfil&&S.perfil.nome)||'',waPendente:true});
       wa=[ref.id,motMsgWa(x,tit,tx,status!=='normal'),tit];
     }
-    toast('Situação salva'); if(wa) motWaPrompt(id,wa[0],wa[1],wa[2]); motRecarregar();
-  }catch(e){ erroSalvar('salvar a situação do veículo',e); }
+    toast(status==='programado'?'Cobrança iniciada':status==='bloqueado'?'Veículo bloqueado':'Situação salva'); if(wa&&abrirWa!==false) motWaPrompt(id,wa[0],wa[1],wa[2]); motRecarregar(); return true;
+  }catch(e){ erroSalvar('salvar a situação do veículo',e); return false; }
 }
 function motRespPromessa(pid,status){
   const p=S.motPromessas.find(y=>y.id===pid); if(!p) return;
