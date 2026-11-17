@@ -3073,12 +3073,14 @@ async function delSin(id){ if(!confirm('Excluir este sinistro?'))return; await S
 // em tabelas próprias (ver motoristas.sql). O bloqueio aqui só SINALIZA no app do motorista; o
 // bloqueio do veículo em si continua sendo feito na plataforma do rastreador.
 const podeMotoristas = () => !!S.perfil&&(ehAdminGeral()||((ehAuxiliar()||ehCobranca())&&(!S.perfil.oficinaId||S.perfil.oficinaId==='matriz')));
-Object.assign(S,{mots:[],motMsgs:[],motPromessas:[],motAgend:[],motAvisos:[],motVerif:[],motFotos:[],motAtrasos:[],motComp:[],motRank:[],motAtual:null,motOpen:{},motOk:true,motBusca:'',motFiltro:''});
+Object.assign(S,{mots:[],motMsgs:[],motPromessas:[],motAgend:[],motAvisos:[],motVerif:[],motFotos:[],motAtrasos:[],motComp:[],motRank:[],motAtual:null,motOpen:{},motOk:true,motBusca:'',motFiltro:'',cands:[],candMsgs:[],candDocs:[],candAtual:null,candFiltro:'ativos'});
 let motIniciado=false;
 function iniciarMotoristas(){
   if(motIniciado||!podeMotoristas()) return; motIniciado=true;
   const sub=(col,key)=>S.db.collection(col).onSnapshot(snap=>{ S[key]=snap.docs.map(d=>({id:d.id,...d.data()})); S.motOk=true; render(); },e=>{ console.warn('tabela "'+col+'" indisponível (rode o motoristas.sql no Supabase):',e); S.motOk=false; });
   sub('motoristas','mots'); sub('mot_mensagens','motMsgs'); sub('mot_promessas','motPromessas'); sub('mot_agendamentos','motAgend'); sub('mot_avisos','motAvisos'); sub('mot_verificacoes','motVerif'); sub('mot_fotos','motFotos'); sub('mot_atrasos','motAtrasos'); sub('mot_comprovantes','motComp');
+  const sub2=(col,key)=>S.db.collection(col).onSnapshot(snap=>{ S[key]=snap.docs.map(d=>({id:d.id,...d.data()})); render(); },e=>console.warn('tabela "'+col+'" ainda não existe (rode o motoristas.sql mais recente):',e));
+  sub2('mot_candidatos','cands'); sub2('mot_cand_msgs','candMsgs'); sub2('mot_cand_docs','candDocs');
   try{ Promise.resolve(sb.rpc('mot_limpar_expirados')).catch(()=>{}); }catch(e){} // apaga fotos com mais de 30 dias
 }
 // ---- verificações diárias (água/óleo) e fotos semanais (painel + etiqueta de óleo, segundas-feiras) ----
@@ -3536,7 +3538,7 @@ const motAgPend = id => S.motAgend.filter(x=>(!id||x.motoristaId===id)&&x.status
 const motAgReal = id => S.motAgend.filter(x=>(!id||x.motoristaId===id)&&x.status==='confirmado').sort((a,b)=>(a.dataConfirmada||'').localeCompare(b.dataConfirmada||'')||(a.horaConfirmada||'').localeCompare(b.horaConfirmada||''));
 const motAgQuando = g => fmtD(g.dataConfirmada)+(g.horaConfirmada?' às '+g.horaConfirmada:'');
 const motAgSit = g => { const h=motDiaSP(agoraIso()), d=g.dataConfirmada||''; return d<h?'atrasada':d===h?'hoje':'futura'; };
-const motPendTotal = () => S.motMsgs.filter(x=>x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length+motPromPend()+motAgPend()+motCompPend();
+const motPendTotal = () => candPendTotal()+S.motMsgs.filter(x=>x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length+motPromPend()+motAgPend()+motCompPend();
 const MOT_BLOQ={normal:['Liberado','ok'],programado:['Bloqueio programado','warn'],bloqueado:['Bloqueado','bad']};
 const MOT_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
 const MOT_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Recusado','bad'],concluido:['Concluída','ok']};
@@ -3585,9 +3587,12 @@ function motTarefas(id){
     for(const g of motAgReal(i)) if(motAgSit(g)!=='futura') T.push({k:'real',pr:4,x,em:g.dataConfirmada+'T'+(g.horaConfirmada||'00:00')+':00-03:00',g});
     const nf=motFotosPend(i).length; if(nf) T.push({k:'foto',pr:4,x,em:'',n:nf});
   }
+  if(!id) for(const c of (S.cands||[])) if(candPend(c)) T.push({k:'cand',pr:2,x:{id:'',nome:c.nome},em:c.ultMsgCand||c.criadoEm,c});
   return T.sort((a,b)=>a.pr-b.pr||String(a.em||'￿').localeCompare(String(b.em||'￿')));
 }
 function motTaskHtml(t,ficha){
+  if(t.k==='cand'){ const c=t.c, novo=c.status==='novo', ult=candMsgsDe(c.id).filter(m=>m.de==='candidato').pop();
+    return `<div class="mx-task" data-task="cand"><div class="t">${novo?'🆕 Novo candidato':'💬 Candidato aguardando resposta'} · Área do Cliente</div><div class="m" onclick="candAbrir('${c.id}')"><b>${esc(c.nome||'')}</b><span>· ${esc(candInfoLinha(c))}</span><span>· ${esc(motAgo(t.em))}</span></div>${ult?`<div class="q">${esc(String(ult.texto||'').slice(0,160))}</div>`:''}<div class="mx-bt"><button class="pri" onclick="candAbrir('${c.id}')">Atender</button></div></div>`; }
   const x=t.x, wa=telWa(x.telefone), st=(x.bloqueio||{}).status||'normal';
   const meta=ficha?`<div class="m" style="cursor:default">${t.k==='real'?'':esc(motAgo(t.em))}</div>`:`<div class="m" onclick="motAbrirFicha('${x.id}','pend')"><span class="plate">${esc(x.placa||'—')}</span><b>${esc(x.nome||'')}</b>${t.em&&t.k!=='real'?'<span>· '+esc(motAgo(t.em))+'</span>':''}</div>`;
   const bWa=wa?`<button class="sec" onclick="waAbrir('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:'';
@@ -3605,7 +3610,7 @@ function motTaskHtml(t,ficha){
   return `<div class="mx-task${cls}" data-task="${t.k}"><div class="t">${tit}</div>${meta}${q?`<div class="q">${q}</div>`:''}<div class="mx-bt">${bt}</div></div>`;
 }
 function motAbrirFicha(id,tab,sec){ S.motAtual=id; S.motTab=tab||'pend'; render(); if(sec) setTimeout(()=>motIr('sec_'+sec),30); }
-function motAba(a){ S.motAba=a; S.motFiltro=''; S.motAtual=null; render(); }
+function motAba(a){ S.motAba=a; S.motFiltro=''; S.motAtual=null; S.candAtual=null; render(); }
 function motResponder(id){
   const x=S.mots.find(y=>y.id===id); if(!x) return;
   const ms=S.motMsgs.filter(t=>t.motoristaId===id).sort((a,c)=>(a.em||'').localeCompare(c.em||'')).slice(-4);
@@ -3669,6 +3674,7 @@ function motRowHtml(x){
 }
 function motoristasView(m){
   if(!podeMotoristas()){ m.innerHTML='<div class="empty">Sem permissão para ver Motoristas.</div>'; return; }
+  if(S.motAba==='cand'&&S.candAtual&&(S.cands||[]).find(c=>c.id===S.candAtual)) return candDetalhe(m);
   if(S.motAtual&&S.mots.find(x=>x.id===S.motAtual)) return motDetalhe(m);
   S.motAtual=null; S.motChatFiltro='todos';
   const aba=S.motAba||'fazer'; const q=(S.motBusca||'').trim()?slug(S.motBusca):'';
@@ -3691,13 +3697,15 @@ function motoristasView(m){
   } else if(aba==='acomp'){
     const ativo=filtroAtivo&&filtroAtivo[4]===2; const f=ativo?filtroAtivo[3]:(x=>x.ativo!==false&&g2.some(z=>z[3](x))); const l=ord(f);
     corpo=chips(g2)+(ativo?limpar(filtroAtivo,l.length):'')+`<div id="mot_lista"></div>`+rows(l);
+  } else if(aba==='cand'){
+    corpo=candListaHtml();
   } else {
     const f=x=>(!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q));
     corpo=`<div id="mot_lista"></div><input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+rows(ord(f));
   }
   m.innerHTML=`<div class="mx-pad"><div class="mx-barra"><h2>Motoristas</h2><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="sec" id="mot_reserva_btn" onclick="motReservaToggle()" title="Liga ou desliga o botão de carro reserva no app dos motoristas">${motReservaAtivo()?'🚗 Reserva: ligado':'🚗 Reserva: desligado'}</button>${ehSuperadmin()?'<button class="sec" onclick="motAtendModal()">👥 Atendentes</button>':''}${motPodeCriar()?`<button class="sec" onclick="impAbrir()" title="Cadastra vários motoristas e placas de uma vez a partir da planilha">📥 Importar planilha</button><button class="pri" onclick="motForm('')">+ Novo motorista</button>`:''}</div>
     ${S.motOk?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>As tabelas do app do motorista ainda não existem no banco.</b> Rode o arquivo <b>motoristas.sql</b> (versão mais recente) no SQL Editor do Supabase e recarregue esta página.</div>`}
-    <div class="muted" id="wa_saida" style="margin:0 0 8px;font-size:13px">📲 WhatsApp: as mensagens devem sair do número <b>${WA_SAIDA_TXT}</b> (conferimos antes de abrir) · <a href="#" onclick="waDialogo('');return false">escolher o app</a></div><div class="mx-seg" id="mx_seg"><button type="button" data-aba="fazer" class="${aba==='fazer'?'on':''}" onclick="motAba('fazer')">Fazer agora${tarefas.length?`<b>${tarefas.length}</b>`:''}</button><button type="button" data-aba="acomp" class="${aba==='acomp'?'on':''}" onclick="motAba('acomp')">Acompanhar${nAcomp?`<b style="background:var(--warn)">${nAcomp}</b>`:''}</button><button type="button" data-aba="todos" class="${aba==='todos'?'on':''}" onclick="motAba('todos')">Todos</button></div>
+    <div class="muted" id="wa_saida" style="margin:0 0 8px;font-size:13px">📲 WhatsApp: as mensagens devem sair do número <b>${WA_SAIDA_TXT}</b> (conferimos antes de abrir) · <a href="#" onclick="waDialogo('');return false">escolher o app</a></div><div class="mx-seg" id="mx_seg"><button type="button" data-aba="fazer" class="${aba==='fazer'?'on':''}" onclick="motAba('fazer')">Fazer agora${tarefas.length?`<b>${tarefas.length}</b>`:''}</button><button type="button" data-aba="acomp" class="${aba==='acomp'?'on':''}" onclick="motAba('acomp')">Acompanhar${nAcomp?`<b style="background:var(--warn)">${nAcomp}</b>`:''}</button><button type="button" data-aba="todos" class="${aba==='todos'?'on':''}" onclick="motAba('todos')">Todos</button><button type="button" data-aba="cand" class="${aba==='cand'?'on':''}" onclick="motAba('cand')">Candidatos${candPendTotal()?`<b>${candPendTotal()}</b>`:''}</button></div>
     ${corpo}</div><button type="button" class="mx-fab" id="mx_fab" onclick="motIniciarCobranca()">＋ Bloqueio / Cobrança</button>`;
 }
 
@@ -3710,7 +3718,9 @@ async function motRecarregar(){
     try{ const sk=await S.db.collection('mot_km').get(); S.motKm=sk.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ S.motKm=S.motKm||[]; }
     try{ const cr=await S.db.doc('config/reserva').get(); S.motReservaCfg=(cr&&cr.exists?cr.data():null)||null; }catch(e){}
     try{ const ca=await S.db.doc('config/atendentes').get(); S.motAtendCfg=(ca&&ca.exists?ca.data():null)||null; }catch(e){}
-    try{ const rk=await sb.rpc('mot_ranking'); if(!rk.error&&Array.isArray(rk.data)) S.motRank=rk.data; }catch(e){} S.motOk=true; render(); }
+    try{ const rk=await sb.rpc('mot_ranking'); if(!rk.error&&Array.isArray(rk.data)) S.motRank=rk.data; }catch(e){}
+    try{ for(const [c,k] of [['mot_candidatos','cands'],['mot_cand_msgs','candMsgs'],['mot_cand_docs','candDocs']]){ const sn=await S.db.collection(c).get(); S[k]=sn.docs.map(d=>({id:d.id,...d.data()})); } }catch(e){ S.cands=S.cands||[]; S.candMsgs=S.candMsgs||[]; S.candDocs=S.candDocs||[]; }
+    S.motOk=true; render(); }
   catch(e){ console.warn('motoristas: não foi possível recarregar',e); }
 }
 setInterval(()=>{ if((S.view==='mot'||S.view==='mmot')&&document.visibilityState==='visible') motRecarregar(); },15000);
@@ -3951,9 +3961,116 @@ async function motSalvarAviso(motId){
 }
 async function motApagarAviso(id){ if(!confirm('Apagar este aviso?')) return; try{ await S.db.doc('mot_avisos/'+id).delete(); motRecarregar(); }catch(e){ erroSalvar('apagar o aviso',e); } }
 
-function motForm(id){
+// ===== Área do Cliente: candidatos a motorista (chat "Equipe Carsz" + documentos para análise de locação) =====
+const CAND_REG={zona_leste:'Zona Leste',zona_norte:'Zona Norte',zona_sul:'Zona Sul',zona_oeste:'Zona Oeste',abc:'ABC'};
+const CAND_APP={uber:'Uber','99':'99',indrive:'inDrive',mais_de_um:'Mais de um app',outro:'Outro'};
+const CAND_ST={novo:['Novo','warn'],analise:['Em análise','neu'],aprovado:['Aprovado','ok'],recusado:['Recusado','bad'],virou:['Virou motorista','ok']};
+const CAND_DOC={cnh:['🪪','CNH (frente e verso)'],residencia:['🏠','Comprovante de residência'],perfil_app:['📱','Print do perfil no app'],complementar:['📄','Documentação complementar']};
+const candPend = c => c.status!=='recusado'&&c.status!=='virou'&&(c.ultMsgCand||'')>(c.ultRespEquipe||'');
+const candPendTotal = () => (S.cands||[]).filter(candPend).length;
+const candMsgsDe = id => (S.candMsgs||[]).filter(m=>m.candidatoId===id).sort((a,b)=>(a.em||'').localeCompare(b.em||''));
+const candDocsDe = id => (S.candDocs||[]).filter(d=>d.candidatoId===id).sort((a,b)=>(a.em||'').localeCompare(b.em||''));
+const candTempoTxt = t => t==='menos_1'?'cadastro há menos de 1 ano':t==='mais_1'?'cadastro há mais de 1 ano':'';
+const candInfoLinha = c => [CAND_REG[c.regiao]||c.regiao, CAND_APP[c.app]||c.app, candTempoTxt(c.tempo)].filter(Boolean).join(' · ');
+function candAbrir(id){ S.motAba='cand'; S.candAtual=id; S.motAtual=null; if(S.view!=='mot'&&S.view!=='mmot'){ const v=document.querySelector('nav [data-v=mot],nav [data-v=mmot]'); S.view=(v&&v.dataset.v)||'mot'; } render(); window.scrollTo&&window.scrollTo(0,0); }
+function candFiltrar(f){ S.candFiltro=f; render(); }
+function candListaHtml(){
+  const f=S.candFiltro||'ativos';
+  const grupos=[['ativos','Em andamento',c=>['novo','analise','aprovado'].includes(c.status)],['novo','Novos',c=>c.status==='novo'],['recusado','Recusados',c=>c.status==='recusado'],['virou','Viraram motorista',c=>c.status==='virou']];
+  const chips=`<div class="mx-fil" id="cand_filtros">${grupos.map(([k,r,fn])=>{ const n=(S.cands||[]).filter(fn).length; return `<button type="button" class="mx-chip${f===k?' on':''}" aria-pressed="${f===k}" onclick="candFiltrar('${k}')">${r} <b>${n}</b></button>`; }).join('')}</div>`;
+  const g=grupos.find(x=>x[0]===f)||grupos[0];
+  const lista=(S.cands||[]).filter(g[2]).sort((a,b)=>(candPend(b)-candPend(a))||String(b.ultMsgCand||b.criadoEm||'').localeCompare(String(a.ultMsgCand||a.criadoEm||'')));
+  const rows=lista.map(c=>{
+    const st=CAND_ST[c.status]||CAND_ST.novo, ms=candMsgsDe(c.id), ult=ms.filter(m=>m.de==='candidato').pop(), nd=candDocsDe(c.id).filter(d=>!d.visto).length;
+    return `<div class="osrow mx-row" data-cand="${c.id}" onclick="candAbrir('${c.id}')"><div style="flex:1;min-width:0"><b>${esc(c.nome||'')}</b>${c.repetido?' <span class="tag neu">já falou antes</span>':''}<div class="muted">${esc(mascaraTel(c.celular||''))} · ${esc(candInfoLinha(c))}</div>${ult?`<div class="muted" style="margin-top:2px">“${esc(String(ult.texto||'').slice(0,90))}”</div>`:''}</div><span class="tag ${st[1]}">${st[0]}</span><div class="mx-tags">${candPend(c)?'<span class="tag warn">💬 responder</span>':''}${nd?`<span class="tag warn">📎 ${nd} novo${nd>1?'s':''}</span>`:(c.docs?`<span class="tag neu">📎 ${c.docs}</span>`:'')}<span class="tag neu">${esc(motAgo(c.ultMsgCand||c.criadoEm))}</span></div></div>`;
+  }).join('');
+  return chips+`<div id="mot_lista"></div>`+(rows||`<div class="empty">Nenhum candidato nesta lista.${f==='ativos'?'<br><span class="muted">Quem pedir atendimento na Área do Cliente (site) aparece aqui.</span>':''}</div>`);
+}
+function candDetalhe(m){
+  const c=(S.cands||[]).find(y=>y.id===S.candAtual); if(!c){ S.candAtual=null; return render(); }
+  const st=CAND_ST[c.status]||CAND_ST.novo, ms=candMsgsDe(c.id), ds=candDocsDe(c.id);
+  const old=document.getElementById('cand_txt'); const keep=old?{v:old.value,f:document.activeElement===old}:null;
+  const bol=t=>{ const eq=t.de==='equipe'; return `<div style="align-self:${eq?'flex-end':'flex-start'};max-width:85%;padding:7px 11px;border-radius:12px;background:${eq?'var(--brand)':'var(--soft)'};color:${eq?'#fff':'var(--ink)'};white-space:pre-wrap;word-wrap:break-word"><div style="font-size:11px;opacity:.85">${eq?esc(t.por||'Equipe Carsz'):esc((c.nome||'').split(' ')[0])} · ${esc(motDiaHoraSP(t.em))}${t.auto?' · automática':''}</div>${esc(t.texto||'')}</div>`; };
+  const docs=ds.length?ds.map(d=>{ const k=CAND_DOC[d.tipo]||['📄',d.tipo]; return `<div class="osrow" style="cursor:default" data-doc="${d.id}"><span style="font-size:20px">${k[0]}</span><div style="flex:1;min-width:0"><b>${esc(k[1])}</b>${d.nome?` <span class="muted">${esc(d.nome)}</span>`:''}<div class="muted">${esc(motDiaHoraSP(d.em))}${d.visto?'':' · <b style="color:var(--warn)">novo</b>'}</div></div><button class="sec" onclick="candVerDoc('${d.id}')">Ver</button></div>`; }).join(''):'<div class="muted">Nenhum documento enviado ainda.</div>';
+  const rapidas=['Recebemos seus documentos e já estamos analisando.','Pode reenviar a CNH (frente e verso) com mais nitidez?','Falta o print do seu perfil no aplicativo (nota, tempo de cadastro e ganhos).'];
+  const pode=c.status!=='virou';
+  const barra=`<div style="height:84px"></div><div class="mx-acoes" id="cand_acoes">${pode&&c.status!=='recusado'?`<button type="button" class="pri" onclick="candVirar('${c.id}')">${motPodeCriar()?'✔ Virar motorista':'✔ Aprovar'}</button>`:''}${c.status==='novo'||c.status==='aprovado'?`<button type="button" class="sec" onclick="candStatus('${c.id}','analise')">Em análise</button>`:''}${pode&&c.status!=='recusado'?`<button type="button" class="sec" onclick="candRecusar('${c.id}')">Recusar</button>`:''}${c.status==='recusado'?`<button type="button" class="pri" onclick="candStatus('${c.id}','analise')">Reabrir</button>`:''}</div>`;
+  m.innerHTML=`<div class="bar"><button class="ghost" onclick="S.candAtual=null;render()">← Candidatos</button><h2 style="margin:0">${esc(c.nome||'')}</h2><span class="sp"></span><span class="tag ${st[1]}">${st[0]}</span></div>
+    <div class="step"><div class="row" style="flex-wrap:wrap;gap:6px"><b>📞 ${esc(mascaraTel(c.celular||''))}</b><span class="muted">${esc(candInfoLinha(c))}</span>${c.repetido?'<span class="tag neu">já falou antes</span>':''}<span class="sp"></span><span class="muted">desde ${esc(motDiaHoraSP(c.criadoEm))}</span></div>
+      ${c.status==='recusado'&&c.motivoRecusa?`<div class="muted" style="margin-top:6px">Motivo da recusa: ${esc(c.motivoRecusa)}</div>`:''}${c.status==='virou'?`<div class="muted" style="margin-top:6px">Já virou motorista — acompanhe na aba Todos.</div>`:''}
+      <div class="hint" style="margin-top:6px">A conversa é só pelo chat: o candidato não recebe seu número e vê você como “Equipe Carsz”.</div></div>
+    <div class="step" id="cand_docs"><h3>📎 Documentos para análise <span class="muted" style="font-weight:400">· ${ds.length}</span></h3>${docs}</div>
+    <div class="step" id="cand_chat_box"><h3>💬 Conversa</h3>
+      <div id="cand_chat" style="max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0">${ms.map(bol).join('')}</div>
+      <div style="margin:6px 0">${rapidas.map(t=>`<button type="button" class="sec" style="padding:2px 10px;font-size:12px;margin:0 4px 4px 0" onclick="document.getElementById('cand_txt').value=${esc(JSON.stringify(t)).replace(/"/g,'&quot;')};document.getElementById('cand_txt').focus()">${esc(t.slice(0,34))}…</button>`).join('')}</div>
+      <div class="row mx-chat-comp" style="align-items:flex-end"><textarea id="cand_txt" placeholder="Responder como Equipe Carsz…" style="flex:1;min-height:46px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();candEnviar('${c.id}')}"></textarea><button class="pri" onclick="candEnviar('${c.id}')">Enviar</button></div></div>
+    ${motPodeExcluir()?`<div style="text-align:center;margin:8px"><button class="ghost danger" onclick="candExcluir('${c.id}')">Excluir candidato e documentos</button></div>`:''}${barra}`;
+  const n=document.getElementById('cand_txt'); if(n&&keep){ n.value=keep.v; if(keep.f) n.focus(); }
+  const ch=document.getElementById('cand_chat'); if(ch) ch.scrollTop=ch.scrollHeight;
+}
+async function candAtualizar(id,d){ await S.db.doc('mot_candidatos/'+id).update(d); const c=(S.cands||[]).find(y=>y.id===id); if(c) Object.assign(c,d); }
+async function candEnviar(id){
+  const t=document.getElementById('cand_txt'); const txt=(t&&t.value||'').trim(); if(!txt) return;
+  const c=(S.cands||[]).find(y=>y.id===id); if(!c) return; const em=agoraIso();
+  try{
+    const ref=await S.db.collection('mot_cand_msgs').add({candidatoId:id,de:'equipe',autor:'Equipe Carsz',por:(S.perfil&&S.perfil.nome)||'',texto:txt,em});
+    S.candMsgs=(S.candMsgs||[]).concat([{id:ref.id,candidatoId:id,de:'equipe',autor:'Equipe Carsz',por:(S.perfil&&S.perfil.nome)||'',texto:txt,em}]);
+    await candAtualizar(id,{ultRespEquipe:em,...(c.status==='novo'?{status:'analise'}:{})}); t.value=''; render(); motRecarregar();
+  }catch(e){ erroSalvar('enviar a mensagem',e); }
+}
+async function candStatus(id,st){
+  try{ await candAtualizar(id,{status:st,...(st==='analise'?{motivoRecusa:''}:{})}); toast(st==='analise'?'Marcado como em análise':'Atualizado'); render(); motRecarregar(); }catch(e){ erroSalvar('atualizar o candidato',e); }
+}
+function candVirar(id){
+  const c=(S.cands||[]).find(y=>y.id===id); if(!c) return;
+  if(!motPodeCriar()){ candStatus(id,'aprovado').then(()=>toast('Aprovado. O administrador completa o cadastro (CPF e placa).')); return; }
+  motForm('',{nome:c.nome,telefone:c.celular,candId:id});
+}
+function candRecusar(id){
+  const c=(S.cands||[]).find(y=>y.id===id); if(!c) return;
+  abrir(`<h3>Recusar ${esc(c.nome||'')}</h3><label>Motivo (só a equipe vê)</label><textarea id="cr_motivo" placeholder="Ex.: CNH com menos de 1 ano; documentos ilegíveis…" style="min-height:70px"></textarea>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="cr_avisar" checked style="width:auto"> Avisar o candidato no chat</label>
+    <label>Mensagem ao candidato</label><textarea id="cr_msg" style="min-height:70px">Obrigado pelo interesse na Carsz! No momento não conseguimos seguir com a locação. Se sua situação mudar, é só falar com a gente por aqui.</textarea>
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" style="background:var(--bad)!important;color:#fff!important" onclick="candRecusarOk('${id}')">Recusar</button></div>`);
+}
+async function candRecusarOk(id){
+  const motivo=val('cr_motivo').trim(); if(!motivo){ toast('Informe o motivo'); return; }
+  const avisar=document.getElementById('cr_avisar').checked, msg=val('cr_msg').trim(); const em=agoraIso();
+  try{
+    if(avisar&&msg){ const ref=await S.db.collection('mot_cand_msgs').add({candidatoId:id,de:'equipe',autor:'Equipe Carsz',por:(S.perfil&&S.perfil.nome)||'',texto:msg,em}); S.candMsgs=(S.candMsgs||[]).concat([{id:ref.id,candidatoId:id,de:'equipe',texto:msg,em,por:(S.perfil&&S.perfil.nome)||''}]); }
+    await candAtualizar(id,{status:'recusado',motivoRecusa:motivo,recusadoEm:em,recusadoPor:(S.perfil&&S.perfil.nome)||'',ultRespEquipe:em});
+    fechar(); toast('Candidato recusado'); render(); motRecarregar();
+  }catch(e){ erroSalvar('recusar o candidato',e); }
+}
+async function candVerDoc(did){
+  const d=(S.candDocs||[]).find(y=>y.id===did); if(!d) return; const k=CAND_DOC[d.tipo]||['📄','Documento']; const t=k[1]+' — '+(((S.cands||[]).find(y=>y.id===d.candidatoId)||{}).nome||'');
+  abrir(`<h3>${esc(t)}</h3><div class="muted">Carregando…</div>`);
+  try{
+    const {data,error}=await sb.from('mot_cand_img').select('arquivo').eq('id',d.fileId||'').maybeSingle(); if(error) throw error;
+    const src=data&&(data.arquivo||(data.data&&data.data.arquivo));
+    if(!src){ abrir(`<h3>${esc(t)}</h3><p class="muted">O arquivo não está mais disponível.</p><div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`); return; }
+    let corpo, baixar='';
+    if(/^data:application\/pdf/.test(src)){ const bin=atob(src.split(',')[1]), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); const url=URL.createObjectURL(new Blob([u],{type:'application/pdf'}));
+      corpo=`<p><a class="btn pri" href="${url}" target="_blank" rel="noopener" style="display:inline-block;padding:10px 16px;border-radius:10px;text-decoration:none">📄 Abrir o PDF</a></p><embed src="${url}" type="application/pdf" style="width:100%;height:55vh;border-radius:8px">`; baixar=`<a class="sec" download="${esc((d.nome||'documento')+'.pdf')}" href="${url}" style="padding:9px 14px;border-radius:8px;text-decoration:none">⬇ Baixar</a>`; }
+    else { corpo=`<img src="${src}" style="width:100%;max-height:65vh;object-fit:contain;border-radius:8px;background:#000">`; baixar=`<a class="sec" download="${esc((d.nome||'documento')+'.jpg')}" href="${src}" style="padding:9px 14px;border-radius:8px;text-decoration:none">⬇ Baixar</a>`; }
+    abrir(`<h3>${esc(t)}</h3><p class="muted">${esc(d.nome||'')} · enviado ${esc(motDiaHoraSP(d.em))}</p>${corpo}<div class="act">${baixar}<button class="pri" onclick="fechar()">Fechar</button></div>`);
+    if(!d.visto){ try{ await S.db.doc('mot_cand_docs/'+did).update({visto:true,vistoPor:(S.perfil&&S.perfil.nome)||'',vistoEm:agoraIso()}); d.visto=true; }catch(e){ console.warn(e); } }
+  }catch(e){ abrir(`<h3>${esc(t)}</h3><p class="muted">Não consegui abrir o arquivo agora.</p><div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`); }
+}
+async function candExcluir(id){
+  const c=(S.cands||[]).find(y=>y.id===id); if(!c) return;
+  if(!confirm('Excluir '+(c.nome||'este candidato')+', a conversa e TODOS os documentos enviados? Não dá para desfazer.')) return;
+  try{
+    for(const d of candDocsDe(id)){ if(d.fileId){ const {error}=await sb.from('mot_cand_img').delete().eq('id',d.fileId); if(error) throw error; } await S.db.doc('mot_cand_docs/'+d.id).delete(); }
+    for(const x of candMsgsDe(id)) await S.db.doc('mot_cand_msgs/'+x.id).delete();
+    await S.db.doc('mot_candidatos/'+id).delete();
+    S.candAtual=null; toast('Candidato excluído'); await motRecarregar();
+  }catch(e){ erroSalvar('excluir o candidato',e); }
+}
+function motForm(id,pre){
   if(!id&&!motPodeCriar()){ toast('Só o administrador cadastra motorista novo.'); return; }
-  const x=id?(S.mots.find(m=>m.id===id)||{}):{ativo:true};
+  S.candVirar=(!id&&pre&&pre.candId)||'';
+  const x=id?(S.mots.find(m=>m.id===id)||{}):{ativo:true,...(pre?{nome:pre.nome||'',telefone:pre.telefone||''}:{})};
   const veics=S.veic.filter(v=>isFrota(v)).sort((a,b)=>(a.placa||'').localeCompare(b.placa||''));
   abrir(`<h3>${id?'Editar motorista':'Novo motorista'}</h3><div class="grid">
     <div class="full"><label>Nome</label><input id="mf_nome" value="${esc(x.nome||'')}"></div>
@@ -3981,6 +4098,7 @@ async function motSalvar(id){
     const {data,error}=await sb.rpc('mot_salvar_acesso',{p_id:docId,p_cpf:cpf,p_senha:null});
     if(error) throw error;
     if(data&&data.erro){ toast(data.erro); if(!id) await S.db.doc('motoristas/'+docId).delete(); return; }
+    if(!id&&S.candVirar){ try{ await candAtualizar(S.candVirar,{status:'virou',motoristaId:docId,viradoEm:agoraIso(),viradoPor:(S.perfil&&S.perfil.nome)||''}); }catch(e){ console.warn('candidato não marcado como motorista',e); } S.candVirar=''; S.candAtual=null; S.motAba='todos'; }
     fechar(); motRecarregar();
     if(!id) motAcessoWhats(nome,tel,cpf,v?v.placa:''); else toast('Motorista salvo');
   }catch(e){ erroSalvar('salvar o motorista',e); }
