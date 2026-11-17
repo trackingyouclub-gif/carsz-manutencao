@@ -106,6 +106,19 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);border-co
 .list-i:first-child{border-top:0}
 .pw{position:relative}
 .pw button{position:absolute;right:6px;top:6px;border:0;background:none;color:var(--muted);padding:8px 10px;font-size:14px}
+.tr{position:fixed;inset:0;z-index:90;background:var(--bg);overflow:auto;padding:calc(env(safe-area-inset-top) + 14px) 18px calc(env(safe-area-inset-bottom) + 16px)}
+.tr .in{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;gap:10px}
+.tr .top{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:14px;min-height:34px}
+.tr .lnk{background:none;border:0;color:var(--muted);font-weight:600;padding:6px 2px;font-size:15px}
+.tr .ill{flex:1;min-height:200px;display:flex;align-items:center;justify-content:center;padding:6px 0}
+.tr h2{margin:0;font-size:24px;line-height:1.15}
+.tr .txt{font-size:15.5px;line-height:1.5}.tr .txt b{color:var(--ink)}
+.tr .dots{display:flex;gap:6px;justify-content:center;margin:10px 0 4px}.tr .dots i{width:8px;height:8px;border-radius:50%;background:var(--line)}.tr .dots i.on{background:var(--brand);width:22px;border-radius:5px}
+.tr .nav{display:flex;gap:10px}.tr .nav .btn{flex:1}.tr .nav #tr_fim{flex:2}
+.tr_in{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:12px;margin:0 0 10px}.tr_in small{display:block;color:var(--muted);font-size:12px;margin-bottom:2px}
+.tr_ck{display:flex;gap:12px;align-items:center;padding:14px;border:1px solid var(--line);background:var(--card);border-radius:12px;margin-bottom:8px;cursor:pointer;font-weight:600}
+.tr_ck .bx{width:24px;height:24px;border-radius:7px;border:2px solid var(--brand);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--brand-ink)}
+.tr_ck.on{border-color:var(--ok)}.tr_ck.on .bx{background:var(--ok);border-color:var(--ok)}
 </style>
 </head>
 <body>
@@ -162,7 +175,7 @@ async function entrar(){
 }
 async function sair(silencioso){
   if(S.mestre){ window.close(); toast('Feche esta aba para voltar ao painel.'); return; }
-  const t=S.token; S.token=null; S.resumo=null; S.msgs=null; LS.del('mot_token');
+  const t=S.token; S.token=null; S.resumo=null; S.msgs=null; LS.del('mot_token'); S.treinoChecado=false; const tr=document.getElementById('treino'); if(tr) tr.remove();
   if(t&&!silencioso){ try{ await sb.rpc('mot_logout',{p_token:t}); }catch(e){} }
   render();
 }
@@ -388,6 +401,7 @@ function render(rolarChat){
     </nav>${obrigHtml(r)}`;
   document.body.style.overflow=pendencias(r).length?'hidden':'';
   restaurarCampos(keep);
+  if(!S.mestre&&!S.treinoChecado&&r.motorista&&r.motorista.id){ S.treinoChecado=true; if(!treinoVisto()) treinoAbrir(true); }
   if(S.tab==='chat'&&(rolarChat||keep.novo)){ const c=document.getElementById('chat_fim'); if(c) c.scrollIntoView({block:'end'}); }
 }
 // mantém o que a pessoa está digitando quando a tela atualiza sozinha
@@ -684,6 +698,7 @@ async function enviarAgendamento(){
 // menu (⋯)
 function menu(){
   sheet(`<h3>${esc(S.nome||'Minha conta')}</h3><p class="muted" style="margin:0 0 12px">Carsz Motorista</p>
+    <button class="btn sec" style="margin-bottom:8px" onclick="treinoAbrir(false)">📖 Como usar o app (passo a passo)</button>
     ${emApp?'':`<button class="btn sec" style="margin-bottom:8px" onclick="fecharSheet();instalar()">📲 Instalar o app</button>`}
     <button class="btn sec" style="margin-bottom:8px" onclick="fecharSheet();abrirPedagio()">🛣 Consultar pedágios (free flow)</button>
     ${(S.resumo&&S.resumo.veiculo)?(S.resumo.reserva?`<button class="btn sec" style="margin-bottom:8px" onclick="fecharSheet();devolverReserva()">↩ Devolver carro reserva</button>`:(S.resumo.reservaAtivo===false?`<div class="muted sm" style="margin-bottom:8px">🚗 Carro reserva indisponível no momento.</div>`:`<button class="btn sec" style="margin-bottom:8px" onclick="fecharSheet();formTrocarPlaca()">🚗 Carro reserva</button>`)):''}
@@ -717,6 +732,61 @@ async function devolverReserva(){
     if(d&&d.erro){ toast(d.erro); return; }
     toast('Reserva devolvido. Você voltou para a sua placa.'); ultimoMsgs=''; S.msgs=null; await atualizar(true);
   }catch(e){ erroGenerico(e); }
+}
+
+// ---- treinamento: passo a passo curto. Abre sozinho no 1º acesso (antes da tela principal) e fica no menu "Como usar o app" ----
+let TR={i:0,primeira:false,ck:{},ass:'pagamento'};
+const treinoChave = () => 'mot_treino_'+((((S.resumo||{}).motorista)||{}).id||'');
+const treinoVisto = () => !!LS.get(treinoChave());
+function treinoPassos(){
+  const v=(S.resumo&&S.resumo.veiculo)||{}; const placa=esc(v.placa||'ABC1D23');
+  const icone=(document.querySelector('link[rel="apple-touch-icon"]')||{}).href||'';
+  const ck=(k,em,t)=>`<div class="tr_ck${TR.ck[k]?' on':''}" onclick="treinoCk('${k}')"><span class="bx">${TR.ck[k]?'✓':''}</span><span>${em} ${t}</span></div>`;
+  const ASS={pagamento:['Pagamento','Dúvida sobre valor, Pix ou comprovante.'],bloqueio:['Bloqueio','Pedir desbloqueio depois de pagar, contestar ou avisar roubo/furto.'],manutencao:['Manutenção','Combinar data da revisão, troca de óleo ou conserto.'],outros:['Outros','Qualquer outro assunto com a Carsz.']};
+  const P=[];
+  if(!emApp) P.push({t:'Coloque o app na tela inicial',
+    ill:()=>`<div style="text-align:center"><img src="${icone}" alt="" style="width:104px;height:104px;border-radius:24px;border:2px solid var(--line)"><div class="muted sm" style="margin-top:10px">Carsz Motorista</div></div>`,
+    x:ehIos?'No <b>Safari</b>, toque em <b>Compartilhar</b> (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>. Assim o app abre com um toque, como qualquer outro.':'No <b>Chrome</b>, toque nos <b>três pontinhos</b> e depois em <b>Instalar app</b> (ou "Adicionar à tela inicial"). Assim o app abre com um toque, como qualquer outro.'});
+  P.push({t:'Seu acesso',
+    ill:()=>`<div style="width:100%"><div class="tr_in"><small>Login</small>CPF</div><div class="tr_in"><small>Senha</small>placa do seu carro (ex.: ${placa})</div></div>`,
+    x:'Você entra com o seu <b>CPF</b> e a senha é a <b>placa do seu veículo</b>, sem traço. O app lembra de você neste celular. Pegou o carro reserva ou trocou de carro? A senha continua sendo a placa principal.'});
+  P.push({t:'Início e Avisos',
+    ill:()=>`<div style="width:100%"><div class="card" style="margin-bottom:10px"><div class="row"><span class="plate">${placa}</span><div><b>${esc(v.modelo||'Seu veículo')}</b><div class="muted sm">${esc(v.ano||'')}</div></div></div></div><div class="alert ok"><b class="t" style="margin:0">✅ Tudo certo com o seu veículo</b></div></div>`,
+    x:'Na tela inicial você vê o seu veículo e se está tudo certo. Em <b>Avisos</b> ficam os recados da Carsz. A bolinha vermelha mostra o que é novo.'});
+  P.push({t:'Todo dia: água, óleo e luzes',
+    ill:()=>`<div style="width:100%">${ck('agua','💧','Água verificada')}${ck('oleo','🛢','Óleo verificado')}${ck('luz','💡','Lanternas e faróis')}<div class="muted sm" style="text-align:center;margin-top:8px">${(TR.ck.agua&&TR.ck.oleo&&TR.ck.luz)?'👏 Pronto! No app de verdade o horário fica registrado.':'👆 Toque nos itens para treinar'}</div></div>`,
+    x:'Todo dia o app pede para você confirmar que <b>verificou água, óleo, lanternas e faróis</b>. Toque em "Já verifiquei" em cada item. Fica registrado o dia e o horário, e cada item rende pontos.'});
+  P.push({t:'Segunda-feira: fotos e km',
+    ill:()=>`<div style="width:100%"><div class="card"><b>📷 Painel de instrumentos</b><div class="tr_in" style="margin-top:8px"><small>Km que aparece no painel</small>45.320</div></div><div class="card"><b>📷 Etiqueta da troca de óleo</b><div class="muted sm">Foto bem de perto, com o texto legível.</div></div></div>`,
+    x:'Toda <b>segunda-feira</b> o app pede duas fotos: do <b>painel</b> (digite o km igual ao que aparece nele) e da <b>etiqueta de troca de óleo</b>. Foto escura ou cortada pode ser recusada pela equipe. É só enviar de novo.'});
+  P.push({t:'Cobrança e pagamento',
+    ill:()=>`<div style="width:100%"><div class="alert warn"><b class="t">⚠ Bloqueio programado</b><div class="txt">Regularize ou informe quando vai pagar.</div><div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><span class="btn" style="width:auto">🤝 Prometer pagamento</span><span class="btn sec" style="width:auto">🧾 Enviar comprovante</span></div></div></div>`,
+    x:'Na aba <b>Cobrança</b> você acompanha a sua situação. Pagou? Envie o <b>comprovante</b>. Vai atrasar? Use <b>Prometer pagamento</b> e diga a data. A Carsz responde pelo app. Os botões de promessa aparecem quando existe aviso de bloqueio.'});
+  P.push({t:'Chat e pedidos',
+    ill:()=>`<div style="width:100%"><div class="chips" style="justify-content:center">${Object.entries(ASS).map(([k,[n]])=>`<span class="chip${TR.ass===k?' on':''}" onclick="treinoAss('${k}')" style="cursor:pointer">${n}</span>`).join('')}</div><div class="card" style="text-align:center"><b>${ASS[TR.ass][0]}</b><div class="muted sm" style="margin-top:4px">${ASS[TR.ass][1]}</div></div></div>`,
+    x:'No <b>Chat</b> você fala com a Carsz e escolhe o <b>assunto</b> da conversa. Na aba <b>Manutenção</b> você pede uma data para revisão ou conserto. Se o carro for <b>roubado ou furtado</b>, ligue <b>190</b> e depois avise pelo assunto Bloqueio.'});
+  P.push({t:'Pontos e ranking',
+    ill:()=>`<div style="width:100%"><div class="card"><div class="row"><b>🏆 Melhores motoristas</b></div><div class="row" style="padding:6px 0"><span>🥇</span><b>ABC1D23</b><span class="sp"></span><b>+21,3</b></div><div class="row" style="padding:6px 0"><span>🥈</span><b>EFG4H56</b><span class="sp"></span><b>+12,1</b></div><div class="row" style="padding:6px 8px;border-radius:8px;background:var(--brand);color:var(--brand-ink)"><span>6º</span><b>${placa}</b><span class="sp"></span><b>você</b></div></div></div>`,
+    x:'Você ganha pontos fazendo as verificações e mandando as fotos em dia. Atraso no pagamento e promessa de pagamento tiram pontos. O ranking começa do zero todo dia 1º do mês. <b>Pronto, é só usar!</b>'});
+  return P;
+}
+function treinoAbrir(primeira){ if(S.sheetAberto) fecharSheet(); TR={i:0,primeira:!!primeira,ck:{},ass:'pagamento'}; treinoRender(); document.body.style.overflow='hidden'; }
+function treinoFechar(){
+  if(!S.mestre) LS.set(treinoChave(),'1');
+  const e=document.getElementById('treino'); if(e) e.remove();
+  document.body.style.overflow=(S.resumo&&pendencias(S.resumo).length)?'hidden':'';
+}
+function treinoIr(d){ const n=treinoPassos().length; TR.i=Math.max(0,Math.min(n-1,TR.i+d)); treinoRender(); }
+function treinoCk(k){ TR.ck[k]=!TR.ck[k]; treinoRender(); }
+function treinoAss(k){ TR.ass=k; treinoRender(); }
+function treinoRender(){
+  const P=treinoPassos(), p=P[TR.i], ult=TR.i===P.length-1;
+  let el=document.getElementById('treino'); if(!el){ el=document.createElement('div'); el.id='treino'; el.className='tr'; document.body.appendChild(el); }
+  el.innerHTML=`<div class="in"><div class="top"><button class="lnk" onclick="treinoFechar()">${ult?'':'Pular'}</button><span>${TR.i+1} / ${P.length}</span></div>
+    <div class="ill">${p.ill()}</div>
+    <h2>${p.t}</h2><div class="muted txt">${p.x}</div>
+    <div class="dots">${P.map((_,i)=>`<i class="${i===TR.i?'on':''}"></i>`).join('')}</div>
+    <div class="nav">${TR.i>0?`<button class="btn sec" id="tr_volta" onclick="treinoIr(-1)">Voltar</button>`:''}${ult?`<button class="btn" id="tr_fim" onclick="treinoFechar()">Entendi, ir para o app</button>`:`<button class="btn" id="tr_prox" onclick="treinoIr(1)">Próximo</button>`}</div></div>`;
 }
 
 // ---- boot ----
