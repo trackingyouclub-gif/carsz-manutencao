@@ -599,6 +599,9 @@ const NAV_ADM=[['painel','Painel'],['frota','Frota'],['mot','Motoristas'],['os',
 const NAV_ICO={painel:'📊',frota:'🚗',mot:'👥',mmot:'👥',os:'🛠',sin:'💥',pecas:'🔩',rel:'📈',oficina:'👤',oficinas:'🏢',cfg:'⚙',mnova:'➕',mabertas:'📋',magenda:'📅',mconc:'✅',mhist:'🕘',matencao:'⚠',mfat:'💰',mrel:'📈'};
 const NAV_GRP={painel:'Operação',frota:'Operação',mot:'Operação',os:'Operação',sin:'Operação',pecas:'Operação',rel:'Gestão',oficina:'Administração',oficinas:'Administração',cfg:'Administração'};
 const nl=(k,l)=>`<span class="ic">${NAV_ICO[k]||''}</span>${l}`;
+// cadastrar motorista: master e gestão da Matriz · excluir motorista/placa: só o master (vale o acesso REAL, mesmo no "ver como"); o banco também recusa para os demais
+const motPodeCriar=()=>{ const p=(S.real&&S.real.perfil)||S.perfil||{}; return p.papel==='superadmin'||(p.papel==='gestor'&&(!p.oficinaId||p.oficinaId==='matriz')); };
+const motPodeExcluir=()=>souMaster();
 const souMaster=()=>!!(((S.real&&S.real.perfil)||S.perfil||{}).papel==='superadmin');
 // aba "Oficinas" (rede de oficinas parceiras) só aparece para o administrador geral
 function navAdm(){ if(!ehSuperadmin()) return NAV_ADM; const n=[...NAV_ADM]; n.splice(n.findIndex(x=>x[0]==='cfg'),0,['oficinas','Oficinas']); return n; }
@@ -3248,7 +3251,7 @@ const motEmUso = (m,exceto) => S.mots.find(y=>y.id!==exceto&&y.ativo!==false&&(y
 const motVagas = () => S.veic.filter(v=>isFrota(v)&&v.placa&&!motEmUso(v,'')).sort((a,b)=>(a.placa||'').localeCompare(b.placa||''));
 function motVeiculoHtml(x){
   const r=x.reserva&&x.reserva.veiculoId?x.reserva:null, hist=(x.reservaHist||[]).slice(0,5);
-  return `<div class="step" id="sec_veic"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🚗 Veículo</h3><span class="sp"></span>${x.ativo===false?'':(r?`<button class="pri" onclick="motReservaDevolver('${x.id}')">↩ Devolver reserva</button><button class="sec" onclick="motReservaForm('${x.id}')">Trocar o reserva</button>`:`<button class="sec" onclick="motReservaForm('${x.id}')">🚗 Colocar em carro reserva</button>`)}</div>
+  return `<div class="step" id="sec_veic"><div class="row" style="flex-wrap:wrap"><h3 style="margin:0">🚗 Veículo</h3><span class="sp"></span>${x.ativo===false?'':(r?`<button class="pri" onclick="motReservaDevolver('${x.id}')">↩ Devolver reserva</button><button class="sec" onclick="motReservaForm('${x.id}')">Trocar o reserva</button>`:`<button class="sec" onclick="motReservaForm('${x.id}')">🚗 Colocar em carro reserva</button>`)}${(motPodeExcluir()&&x.veiculoId)?`<button class="ghost danger" onclick="motApagarPlaca('${x.id}')" title="Exclui a placa da frota (só o master)">🗑 Excluir placa</button>`:''}</div>
     <div style="margin:8px 0"><span class="muted">Placa principal (senha do app, pontos e ranking):</span> <span class="plate">${esc(x.placa||'—')}</span></div>
     ${r?`<div class="alert warn" style="margin:6px 0"><b>Em carro reserva:</b> <span class="plate">${esc(r.placa||'')}</span> ${esc(r.modelo||'')} <span class="muted">desde ${motHora(r.desde)}${r.por?' · por '+esc(r.por):''}</span><div class="muted">A placa principal continua pontuando e fica guardada para ele.</div></div>`:'<div class="muted">Está com o veículo principal.</div>'}
     ${hist.length?`<div class="muted" style="margin-top:6px">Reservas anteriores: ${hist.map(h=>`${esc(h.placa||'')} (${motHora(h.desde)} → ${motHora(h.ate)})`).join(' · ')}</div>`:''}
@@ -3439,7 +3442,7 @@ function motoristasView(m){
   const lista=S.mots.filter(x=>!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q)).filter(x=>!filtroAtivo||filtroAtivo[3](x)).map(x=>({x,pend:motPrioridade(x)}))
     .sort((a,b)=>b.pend-a.pend||(a.x.nome||'').localeCompare(b.x.nome||''));
   const nBloq=S.mots.filter(x=>(x.bloqueio||{}).status==='bloqueado').length, nProg=S.mots.filter(x=>(x.bloqueio||{}).status==='programado').length;
-  m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="sec" id="mot_reserva_btn" onclick="motReservaToggle()" title="Liga ou desliga o botão de carro reserva no app dos motoristas">${motReservaAtivo()?'🚗 Reserva: ligado':'🚗 Reserva: desligado'}</button>${ehSuperadmin()?'<button class="sec" onclick="motAtendModal()">👥 Atendentes</button>':''}<button class="pri" onclick="motForm('')">+ Novo motorista</button></div>
+  m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="sec" id="mot_reserva_btn" onclick="motReservaToggle()" title="Liga ou desliga o botão de carro reserva no app dos motoristas">${motReservaAtivo()?'🚗 Reserva: ligado':'🚗 Reserva: desligado'}</button>${ehSuperadmin()?'<button class="sec" onclick="motAtendModal()">👥 Atendentes</button>':''}${motPodeCriar()?`<button class="pri" onclick="motForm('')">+ Novo motorista</button>`:''}</div>
     ${S.motOk?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>As tabelas do app do motorista ainda não existem no banco.</b> Rode o arquivo <b>motoristas.sql</b> (versão mais recente) no SQL Editor do Supabase e recarregue esta página.</div>`}
     <div class="muted" style="font-weight:700;margin:4px 2px">🔥 Prioridade — chat, pagamento e bloqueio</div>
     <div class="cards motcards">${MOT_FILTROS.filter(f=>f[4]===1).map(([k,rot,cls,fn])=>{ const n=S.mots.filter(fn).length; return `<button type="button" class="card cardbtn ${cls}${S.motFiltro===k?' on':''}${n?'':' zero'}" aria-pressed="${S.motFiltro===k}" onclick="motFiltrar('${k}')"><div class="v">${n}</div><div class="l">${rot}</div></button>`; }).join('')}</div>
@@ -3489,7 +3492,7 @@ function motDetalhe(m){
   if(bl.status==='bloqueado') chips.push(['bad','🔒 veículo bloqueado','sec_bloq',0]); else if(bl.status==='programado') chips.push(['warn','⏳ bloqueio programado','sec_bloq',0]);
   if(motFotoStatus(x)==='atrasada') chips.push(['bad','📷 fotos atrasadas','sec_fotos',0]); else if(motFotoStatus(x)==='refazer') chips.push(['warn','✖ foto recusada: aguardando reenvio','sec_fotos',0]);
   const precisa=`<div class="step${pend.total?' hot':''}" id="mot_precisa"><div style="font-weight:700;margin-bottom:6px">${pend.total?'🔥 Precisa de ação agora':'✅ Nada pendente'}</div>${chips.map(([c,t,id,b])=>`<button type="button" class="tag ${c}" style="cursor:pointer;border:0;font-size:13px;padding:5px 11px;margin:2px 4px 2px 0" onclick="motIr('${id}')">${b?'● ':''}${t}</button>`).join('')}${pend.total?`<div class="muted" style="margin-top:6px">Os itens com ● precisam ser resolvidos ou respondidos antes de você sair desta tela.</div>`:(chips.length?'':'<div class="muted">Pode sair.</div>')}</div>`;
-  m.innerHTML=`<div class="bar"><button class="ghost" onclick="if(motPodeSair()){S.motAtual=null;render()}">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}${souMaster()?`<button class="sec" onclick="motAbrirApp('${x.id}')" title="Abre o app deste motorista só para visualizar, sem a senha dele">👁 Ver app do motorista</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
+  m.innerHTML=`<div class="bar"><button class="ghost" onclick="if(motPodeSair()){S.motAtual=null;render()}">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}${souMaster()?`<button class="sec" onclick="motAbrirApp('${x.id}')" title="Abre o app deste motorista só para visualizar, sem a senha dele">👁 Ver app do motorista</button>`:''}${motPodeExcluir()?`<button class="ghost danger" onclick="motApagar('${x.id}')" title="Exclui o motorista (só o master)">🗑 Excluir motorista</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
     <div class="step"><div class="row" style="flex-wrap:wrap"><span class="plate lg">${esc(x.placa||'—')}</span><span class="muted">CPF ${esc(mascaraCpf(x.cpf||''))} · ${esc(x.telefone||'sem telefone')}</span><span class="sp"></span><span class="tag ${b[1]}">${b[0]}</span>${x.ativo===false?'<span class="tag neu">acesso desativado</span>':''}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span></div></div>
     ${precisa}
     <div class="step${pend.msg?' hot':''}" id="sec_chat"><h3>💬 Conversa${pend.msg?` <span class="tag warn">${pend.msg} sem resposta</span>`:''}</h3>
@@ -3665,6 +3668,7 @@ async function motSalvarAviso(motId){
 async function motApagarAviso(id){ if(!confirm('Apagar este aviso?')) return; try{ await S.db.doc('mot_avisos/'+id).delete(); motRecarregar(); }catch(e){ erroSalvar('apagar o aviso',e); } }
 
 function motForm(id){
+  if(!id&&!motPodeCriar()){ toast('Só o administrador cadastra motorista novo.'); return; }
   const x=id?(S.mots.find(m=>m.id===id)||{}):{ativo:true};
   const veics=S.veic.filter(v=>isFrota(v)).sort((a,b)=>(a.placa||'').localeCompare(b.placa||''));
   abrir(`<h3>${id?'Editar motorista':'Novo motorista'}</h3><div class="grid">
@@ -3674,9 +3678,10 @@ function motForm(id){
     <div class="full"><label>Veículo (placa principal)</label><select id="mf_veic"><option value="">— escolha o veículo —</option>${veics.map(v=>`<option value="${v.id}" ${x.veiculoId===v.id?'selected':''}>${esc(v.placa)} · ${esc(v.modelo||'')}</option>`).join('')}</select></div>
     <div class="full hint">🔑 A <b>senha do app é sempre a placa principal</b> do veículo (sem traço, ex.: RZH5G46). O login é o CPF. Se trocar a placa principal aqui, a senha muda junto.</div>
     <div class="full"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="mf_ativo" ${x.ativo!==false?'checked':''} style="width:auto"> Acesso ativo</label></div></div>
-    <div class="act">${id?`<button class="ghost danger" onclick="motApagar('${id}')">Excluir</button><span class="sp"></span>`:''}<button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motSalvar('${id}')">Salvar</button></div>`);
+    <div class="act">${id&&motPodeExcluir()?`<button class="ghost danger" onclick="motApagar('${id}')">Excluir</button><span class="sp"></span>`:''}<button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motSalvar('${id}')">Salvar</button></div>`);
 }
 async function motSalvar(id){
+  if(!id&&!motPodeCriar()){ toast('Só o administrador cadastra motorista novo.'); return; }
   const nome=val('mf_nome'), cpf=val('mf_cpf').replace(/\D/g,''), tel=val('mf_tel').replace(/\D/g,''), veicId=val('mf_veic'), ativo=document.getElementById('mf_ativo').checked;
   if(!nome){ toast('Informe o nome'); return; }
   if(!cpfValido(cpf)){ toast('CPF inválido'); return; }
@@ -3705,9 +3710,22 @@ function motAcessoWhats(nome,tel,cpf,placa){
     <div class="act">${wa?`<button class="pri" onclick="window.open('https://wa.me/${wa}?text=${encodeURIComponent(msg)}','_blank')">💬 Enviar por WhatsApp</button>`:'<span class="hint">Sem WhatsApp cadastrado.</span>'}<button class="sec" onclick="fechar()">Fechar</button></div>`);
 }
 async function motApagar(id){
+  if(!motPodeExcluir()){ toast('Só o administrador geral (master) exclui motorista.'); return; }
   const x=S.mots.find(m=>m.id===id); if(!x) return;
   if(!confirm(`Excluir o motorista ${x.nome}? O acesso dele ao app é removido (as mensagens antigas ficam no banco).`)) return;
-  try{ await S.db.doc('motoristas/'+id).delete(); S.motAtual=null; fechar(); toast('Motorista excluído'); motRecarregar(); }catch(e){ erroSalvar('excluir o motorista',e); }
+  try{ await S.db.doc('motoristas/'+id).delete(); S.motAtual=null; S.mots=S.mots.filter(m=>m.id!==id); fechar(); toast('Motorista excluído'); motRecarregar(); render(); }catch(e){ erroSalvar('excluir o motorista',e); }
+}
+// excluir a PLACA (veículo da frota) a partir da ficha do motorista: só o master; as OS e o histórico ficam
+async function motApagarPlaca(id){
+  if(!motPodeExcluir()){ toast('Só o administrador geral (master) exclui placa.'); return; }
+  const x=S.mots.find(m=>m.id===id); const v=x&&S.veic.find(y=>y.id===x.veiculoId); if(!x||!v){ toast('Este motorista não tem placa principal.'); return; }
+  const outro=motEmUso(v,x.id); if(outro){ toast('A placa '+v.placa+' também está com '+outro.nome+(outro.veiculoId===v.id?'':' (carro reserva)')+'. Troque a placa dele antes.'); return; }
+  if(!confirm(`Excluir a placa ${v.placa} (${v.modelo||''}) da frota?\n\n${x.nome} fica sem veículo e sem acesso ao app até você escolher outra placa. As OS e o histórico da placa ficam guardados. Isso não pode ser desfeito.`)) return;
+  try{
+    await S.db.doc('motoristas/'+id).update({veiculoId:'',placa:'',reserva:null});
+    await S.db.doc('veiculos/'+v.id).delete();
+    S.veic=S.veic.filter(y=>y.id!==v.id); toast('Placa '+v.placa+' excluída'); motRecarregar(); render();
+  }catch(e){ erroSalvar('excluir a placa',e); }
 }
 
 // ============ boot ============
