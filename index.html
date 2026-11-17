@@ -2975,6 +2975,10 @@ const motDiaHoraSP = iso => { try{ const d=new Date(iso); return d.toLocaleDateS
 const motVerifHoje = id => { const h=motHojeSP(), o={}; for(const v of S.motVerif) if(v.motoristaId===id&&v.dia===h) o[v.tipo]=v.em; return o; };
 const motDispensado = x => x.ativo===false||!x.veiculoId||(x.bloqueio||{}).status==='bloqueado'||S.os.some(o=>o.veiculoId===x.veiculoId&&o.status==='Aberta');
 function motFotoSemana(id,semana){ const o={}; for(const f of S.motFotos) if(f.motoristaId===id&&f.semana===semana) o[f.tipo]=f; return o; }
+// foto recebida que a equipe ainda não conferiu (a conferência vale só para aquela foto: se o motorista reenviar, volta a ficar pendente)
+const motFotoExpirada = f => !!(f.expirada||(f.expiraEm&&new Date(f.expiraEm)<new Date()));
+const motFotoPend = f => !f.recusada&&!motFotoExpirada(f)&&f.conferidaFotoId!==f.fotoId;
+const motFotosPend = id => S.motFotos.filter(f=>f.motoristaId===id&&motFotoPend(f));
 // ok | pendente (é segunda e falta) | atrasada (passou a segunda e falta) | opcional (cadastrado depois da segunda) | dispensado
 function motFotoStatus(x){
   if(motDispensado(x)) return 'dispensado';
@@ -3097,6 +3101,17 @@ async function motWaAbrir(motId,avisoId){
   if(avisoId){ try{ await S.db.doc('mot_avisos/'+avisoId).update({waPendente:false,waEnviadoEm:agoraIso()}); motRecarregar(); }catch(e){ console.warn(e); } }
 }
 function motWaDoAviso(avisoId){ const a=S.motAvisos.find(y=>y.id===avisoId); if(!a) return; const x=S.mots.find(y=>y.id===a.motoristaId); motWaPrompt(a.motoristaId,avisoId,/ALERTA DE BLOQUEIO|FOTO RECUSADA/.test(a.texto||'')?motMsgWaLivre(a.texto):motMsgWa(x,a.titulo,a.texto,a.tipo!=='info'),a.titulo); }
+// ---- conferir foto (a equipe viu e está tudo certo) ----
+async function motConferirFoto(fid){
+  const f=S.motFotos.find(y=>y.id===fid); if(!f) return;
+  try{ const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||''}; await S.db.doc('mot_fotos/'+fid).update(d); Object.assign(f,d); toast('Foto conferida'); render(); motRecarregar(); }
+  catch(e){ erroSalvar('conferir a foto',e); }
+}
+async function motConferirTodas(motId){
+  const lista=motFotosPend(motId); if(!lista.length) return;
+  try{ for(const f of lista){ const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||''}; await S.db.doc('mot_fotos/'+f.id).update(d); Object.assign(f,d); } toast(lista.length>1?'Fotos conferidas':'Foto conferida'); render(); motRecarregar(); }
+  catch(e){ erroSalvar('conferir as fotos',e); }
+}
 // ---- recusar foto do checklist semanal (ilegível / informação errada) e avisar o motorista ----
 const MOT_RECUSA_MOTIVOS={
   painel:['Foto ilegível (borrada, escura ou cortada)','Informação errada (o km do painel não confere)','Não aparece o painel inteiro / o hodômetro','Outro motivo'],
@@ -3381,15 +3396,16 @@ function motVerifHtml(x){
   const linhasFoto=semanas.map(w=>{ const fw=motFotoSemana(x.id,w); const cel=(t,rot2)=>{ const r=fw[t]; if(!r) return `<span class="muted">— não enviada</span>`; if(r.expirada||(r.expiraEm&&new Date(r.expiraEm)<new Date())) return `<span class="muted">enviada ${motDiaHoraSP(r.em)} · foto expirada</span>`;
       const dias=Math.max(0,Math.ceil((new Date(r.expiraEm)-new Date())/864e5));
       const recusar=(w===sem&&!r.recusada)?` <button class="ghost danger" style="padding:2px 10px;font-size:12px" onclick="motRecusarFoto('${r.id}')">✖ Recusar</button>`:'';
-      const marca=r.recusada?` <span class="tag bad">recusada: ${esc(r.recusadaMotivo||'')}</span> <span class="muted">(aguardando nova foto)</span>`:(r.reenviada?' <span class="tag ok">reenviada</span>':'');
+      const confBtn=motFotoPend(r)?` <button class="pri" style="padding:2px 10px;font-size:12px" onclick="motConferirFoto('${r.id}')">✔ Conferir</button>`:(r.conferidaFotoId===r.fotoId&&!r.recusada?` <span class="tag ok">✔ conferida${r.conferidaPor?' por '+esc(r.conferidaPor):''}</span>`:'');
+      const marca=confBtn+(r.recusada?` <span class="tag bad">recusada: ${esc(r.recusadaMotivo||'')}</span> <span class="muted">(aguardando nova foto)</span>`:(r.reenviada?' <span class="tag ok">reenviada</span>':''));
       return `<button class="sec" style="padding:2px 10px;font-size:12px" onclick="motVerFoto('${r.fotoId}','${rot2} — ${fmtD(w)}')">🔍 ver foto</button> <span class="muted">· ${motDiaHoraSP(r.em)}${r.tardia?' · <b style="color:var(--bad)">fora do prazo</b>':''} · expira em ${dias}d</span>${marca}${recusar}`; };
     return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>Semana de ${fmtD(w)}</b><div>📷 Painel: ${cel('painel','Painel')}</div><div>📷 Etiqueta: ${cel('etiqueta','Etiqueta de óleo')}</div></div></div>`; }).join('');
   // últimos 14 dias de água/óleo
   const porDia={}; for(const v of S.motVerif) if(v.motoristaId===x.id){ (porDia[v.dia]=porDia[v.dia]||{})[v.tipo]=v.em; }
   const dias=Object.keys(porDia).sort().reverse().slice(0,14);
   const hist=dias.length?`<div class="tbl"><table style="min-width:0"><tr><th>Dia</th><th>💧 Água</th><th>🛢 Óleo</th><th>🔴 Lanternas</th><th>💡 Faróis</th></tr>${dias.map(d=>`<tr><td>${fmtD(d)}</td><td>${porDia[d].agua?motHoraSP(porDia[d].agua):'—'}</td><td>${porDia[d].oleo?motHoraSP(porDia[d].oleo):'—'}</td><td>${porDia[d].lanternas?motHoraSP(porDia[d].lanternas):'—'}</td><td>${porDia[d].farois?motHoraSP(porDia[d].farois):'—'}</td></tr>`).join('')}</table></div>`:'<div class="muted">Nenhuma verificação registrada ainda.</div>';
-  return `<details class="step" id="sec_fotos" ${motOp('fotos',st==='atrasada'||st==='refazer')} ontoggle="S.motOpen.fotos=this.open"><summary style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><b style="font-size:16px">🧰 Verificações e fotos</b>${tg(hj.agua,'💧 Água hoje',hj.agua)}${tg(hj.oleo,'🛢 Óleo hoje',hj.oleo)}${tg(hj.lanternas,'🔴 Lanternas',hj.lanternas)}${tg(hj.farois,'💡 Faróis',hj.farois)}<span class="tag ${rot[1]}">${rot[0]}</span><span class="muted">▸</span></summary>
-    <div class="row" style="margin:8px 0"><span class="sp"></span>${st==='pendente'||st==='atrasada'||st==='refazer'?`<button class="${st==='atrasada'?'pri':'sec'}" style="${st==='atrasada'?'background:var(--bad,#b91c1c);border-color:var(--bad,#b91c1c)':''}" onclick="motAlertaBloqueio('${x.id}')">⚡ Alerta de bloqueio (fotos)</button>`:''}<button class="sec" onclick="motCobrarVerif('${x.id}')">💬 Cobrar por WhatsApp</button></div>
+  return `<details class="step" id="sec_fotos" ${motOp('fotos',st==='atrasada'||st==='refazer'||motFotosPend(x.id).length>0)} ontoggle="S.motOpen.fotos=this.open"><summary style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><b style="font-size:16px">🧰 Verificações e fotos</b>${tg(hj.agua,'💧 Água hoje',hj.agua)}${tg(hj.oleo,'🛢 Óleo hoje',hj.oleo)}${tg(hj.lanternas,'🔴 Lanternas',hj.lanternas)}${tg(hj.farois,'💡 Faróis',hj.farois)}<span class="tag ${rot[1]}">${rot[0]}</span><span class="muted">▸</span></summary>
+    <div class="row" style="margin:8px 0"><span class="sp"></span>${motFotosPend(x.id).length?`<button class="pri" onclick="motConferirTodas('${x.id}')">✔ Conferir ${motFotosPend(x.id).length>1?'as '+motFotosPend(x.id).length+' fotos':'a foto'}</button>`:''}${st==='pendente'||st==='atrasada'||st==='refazer'?`<button class="${st==='atrasada'?'pri':'sec'}" style="${st==='atrasada'?'background:var(--bad,#b91c1c);border-color:var(--bad,#b91c1c)':''}" onclick="motAlertaBloqueio('${x.id}')">⚡ Alerta de bloqueio (fotos)</button>`:''}<button class="sec" onclick="motCobrarVerif('${x.id}')">💬 Cobrar por WhatsApp</button></div>
     ${st==='atrasada'||st==='pendente'||st==='refazer'?`<div class="hint" style="margin-bottom:8px">O app do motorista fica travado até ele confirmar. Se as fotos não vierem, use <button class="sec" style="padding:2px 10px;font-size:12px" onclick="motBloqueioPorFotos('${x.id}')">programar bloqueio por falta de fotos</button> (só sinaliza no app; o bloqueio real é no rastreador).</div>`:''}
     <b>Fotos semanais</b> <span class="muted">(ficam guardadas por 30 dias)</span>${linhasFoto}
     <div style="margin-top:10px"><b>Últimos dias</b></div>${hist}</details>`;
@@ -3418,6 +3434,7 @@ const MOT_FILTROS=[
   ['comp','🧾 Comprovantes p/ conferir','warn',x=>motCompPend(x.id)>0,1],
   ['bloq','🔒 Bloqueados','bad',x=>(x.bloqueio||{}).status==='bloqueado',1],
   ['prog','⏳ Bloqueio programado','warn',x=>(x.bloqueio||{}).status==='programado',1],
+  ['fotoconf','📷 Fotos para conferir','warn',x=>x.ativo!==false&&motFotosPend(x.id).length>0,1],
   // acompanhamento
   ['ped','🛠 Pedidos de manutenção','',x=>motAgPend(x.id)>0,2],
   ['oleo','🛢 Troca de óleo (faltam ≤ 500 km)','warn',x=>{ const i=motOleoInfo(x); return !!(i&&i.base&&i.faltam<=500&&i.faltam>0); },2],
@@ -3430,7 +3447,7 @@ const MOT_FILTROS=[
   ['pedagio','🛣 Pedágio sem conferir 10+ dias','warn',x=>motPedagioAtraso(x),2],
   ['wa','📲 WhatsApp a enviar','warn',x=>motWaPend(x.id)>0,2]];
 // importância de cada motorista na lista: chat > pagamento (promessa/comprovante) > bloqueio > resto
-const motPrioridade = x => (motBloqPend(x.id).some(t=>t.pedidoTipo==='roubo')?1000000:motBloqPend(x.id).length?200000:0)+(motNaoLidas(x.id)>0?100000:0)+((motPromPend(x.id)+motCompPend(x.id))>0?10000:0)+((x.bloqueio||{}).status==='bloqueado'?1000:(x.bloqueio||{}).status==='programado'?500:0)+(motAgPend(x.id)>0?100:0)+(motFotoStatus(x)==='atrasada'?10:0)+(motWaPend(x.id)>0?1:0);
+const motPrioridade = x => (motBloqPend(x.id).some(t=>t.pedidoTipo==='roubo')?1000000:motBloqPend(x.id).length?200000:0)+(motNaoLidas(x.id)>0?100000:0)+((motPromPend(x.id)+motCompPend(x.id))>0?10000:0)+((x.bloqueio||{}).status==='bloqueado'?1000:(x.bloqueio||{}).status==='programado'?500:0)+(motAgPend(x.id)>0?100:0)+(motFotosPend(x.id).length?5000:0)+(motFotoStatus(x)==='atrasada'?10:0)+(motWaPend(x.id)>0?1:0);
 function motFiltrar(k){
   S.motFiltro=(S.motFiltro===k)?'':k; S.motAtual=null; render();
   if(S.motFiltro){ const el=document.getElementById('mot_lista'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
@@ -3454,7 +3471,7 @@ function motoristasView(m){
     <div id="mot_lista"></div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${motOleoTag(x)}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div>${x.ativo===false?'':motBtnAcesso(x)}</div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${motFotosPend(x.id).length?`<span class="tag warn">📷 ${motFotosPend(x.id).length} p/ conferir</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${motOleoTag(x)}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div>${x.ativo===false?'':motBtnAcesso(x)}</div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 
@@ -3492,6 +3509,7 @@ function motDetalhe(m){
   if(pend.comp) chips.push(['warn','🧾 '+pl(pend.comp,'comprovante p/ conferir','comprovantes p/ conferir'),'sec_comp',1]);
   if(pend.ped) chips.push(['warn','🛠 '+pl(pend.ped,'pedido de manutenção','pedidos de manutenção'),'sec_ped',1]);
   if(bl.status==='bloqueado') chips.push(['bad','🔒 veículo bloqueado','sec_bloq',0]); else if(bl.status==='programado') chips.push(['warn','⏳ bloqueio programado','sec_bloq',0]);
+  if(motFotosPend(x.id).length) chips.push(['warn','📷 '+motFotosPend(x.id).length+' foto'+(motFotosPend(x.id).length>1?'s':'')+' para conferir','sec_fotos',0]);
   if(motFotoStatus(x)==='atrasada') chips.push(['bad','📷 fotos atrasadas','sec_fotos',0]); else if(motFotoStatus(x)==='refazer') chips.push(['warn','✖ foto recusada: aguardando reenvio','sec_fotos',0]);
   const precisa=`<div class="step${pend.total?' hot':''}" id="mot_precisa"><div style="font-weight:700;margin-bottom:6px">${pend.total?'🔥 Precisa de ação agora':'✅ Nada pendente'}</div>${chips.map(([c,t,id,b])=>`<button type="button" class="tag ${c}" style="cursor:pointer;border:0;font-size:13px;padding:5px 11px;margin:2px 4px 2px 0" onclick="motIr('${id}')">${b?'● ':''}${t}</button>`).join('')}${pend.total?`<div class="muted" style="margin-top:6px">Os itens com ● precisam ser resolvidos ou respondidos antes de você sair desta tela.</div>`:(chips.length?'':'<div class="muted">Pode sair.</div>')}</div>`;
   m.innerHTML=`<div class="bar"><button class="ghost" onclick="if(motPodeSair()){S.motAtual=null;render()}">← Motoristas</button><h2 style="margin:0">${esc(x.nome||'')}</h2><span class="sp"></span>${wa?`<button class="sec" onclick="window.open('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:''}${souMaster()?`<button class="sec" onclick="motAbrirApp('${x.id}')" title="Abre o app deste motorista só para visualizar, sem a senha dele">👁 Ver app do motorista</button>`:''}${motPodeExcluir()?`<button class="ghost danger" onclick="motApagar('${x.id}')" title="Exclui o motorista (só o master)">🗑 Excluir motorista</button>`:''}<button class="sec" onclick="motForm('${x.id}')">✎ Editar</button></div>
