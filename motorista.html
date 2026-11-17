@@ -73,8 +73,8 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);border-co
 .empty{text-align:center;color:var(--muted);padding:28px 10px}
 /* chat */
 .chat{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
-.msg{max-width:85%;padding:9px 12px;border-radius:16px;font-size:15px;white-space:pre-wrap;word-wrap:break-word}
-.msg .h{font-size:11px;opacity:.75;margin-top:3px}
+.msg{max-width:85%;padding:9px 12px;border-radius:16px;font-size:14px;white-space:pre-wrap;word-wrap:break-word}
+.msg .h{font-size:12px;opacity:.75;margin-top:3px}
 .msg.eu{align-self:flex-end;background:var(--mine);color:var(--mine-ink);border-bottom-right-radius:4px}
 .msg.eq{align-self:flex-start;background:var(--theirs);border-bottom-left-radius:4px}
 .composer{position:sticky;bottom:calc(58px + env(safe-area-inset-bottom));background:var(--bg);padding:8px 0 0;display:flex;gap:8px;align-items:flex-end}
@@ -87,6 +87,23 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);border-co
 .login p.sub{text-align:center;color:var(--muted);margin:0 0 18px}
 .err{color:var(--bad);font-size:14px;min-height:20px;margin:8px 0 0}
 /* verificações obrigatórias */
+/* Início organizada: 4 tamanhos de fonte e cores com significado fixo (vermelho=urgente, amarelo=ação, verde=feito, cinza=info) */
+.t1{font-size:20px;font-weight:800;line-height:1.15}.t2{font-size:16px;font-weight:700}.t3{font-size:14px}.t4{font-size:12px;color:var(--muted)}
+.sec-t{font:800 11px/1 Inter,system-ui,sans-serif;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin:18px 2px 8px}
+.sec-t.red{color:#ff7b7b}
+.hero{border-radius:14px;padding:13px;margin-bottom:10px;border:1.5px solid}
+.hero.g{background:var(--ok-bg);border-color:var(--ok)}.hero.y{background:var(--warn-bg);border-color:var(--warn)}
+.c-ok{color:var(--ok)}.c-warn{color:var(--warn)}
+.bar{height:6px;background:var(--line);border-radius:9px;margin-top:9px}.bar i{display:block;height:6px;border-radius:9px;background:var(--ok)}.bar i.y{background:var(--warn)}
+.chips2{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.chip2{border-radius:99px;padding:4px 10px;font-size:12px;font-weight:700;background:var(--ok-bg);color:var(--ok)}.chip2.p{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn)}.chip2.r{background:var(--bad-bg);color:var(--bad)}
+.alert .txt{font-size:14px}
+#faixa_pedagio b.t{font-size:16px}
+.vcard{display:flex;align-items:center;gap:10px}
+.vcard .mod{font-size:12px;color:var(--muted);margin-top:4px;text-align:right;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:190px}
+.pts-row{display:flex;align-items:flex-end;gap:12px}
+details.mais>summary{cursor:pointer;font-weight:700;color:var(--brand);font-size:14px;margin-top:10px;list-style:none}
+details.mais>summary::-webkit-details-marker{display:none}
 /* cobrança em atraso: app todo vermelho + faixa piscando (some quando a equipe aceita promessa ou comprovante) */
 body.atraso{--bg:#1d0e11;--card:#2b1519;--line:#5a2830;--brand:#ff4d4f;--brand-ink:#fff;--head:#3a0d12;--soft:#3d1a1f;--muted:#d9aeb2;--mine:#ff4d4f;--mine-ink:#fff;--theirs:#3a1d22}
 body.atraso header h1::before{background:#fff}
@@ -349,16 +366,29 @@ async function enviarFoto(tipo,input){
 }
 function cartaoVerificacoes(r){
   const v=r.veiculo, ve=r.verificacoes||{}, f=r.fotos||{}; if(!v) return '';
-  const rc=f.recusadas||{}; const seg=new Date().getDay()===1; const linha=(ic,t,h,rec,pts)=>`<div class="row" style="margin:4px 0"><span>${ic} ${t}</span><span class="sp"></span>${rec?'<span class="tag bad">recusada — enviar de novo</span>':h?`<span class="tag ok">✓ ${hhmm(h)}${pts&&pts.startsWith('+0,')?' '+pts:''}</span>`:`<span class="tag warn">pendente</span>${pts?` <span class="tag neu">${pts}</span>`:''}`}</div>`;
-  let h=`<div class="card"><h3>📋 Para fazer hoje <span class="muted sm" style="font-weight:400">(ganhe pontos)</span></h3>${linha('💧','Água hoje',ve.agua,0,'+0,1')}${linha('🛢','Óleo hoje',ve.oleo,0,'+0,1')}${linha('🔴','Lanternas hoje',ve.lanternas,0,'+0,05')}${linha('💡','Faróis hoje',ve.farois,0,'+0,05')}`;
-  h+=`<div class="muted sm" style="margin:10px 0 4px"><b>Fotos da semana</b> (toda segunda-feira)</div>${linha('📷','Painel de instrumentos',f.painel,rc.painel,'+10 (segunda)')}${linha('📷','Etiqueta de óleo',f.etiqueta,rc.etiqueta,'+10 (segunda)')}`;
-  h+=`<div class="muted sm" style="margin-top:6px">Água e óleo: +0,1 cada, lanternas e faróis: +0,05 cada, por dia. Fotos: +10 cada, só se enviadas na segunda-feira.</div>`;
-  if(f.status==='opcional'&&(!f.painel||!f.etiqueta)){
-    h+=`<div class="muted sm" style="margin:8px 0 0">Você foi cadastrado nesta semana: as fotos passam a ser obrigatórias a partir da próxima segunda. Pode enviar já:</div>`;
-    if(!f.painel) h+=kmBox('km_painel2',r)+`<label class="btn sec" id="fb_painel" style="margin-top:8px">📷 Foto do painel<input type="file" accept="image/*" capture="environment" data-foto="painel" onclick="return kmOk()" onchange="enviarFoto('painel',this)" style="display:none"></label>`;
-    if(!f.etiqueta) h+=`<label class="btn sec" id="fb_etiqueta" style="margin-top:8px">📷 Foto da etiqueta de óleo<input type="file" accept="image/*" capture="environment" data-foto="etiqueta" onchange="enviarFoto('etiqueta',this)" style="display:none"></label>`;
+  const rc=f.recusadas||{};
+  const itens=[['💧','Água',ve.agua,0.1],['🛢','Óleo',ve.oleo,0.1],['🔴','Lanternas',ve.lanternas,0.05],['💡','Faróis',ve.farois,0.05]];
+  const feitos=itens.filter(x=>x[2]).length, ok=feitos===4;
+  const pts=itens.filter(x=>x[2]).reduce((t,x)=>t+x[3],0); const ult=itens.map(x=>x[2]).filter(Boolean).sort().pop();
+  const fotos=[['painel','Painel de instrumentos'],['etiqueta','Etiqueta de óleo']];
+  const fotosOk=fotos.every(([k])=>f[k]), temRec=fotos.some(([k])=>rc[k]);
+  let h=`<div class="hero ${ok?'g':'y'}" id="ver_hoje"><div class="row"><div class="t2">${ok?'✅':'📋'} Verificações de hoje</div><span class="sp"></span><b class="${ok?'c-ok':'c-warn'}">${feitos} / 4</b></div>
+    <div class="bar"><i class="${ok?'':'y'}" style="width:${feitos*25}%"></i></div>`;
+  if(ok) h+=`<div class="t4" style="margin-top:7px">Feitas às ${hhmm(ult)} · ${fmtPts(pts)} pontos hoje${fotosOk?' · 📷 fotos da semana enviadas':''}</div>`;
+  else h+=`<div class="chips2">${itens.map(x=>`<span class="chip2 ${x[2]?'':'p'}">${x[0]} ${x[1]}${x[2]?' ✓':''}</span>`).join('')}</div><div class="t4" style="margin-top:8px">Água e óleo: +0,1 cada · lanternas e faróis: +0,05 cada, por dia.</div>`;
+  h+='</div>';
+  if(!fotosOk||temRec){
+    const linha=([k,t])=>`<div class="row" style="margin:5px 0"><span class="t3">📷 ${t}</span><span class="sp"></span>${rc[k]?'<span class="chip2 r">recusada — enviar de novo</span>':f[k]?`<span class="chip2">✓ ${hhmm(f[k])}</span>`:'<span class="chip2 p">pendente · +10 na segunda</span>'}</div>`;
+    const falta=fotos.filter(([k])=>!f[k]).length;
+    h+=`<div class="hero y" id="fotos_semana"><div class="t2">📷 Fotos da semana</div><div class="t4" style="margin:2px 0 6px">${falta?`Faltam ${falta} foto${falta>1?'s':''} · cada uma enviada na segunda-feira rende +10 pontos`:'Há foto recusada: envie de novo'}</div>${fotos.map(linha).join('')}`;
+    if(f.status==='opcional'&&(!f.painel||!f.etiqueta)){
+      h+=`<div class="t4" style="margin:8px 0 0">Você foi cadastrado nesta semana: as fotos passam a ser obrigatórias a partir da próxima segunda. Pode enviar já:</div>`;
+      if(!f.painel) h+=kmBox('km_painel2',r)+`<label class="btn sec" id="fb_painel" style="margin-top:8px">📷 Foto do painel<input type="file" accept="image/*" capture="environment" data-foto="painel" onclick="return kmOk()" onchange="enviarFoto('painel',this)" style="display:none"></label>`;
+      if(!f.etiqueta) h+=`<label class="btn sec" id="fb_etiqueta" style="margin-top:8px">📷 Foto da etiqueta de óleo<input type="file" accept="image/*" capture="environment" data-foto="etiqueta" onchange="enviarFoto('etiqueta',this)" style="display:none"></label>`;
+    }
+    h+='</div>';
   }
-  return h+'</div>';
+  return h;
 }
 
 // ---- pontuação (negativa: quanto menos pontos, melhor) e líder do ranking ----
@@ -384,15 +414,17 @@ function cartaoPontos(r){
     ? `<div class="row" style="margin:3px 0"><span>🤝 Promessa de pagamento (${fmtD(p.data)})</span><span class="sp"></span><b>${fmtPts(p.pontos)}</b></div>`
     : `<div class="row" style="margin:3px 0"><span>⏰ Atraso de ${p.dias} dia${p.dias>1?'s':''} (${fmtD(p.data)}${p.aberto?' · em aberto':' → '+fmtD(p.fim)})</span><span class="sp"></span><b>${fmtPts(p.pontos)}</b></div>`;
   const teste=hojeStr()<PONTUACAO_OFICIAL;
-  return `<div class="card"><div class="row"><h3 style="margin:0">🏆 Sua pontuação</h3><span class="sp"></span><span class="muted sm">${mesRef(k)}</span></div>
-    ${teste?`<div class="alert info" id="faixa_teste" style="margin:10px 0 0"><b class="t" style="margin:0">🧪 Período de teste até ${fmtD(somaDiasData(PONTUACAO_OFICIAL,-1))}</b><div class="txt" style="margin:4px 0 0">A pontuação oficial começa em <b>${fmtD(PONTUACAO_OFICIAL)}</b>. Até lá, aproveite para se acostumar com o app: tudo zera no dia 1º.</div></div>`:''}
-    <div class="row" style="margin:10px 0 4px;align-items:flex-end"><div style="font-size:38px;font-weight:800;line-height:1;color:${eu.pontos<0?'var(--bad)':'var(--ok)'}">${fmtPts(eu.pontos)}</div><div class="muted" style="padding-bottom:4px">pontos<br>quanto maior, melhor</div><span class="sp"></span><div style="text-align:right"><div style="font-size:22px;font-weight:800">${eu.posicao}º</div><div class="muted sm">de ${k.total}</div></div></div>
-    <div class="muted sm" style="margin-top:6px">🟢 <b>${eu.semanas_limpas}</b> semana${eu.semanas_limpas===1?'':'s'} seguida${eu.semanas_limpas===1?'':'s'} sem atraso e sem usar a promessa de pagamento</div>
+  S.det=S.det||{};
+  return `<div class="card" id="card_pontos"><h3 style="margin:0">🏆 Sua pontuação</h3><div class="t4" style="margin-top:2px">${mesRef(k)}</div>
+    <div class="pts-row" style="margin:10px 0 2px"><div><div style="font-size:30px;font-weight:800;line-height:1;color:${eu.pontos<0?'var(--bad)':'var(--ok)'}">${fmtPts(eu.pontos)}</div><div class="t4" style="margin-top:3px">pontos · quanto maior, melhor</div></div><span class="sp"></span><div style="text-align:right"><div class="t1">${eu.posicao}º</div><div class="t4">de ${k.total}</div></div></div>
+    ${teste?`<div class="t4" id="faixa_teste" style="margin-top:8px">🧪 <b>Período de teste até ${fmtD(somaDiasData(PONTUACAO_OFICIAL,-1))}</b> · pontuação oficial a partir de ${fmtD(PONTUACAO_OFICIAL)} (tudo zera no dia 1º)</div>`:''}
+    <details class="mais" id="det_pts" ${S.det.det_pts?'open':''} ontoggle="S.det=S.det||{};S.det.det_pts=this.open"><summary>Ver ranking e detalhes ›</summary>
+    <div class="t4" style="margin-top:8px">🟢 <b>${eu.semanas_limpas}</b> semana${eu.semanas_limpas===1?'':'s'} seguida${eu.semanas_limpas===1?'':'s'} sem atraso e sem usar a promessa de pagamento</div>
     ${rankingTop(k,eu)}
     <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700;color:var(--brand)">Como funciona</summary>
       <div class="muted sm" style="margin-top:6px"><b>Você ganha:</b><br>💧 Verificar a água no dia: +0,1 · 🛢 verificar o óleo no dia: +0,1<br>🔴 Lanternas no dia: +0,05 · 💡 faróis no dia: +0,05<br>📷 Foto do painel enviada na segunda-feira: +10 · 📷 foto da etiqueta de óleo na segunda-feira: +10<br><b>Você perde:</b><br>Atraso de <b>1 dia</b>: −20 · <b>2 dias</b>: −50 · <b>3 dias ou mais</b>: −100 · cada <b>Prometer pagamento</b>: −10<br>Vale só o mês atual: no dia 1º o ranking zera e todos largam juntos. Fica no topo quem tem mais pontos; em empate, quem tem mais semanas seguidas sem atraso e sem promessa.</div></details>
     <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700;color:var(--brand)">O que gerou meus pontos</summary>
-      <div style="margin-top:6px">${gan.map(g=>`<div class="row" style="margin:3px 0"><span>${rotGanho(g)} (${g.qtd}×)</span><span class="sp"></span><b style="color:var(--ok)">${fmtPts(g.pontos)}</b></div>`).join('')}${pen.map(linha).join('')}${(gan.length||pen.length)?'':'<div class="muted sm">Nada até agora. Verifique água e óleo todo dia e envie as fotos na segunda! 👏</div>'}</div></details></div>`;
+      <div style="margin-top:6px">${gan.map(g=>`<div class="row" style="margin:3px 0"><span>${rotGanho(g)} (${g.qtd}×)</span><span class="sp"></span><b style="color:var(--ok)">${fmtPts(g.pontos)}</b></div>`).join('')}${pen.map(linha).join('')}${(gan.length||pen.length)?'':'<div class="muted sm">Nada até agora. Verifique água e óleo todo dia e envie as fotos na segunda! 👏</div>'}</div></details></details></div>`;
 }
 
 // ---- telas ----
@@ -460,9 +492,10 @@ const STATUS_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['
 function cartaoVeiculo(r){
   const v=r.veiculo;
   if(!v) return `<div class="card"><div class="muted">Nenhum veículo vinculado ao seu cadastro ainda. Fale com a Carsz.</div></div>`;
-  return `<div class="card"><div class="row"><span class="plate">${esc(v.placa||'')}</span><div style="flex:1"><div style="font-weight:700">${esc(v.modelo||'')}${r.reserva?' <span class="tag warn">🚗 reserva</span>':''}</div><div class="muted sm">${esc(v.ano||'')}${v.km?' · '+fmtKm(v.km):''}</div></div></div>
+  const nome=esc(((r.motorista||{}).nome||'').split(' ')[0]);
+  return `<div class="card"><div class="vcard"><div style="flex:1;min-width:0"><div class="t4">Olá,</div><div class="t1">${nome}</div></div><div style="text-align:right"><span class="plate" style="font-size:18px">${esc(v.placa||'')}</span><div class="mod">${esc(v.modelo||'')}${r.reserva?' · 🚗 reserva':''}<br>${esc(v.ano||'')}${v.km?' · '+fmtKm(v.km):''}</div></div></div>
       ${r.reserva?`<div class="alert warn" style="margin:12px 0 0"><b class="t" style="margin:0">🚗 Você está no carro reserva</b><div class="txt" style="margin:4px 0 8px">Sua placa principal <b>${esc((r.principal||{}).placa||'')}</b> continua pontuando e fica guardada para você${r.reserva.desde?' (desde '+fmtD(String(r.reserva.desde).slice(0,10))+')':''}.</div><button class="btn sm" onclick="devolverReserva()">↩ Devolver reserva</button></div>`
-        :(r.reservaAtivo===false?`<div class="muted sm" style="margin-top:10px">🚗 Carro reserva indisponível no momento.</div>`:`<button class="btn sm ghost" style="margin-top:10px" onclick="formTrocarPlaca()">🚗 Peguei um carro reserva</button>`)}
+        :(r.reservaAtivo===false?`<div class="t4" style="margin-top:8px">🚗 Carro reserva indisponível no momento.</div>`:`<button class="btn sm ghost" style="margin-top:10px" onclick="formTrocarPlaca()">🚗 Peguei um carro reserva</button>`)}
       ${r.na_oficina?`<div class="alert info" style="margin:12px 0 0"><b>🛠 Seu veículo está na oficina</b> desde ${fmtD(r.na_oficina.desde)}.</div>`:''}</div>`;
 }
 // pedágio free flow: lembra a cada 10 dias de conferir se há pedágios a pagar (volta 10 dias depois da última conferência)
@@ -509,43 +542,66 @@ function quadroPagamento(r,comAcoes){
   return `<div class="alert ok"><b class="t" style="margin:0">✅ Tudo certo com o seu veículo</b>${extras}${acoes}</div>`;
 }
 
+// avisos que ainda valem na Início: só os novos, sem os já resolvidos (comprovante/foto recusados que não estão mais recusados) e dos últimos 7 dias
+function avisosInicio(r){
+  const recC=(r.comprovantes||[]).some(c=>c.status==='recusado'), recF=Object.keys((r.fotos||{}).recusadas||{}).length>0;
+  return avisosVisiveis(r).filter(a=>{ const t=a.titulo||''; if(vistos.has(a.id)) return false; if(/comprovante recusado/i.test(t)&&!recC) return false; if(/foto recusada/i.test(t)&&!recF) return false; const d=Date.parse(a.em||''); return isNaN(d)||(Date.now()-d)/864e5<=7; });
+}
+function pagamentoOk(r){
+  const bl=((r.motorista||{}).bloqueio||{}).status; return bl!=='bloqueado'&&bl!=='programado'&&!promessaAceitaAdia(r)&&!(r.comprovantes||[]).some(c=>c.status==='recusado');
+}
 function telaInicio(r){
-  const m=r.motorista;
-  let h=`<div style="margin:2px 2px 12px"><div class="muted">Olá,</div><div style="font-size:22px;font-weight:800">${esc((m.nome||'').split(' ')[0])}</div></div>`;
-  h+=cartaoVeiculo(r);
-  h+=quadroPagamento(r,true);
-  h+=alertaOleo(r);
-  h+=faixaPedagio(r);
-  if(r.nao_lidas) h+=`<button class="btn sec" style="margin-bottom:12px" onclick="irChat()">💬 ${r.nao_lidas} resposta${r.nao_lidas>1?'s':''} nova${r.nao_lidas>1?'s':''} da Carsz</button>`;
-  h+=cartaoVerificacoes(r);
-  h+=cartaoPontos(r);
-  const av=avisosVisiveis(r).slice(0,3);
-  if(av.length){
-    h+=`<div class="card"><div class="row"><h3 style="margin:0">Últimos avisos</h3><span class="sp"></span><button class="btn sm ghost" style="padding:4px 8px" onclick="irPara('avisos')">ver todos</button></div>${av.map(avisoHtml).join('')}</div>`;
-  }
+  const m=r.motorista; const sec=(t,red)=>`<div class="sec-t${red?' red':''}">${t}</div>`;
+  let h=cartaoVeiculo(r);
+  // 1) RESOLVER AGORA: cobrança/bloqueio, comprovante recusado, óleo, respostas novas
+  let urg='';
+  if(!pagamentoOk(r)) urg+=quadroPagamento(r,true);
+  urg+=alertaOleo(r);
+  if(r.nao_lidas) urg+=`<button class="btn sec" style="margin-bottom:10px" onclick="irChat()">💬 ${r.nao_lidas} resposta${r.nao_lidas>1?'s':''} nova${r.nao_lidas>1?'s':''} da Carsz</button>`;
+  if(urg) h+=sec('Resolver agora',true)+urg;
+  // 2) HOJE: verificações, fotos da semana, pedágio
+  const ver=cartaoVerificacoes(r), ped=faixaPedagio(r);
+  if(ver||ped) h+=sec('Hoje')+ver+ped;
+  // 3) PRÓXIMO COMPROMISSO: manutenção confirmada/agendada e aviso de revisão
   const confirmadas=(r.agendamentos||[]).filter(a=>a.status==='confirmado'&&a.dataConfirmada&&a.dataConfirmada>=hojeStr()).sort((x,y)=>(x.dataConfirmada+(x.horaConfirmada||'')).localeCompare(y.dataConfirmada+(y.horaConfirmada||'')));
+  let man='';
   if(confirmadas.length){
-    h+=`<div class="alert ok" id="ag_confirmada"><b class="t">📅 Manutenção confirmada</b>${confirmadas.map(a=>`<div class="txt"><b>${fmtD(a.dataConfirmada)}${a.horaConfirmada?' às '+esc(a.horaConfirmada):''}</b>${a.localConfirmado?`<br>📍 ${esc(a.localConfirmado)}`:''}${a.descricao?`<div class="muted sm">${esc(a.descricao)}</div>`:''}</div>`).join('')}</div>`;
+    const [p,...resto]=confirmadas;
+    man+=`<div class="hero y" id="ag_confirmada"><div class="t2">📅 Manutenção confirmada</div><div class="t1" style="font-size:22px;margin-top:3px">${fmtD(p.dataConfirmada)}${p.horaConfirmada?' · '+esc(p.horaConfirmada):''}</div>${p.localConfirmado?`<div class="t3" style="margin-top:2px">📍 ${esc(p.localConfirmado)}</div>`:''}${p.descricao?`<div class="t4" style="margin-top:2px">${esc(p.descricao)}</div>`:''}${resto.map(a=>`<div class="t3" style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px"><b>${fmtD(a.dataConfirmada)}${a.horaConfirmada?' · '+esc(a.horaConfirmada):''}</b>${a.localConfirmado?' · 📍 '+esc(a.localConfirmado):''}</div>`).join('')}</div>`;
   }
   if((r.agendadas||[]).length){
-    h+=`<div class="card"><h3>📅 Manutenção agendada</h3>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="muted sm">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
+    man+=`<div class="card"><div class="t2" style="margin-bottom:4px">📅 Manutenção agendada</div>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="t4">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
   }
   // alerta de revisão (regra simples: 6 meses ou 10.000 km desde a última manutenção registrada)
   const v=r.veiculo, um=r.ultima_manutencao;
   if(v&&um&&um.data){
     const dias=diasEntre(um.data), dkm=(+v.km||0)-(+um.km||0);
     if(dias>=180||dkm>=10000){
-      h+=`<div class="alert warn"><b class="t">🔧 Hora de agendar a revisão</b><div class="txt">A última manutenção registrada foi há ${dias} dias${dkm>0?` (${dkm.toLocaleString('pt-BR')} km rodados desde então)`:''}. Recomendamos revisar a cada 6 meses ou 10.000 km.</div><button class="btn" onclick="irPara('manut');setTimeout(()=>{const d=document.getElementById('ag_desc');if(d&&!d.value)d.value='Revisão'},50)">Pedir manutenção</button></div>`;
+      man+=`<div class="alert warn"><b class="t">🔧 Hora de agendar a revisão</b><div class="txt">A última manutenção registrada foi há ${dias} dias${dkm>0?` (${dkm.toLocaleString('pt-BR')} km rodados desde então)`:''}. Recomendamos revisar a cada 6 meses ou 10.000 km.</div><button class="btn" onclick="irPara('manut');setTimeout(()=>{const d=document.getElementById('ag_desc');if(d&&!d.value)d.value='Revisão'},50)">Pedir manutenção</button></div>`;
     }
   }
+  if(man) h+=sec(confirmadas.length||(r.agendadas||[]).length?'Próximo compromisso':'Manutenção')+man;
+  // 4) RESUMO: pagamento em uma linha + pontuação compacta
+  const cs=r.comprovantes||[], pen=cs.filter(c=>c.status==='pendente'), pag=cs.filter(c=>c.status==='pago').sort((a,b)=>String(b.baixaEm||'').localeCompare(String(a.baixaEm||'')))[0];
+  let resumo='';
+  if(pagamentoOk(r)){
+    resumo+=`<div class="card" id="resumo_pag"><div class="row"><span class="t3">💳 Pagamento</span><span class="sp"></span>${pen.length?`<span class="chip2 p">🧾 Comprovante em conferência</span>`:`<span class="chip2">✔ Em dia${pag&&pag.baixaEm&&diasDesde(pag.baixaEm)<=3?' · confirmado '+fmtD(String(pag.baixaEm).slice(0,10))+' '+hhmm(pag.baixaEm):''}</span>`}</div></div>`;
+  }
+  resumo+=cartaoPontos(r);
+  h+=sec('Resumo')+resumo;
+  // 5) AVISOS NOVOS
+  const av=avisosInicio(r).slice(0,3);
+  h+=sec('Avisos novos')+(av.length
+    ?`<div class="card" id="avisos_novos">${av.map(avisoHtml).join('')}<div style="text-align:right"><button class="btn sm ghost" style="padding:4px 8px;color:var(--brand)" onclick="irPara('avisos')">ver todos ›</button></div></div>`
+    :`<div class="card"><div class="row"><span class="t3">Nenhum aviso novo</span><span class="sp"></span><button class="btn sm ghost" style="padding:4px 8px;color:var(--brand)" onclick="irPara('avisos')">ver todos ›</button></div></div>`);
   return h;
 }
 
 const TIPO_AVISO={cobranca:['💰','bad'],manutencao:['🔧','warn'],urgente:['🚨','bad'],info:['ℹ️','neu'],geral:['📢','neu']};
 function avisoHtml(a){
   const [ico,cor]=TIPO_AVISO[a.tipo]||TIPO_AVISO.geral; const novo=!vistos.has(a.id);
-  return `<div class="list-i"><div class="row" style="align-items:flex-start"><span style="font-size:20px">${ico}</span><div style="flex:1"><div style="font-weight:700">${esc(a.titulo||'Aviso')} ${novo?'<span class="tag bad">novo</span>':''}</div>
-    ${a.texto?`<div style="white-space:pre-wrap">${esc(a.texto)}</div>`:''}<div class="muted sm">${esc(fmtHora(a.em))}</div></div></div></div>`;
+  return `<div class="list-i"><div class="row" style="align-items:flex-start"><span style="font-size:20px">${ico}</span><div style="flex:1"><div class="t2">${esc(a.titulo||'Aviso')} ${novo?'<span class="tag bad">novo</span>':''}</div>
+    ${a.texto?`<div class="t3" style="white-space:pre-wrap;margin-top:2px">${esc(a.texto)}</div>`:''}<div class="t4" style="margin-top:3px">${esc(fmtHora(a.em))}</div></div></div></div>`;
 }
 const AV_PAG=/bloqueio|comprovante|pagamento|promessa|cobran|atraso|semanalidade/i;
 function avisoDePagamento(a){ return a.tipo==='cobranca'||AV_PAG.test(a.titulo||''); }
@@ -555,31 +611,34 @@ function telaAvisos(r){
   setTimeout(()=>{ let mudou=false; for(const a of av){ if(!vistos.has(a.id)){ vistos.add(a.id); mudou=true; } } if(mudou){ LS.set('mot_avisos_vistos',JSON.stringify([...vistos].slice(-300))); const n=document.querySelector('nav.tabs button:nth-child(2) .badge'); if(n) n.remove(); } },2500);
   const rec=(r.comprovantes||[]).filter(c=>c.status==='recusado');
   const g1=av.filter(avisoDePagamento), g2=av.filter(a=>!avisoDePagamento(a));
-  const lab=t=>`<div class="muted sm" style="font-weight:800;letter-spacing:.6px;margin:12px 2px 6px">${t}</div>`;
-  let h=`<h2 style="margin:4px 2px 4px">Avisos</h2>`+alertaOleo(r);
+  const lab=(t,red)=>`<div class="sec-t${red?' red':''}">${t}</div>`;
+  let h=`<div class="t1" style="margin:4px 2px 0">Avisos</div>`+(r.oleo?lab('Resolver agora',true)+alertaOleo(r):'');
   if(!av.length&&!rec.length) return h+(r.oleo?'':`<div class="empty">Nenhum aviso por enquanto.</div>`);
-  if(g1.length||rec.length) h+=lab('🔥 PAGAMENTO E BLOQUEIO')+`<div class="card" id="av_pag">${rec.map(c=>`<div class="list-i"><div class="alert bad" style="margin:0"><b class="t" style="margin:0">✖ Comprovante recusado</b><div class="txt" style="margin:4px 0 8px">${esc(c.recusadoMotivo||'Envie um comprovante legível.')}</div><button class="btn sm" onclick="formComprovante()">Enviar de novo</button></div></div>`).join('')}${g1.map(avisoHtml).join('')}</div>`;
-  if(g2.length) h+=lab('📣 GERAIS E MANUTENÇÃO')+`<div class="card" id="av_ger">${g2.map(avisoHtml).join('')}</div>`;
+  if(g1.length||rec.length) h+=lab('Pagamento e bloqueio',!!rec.length)+`<div class="card" id="av_pag">${rec.map(c=>`<div class="list-i"><div class="alert bad" style="margin:0"><b class="t" style="margin:0">✖ Comprovante recusado</b><div class="txt" style="margin:4px 0 8px;color:var(--ink)">${esc(c.recusadoMotivo||'Envie um comprovante legível.')}</div><button class="btn sm" onclick="formComprovante()">Enviar de novo</button></div></div>`).join('')}${g1.map(avisoHtml).join('')}</div>`;
+  if(g2.length) h+=lab('Gerais e manutenção')+`<div class="card" id="av_ger">${g2.map(avisoHtml).join('')}</div>`;
   return h;
 }
 
 // ---- Cobrança: só pagamento (status, promessa, comprovantes e ações) ----
 function telaCobranca(r){
-  const ps=r.promessas||[], pe=promessaEmAberto(r), cs=r.comprovantes||[];
-  let h=`<h2 style="margin:4px 2px 10px">Cobrança</h2>`;
-  h+=quadroPagamento(r,false);
+  const ps=r.promessas||[], pe=promessaEmAberto(r), cs=r.comprovantes||[]; const sec=(t,red)=>`<div class="sec-t${red?' red':''}">${t}</div>`;
+  let h=`<div class="t1" style="margin:4px 2px 0">Cobrança</div>`;
+  const atraso=emAtraso(r), ok=pagamentoOk(r);
   // botões só aparecem com cobrança em atraso (bloqueio programado/bloqueado); comprovante também se há promessa em aberto ou comprovante recusado
-  const atraso=emAtraso(r);
   const bProm=atraso&&!pe?`<button class="btn" onclick="formPromessa()">🤝 Prometer pagamento</button>`:'';
   const bComp=(atraso||pe||cs.some(c=>c.status==='recusado'))?`<button class="btn ${bProm?'sec':''}" onclick="formComprovante()">🧾 Enviar comprovante</button>`:'';
-  const acoesH=(bProm||bComp)?`<div class="row" id="cob_acoes" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">${bProm}${bComp}</div>`:`<div class="muted sm" id="cob_sematraso" style="margin:0 2px 10px">✔ Nenhuma cobrança em atraso. Se algo atrasar, os botões de promessa e comprovante aparecem aqui.</div>`;
-  h+=acoesH;
+  const acoesH=(bProm||bComp)?`<div class="row" id="cob_acoes" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">${bProm}${bComp}</div>`:`<div class="t4" id="cob_sematraso" style="margin:2px 2px 10px">✔ Nenhuma cobrança em atraso. Se algo atrasar, os botões de promessa e comprovante aparecem aqui.</div>`;
+  if(!ok){ h+=sec('Resolver agora',true)+quadroPagamento(r,false)+acoesH; }
+  else {
+    const pen=cs.filter(c=>c.status==='pendente'), pag=cs.filter(c=>c.status==='pago').sort((a,b)=>String(b.baixaEm||'').localeCompare(String(a.baixaEm||'')))[0];
+    h+=sec('Situação')+`<div class="card"><div class="row"><span class="t3">💳 Pagamento</span><span class="sp"></span>${pen.length?`<span class="chip2 p">🧾 Comprovante em conferência</span>`:`<span class="chip2">✔ Em dia${pag&&pag.baixaEm&&diasDesde(pag.baixaEm)<=3?' · confirmado '+fmtD(String(pag.baixaEm).slice(0,10))+' '+hhmm(pag.baixaEm):''}</span>`}</div></div>`+acoesH;
+  }
   const prom=pe||ps[0];
-  if(prom){ const [t,c]=STATUS_PROM[prom.status]||['—','neu'];
-    h+=`<div class="card"><h3>🤝 ${pe?'Minha promessa':'Última promessa'}</h3><div>Até <b>${fmtD(prom.dataPrometida)}</b>${prom.valor?' · '+fmtBRL(prom.valor):''} <span class="tag ${c}">${t}</span></div>${prom.resposta?`<div class="muted sm">Resposta: ${esc(prom.resposta)}</div>`:''}</div>`; }
+  if(prom){ const [t,c]=STATUS_PROM[prom.status]||['—','neu']; const cl=prom.status==='aceita'?'g':prom.status==='pendente'?'y':'';
+    h+=sec(pe?'Minha promessa':'Última promessa')+`<div class="hero ${cl}" style="${cl?'':'background:var(--card);border-color:var(--line)'}"><div class="row"><div class="t2">🤝 Até ${fmtD(prom.dataPrometida)}${prom.valor?' · '+fmtBRL(prom.valor):''}</div><span class="sp"></span><span class="tag ${c}">${t}</span></div>${prom.resposta?`<div class="t4" style="margin-top:6px">Resposta da cobrança: ${esc(prom.resposta)}</div>`:''}</div>`; }
   const ST_C={pendente:['Aguardando conferência','warn'],pago:['Confirmado','ok'],recusado:['Recusado','bad']};
-  h+=`<div class="card"><h3>🧾 Meus comprovantes</h3>${cs.length?cs.slice(0,6).map(c=>{ const [t,k]=ST_C[c.status]||[c.status||'—','neu']; return `<div class="list-i"><div class="row"><span>${fmtD((c.em||'').slice(0,10))}${c.valor?' · '+fmtBRL(c.valor):''}</span><span class="sp"></span><span class="tag ${k}">${t}</span></div>${c.status==='recusado'&&c.recusadoMotivo?`<div class="muted sm">${esc(c.recusadoMotivo)}</div>`:''}</div>`; }).join(''):'<div class="muted sm">Nenhum comprovante enviado.</div>'}</div>`;
-  h+=`<div class="card"><div class="row"><span>💬 Dúvida sobre este pagamento?</span><span class="sp"></span><button class="btn sm" onclick="irChat('pagamento')">Falar no chat</button></div><div class="muted sm">Abre o Chat já com o assunto “Pagamento”.</div></div>`;
+  h+=sec('Meus comprovantes')+`<div class="card">${cs.length?cs.slice(0,6).map(c=>{ const [t,k]=ST_C[c.status]||[c.status||'—','neu']; return `<div class="list-i"><div class="row"><span class="t3">${fmtD((c.em||'').slice(0,10))}${c.valor?' · '+fmtBRL(c.valor):''}</span><span class="sp"></span><span class="tag ${k}">${t}</span></div>${c.status==='recusado'&&c.recusadoMotivo?`<div class="t4" style="margin-top:3px">${esc(c.recusadoMotivo)}</div>`:''}</div>`; }).join(''):'<div class="t4">Nenhum comprovante enviado.</div>'}</div>`;
+  h+=`<div class="card"><div class="row"><span class="t3">💬 Dúvida sobre este pagamento?</span><span class="sp"></span><button class="btn sm" onclick="irChat('pagamento')">Falar no chat</button></div><div class="t4" style="margin-top:4px">Abre o Chat já com o assunto “Pagamento”.</div></div>`;
   return h;
 }
 
@@ -592,7 +651,7 @@ function irChat(assunto){ S.chatFiltro=assunto||'todos'; S.chatAssunto=assunto||
 function chatFiltrar(f){ S.chatFiltro=f; if(f!=='todos') S.chatAssunto=f; render(true); }
 function telaChat(r){
   const ms=S.msgs; const fl=S.chatFiltro||'todos';
-  let h=`<h2 style="margin:4px 2px 8px">Chat com a Carsz</h2>`;
+  let h=`<div class="t1" style="margin:4px 2px 8px">Chat com a Carsz</div>`;
   if(ms===null) return h+`<div class="empty">Carregando mensagens…</div>`;
   const noFiltro=m=>{ const a=assuntoMsg(m); return fl==='todos'||a===fl||(fl==='outros'&&(!a||a==='reserva')); };
   const vis=ms.filter(noFiltro);
@@ -704,19 +763,29 @@ async function enviarPromessa(){
   }catch(e){ erroGenerico(e); b.disabled=false; }
 }
 
+function heroManut(confirmadas){
+  const [p,...resto]=confirmadas;
+  return `<div class="hero y" id="ag_confirmada_man"><div class="t2">📅 Manutenção confirmada</div><div class="t1" style="font-size:22px;margin-top:3px">${fmtD(p.dataConfirmada)}${p.horaConfirmada?' · '+esc(p.horaConfirmada):''}</div>${p.localConfirmado?`<div class="t3" style="margin-top:2px">📍 ${esc(p.localConfirmado)}</div>`:''}${p.descricao?`<div class="t4" style="margin-top:2px">${esc(p.descricao)}</div>`:''}${p.resposta?`<div class="t4" style="margin-top:2px">Recado da Carsz: ${esc(p.resposta)}</div>`:''}${resto.map(a=>`<div class="t3" style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px"><b>${fmtD(a.dataConfirmada)}${a.horaConfirmada?' · '+esc(a.horaConfirmada):''}</b>${a.localConfirmado?' · 📍 '+esc(a.localConfirmado):''}</div>`).join('')}</div>`;
+}
 function telaManut(r){
-  const v=r.veiculo; const ag=r.agendamentos||[];
-  let h=`<h2 style="margin:4px 2px 10px">Manutenção</h2>`;
-  if((r.agendadas||[]).length) h+=`<div class="card"><h3>📅 Já agendado</h3>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="muted sm">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
-  if(ag.length){
-    h+=`<div class="card"><h3>🛠 Meus pedidos</h3>${ag.map(a=>{ const [t,c]=STATUS_AGEND[a.status]||['—','neu']; return `<div class="list-i"><div class="row"><b>${fmtD(a.dataDesejada)}</b><span class="tag ${c}">${t}${a.status==='confirmado'&&a.dataConfirmada?' · '+fmtD(a.dataConfirmada)+(a.horaConfirmada?' às '+esc(a.horaConfirmada):''):''}</span></div><div class="sm">${esc(a.descricao||'')}</div>${a.status==='confirmado'&&a.localConfirmado?`<div class="sm">📍 <b>${esc(a.localConfirmado)}</b></div>`:''}${a.resposta?`<div class="muted sm">Resposta: ${esc(a.resposta)}</div>`:''}</div>`; }).join('')}</div>`;
+  const v=r.veiculo; const ag=r.agendamentos||[]; const sec=t=>`<div class="sec-t">${t}</div>`; const hj=hojeStr();
+  const proximos=ag.filter(a=>a.status==='confirmado'&&a.dataConfirmada&&a.dataConfirmada>=hj).sort((x,y)=>(x.dataConfirmada+(x.horaConfirmada||'')).localeCompare(y.dataConfirmada+(y.horaConfirmada||'')));
+  const aguardando=ag.filter(a=>a.status==='solicitado');
+  const hist=ag.filter(a=>!proximos.includes(a)&&a.status!=='solicitado');
+  const chipDe=a=>{ const [t,c]=STATUS_AGEND[a.status]||['—','neu']; return `<span class="tag ${c}">${t}</span>`; };
+  let h=`<div class="t1" style="margin:4px 2px 0">Manutenção</div>`;
+  if(proximos.length||(r.agendadas||[]).length){
+    h+=sec('Próximo compromisso')+(proximos.length?heroManut(proximos):'');
+    if((r.agendadas||[]).length) h+=`<div class="card"><div class="t2" style="margin-bottom:4px">📅 Já agendado</div>${r.agendadas.map(a=>`<div class="list-i"><b>${fmtD(a.data)}</b>${a.obs?`<div class="t4">${esc(a.obs)}</div>`:''}</div>`).join('')}</div>`;
   }
-  h+=`<div class="card"><h3>Pedir uma manutenção</h3><p class="muted sm" style="margin:0 0 4px">A Carsz confirma a data pelo app e pelo WhatsApp.</p>
+  if(aguardando.length) h+=sec('Aguardando a Carsz')+aguardando.map(a=>`<div class="hero y"><div class="row"><div class="t2">🛠 Pedido para ${fmtD(a.dataDesejada)}</div><span class="sp"></span>${chipDe(a)}</div><div class="t3" style="margin-top:4px">${esc(a.descricao||'')}</div></div>`).join('');
+  h+=sec('Pedir uma manutenção')+`<div class="card"><div class="t4" style="margin:0 0 4px">A Carsz confirma a data, o horário e o local pelo app e pelo WhatsApp.</div>
     <label for="ag_data">Data desejada</label><input id="ag_data" data-keep type="date" min="${hojeStr()}" value="${somaDias(2)}">
     <label for="ag_desc">O que precisa ser feito?</label><textarea id="ag_desc" data-keep placeholder="Ex.: barulho na suspensão, troca de óleo…"></textarea>
     <label for="ag_km">Km atual (opcional)</label><input id="ag_km" data-keep inputmode="numeric" placeholder="${v&&v.km?esc(String(v.km)):'Ex.: 45000'}">
     <button class="btn" style="margin-top:14px" id="ag_btn" onclick="enviarAgendamento()">Enviar pedido</button>
-    <div class="muted sm" style="margin-top:10px">Dúvida? <a href="#" onclick="irChat('manutencao');return false" style="color:var(--brand);font-weight:700">Falar no chat</a> (assunto Manutenção).</div></div>`;
+    <div class="t4" style="margin-top:10px">Dúvida? <a href="#" onclick="irChat('manutencao');return false" style="color:var(--brand);font-weight:700">Falar no chat</a> (assunto Manutenção).</div></div>`;
+  if(hist.length) h+=sec('Histórico de pedidos')+`<div class="card">${hist.slice(0,6).map(a=>`<div class="list-i"><div class="row"><b class="t3">${fmtD(a.dataDesejada)}</b><span class="sp"></span>${chipDe(a)}</div><div class="t3" style="margin-top:3px">${esc(a.descricao||'')}</div>${a.status==='confirmado'?`<div class="t4">${a.dataConfirmada?fmtD(a.dataConfirmada):''}${a.horaConfirmada?' às '+esc(a.horaConfirmada):''}${a.localConfirmado?' · 📍 '+esc(a.localConfirmado):''}</div>`:''}${a.resposta?`<div class="t4">Resposta: ${esc(a.resposta)}</div>`:''}</div>`).join('')}</div>`;
   return h;
 }
 async function enviarAgendamento(){
