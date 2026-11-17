@@ -3005,7 +3005,7 @@ const PEDAGIO_URL='https://pedagiodigital.com/consulta-avulsa';
 function motPedagio(x){ const ult=Date.parse(x.pedagioConferidoEm||''); const ref=!isNaN(ult)?ult:Date.parse(x.primeiroAcesso||x.criadoEm||''); if(isNaN(ref)) return {ref:null,dias:null,atrasado:false,nunca:isNaN(ult)}; const dias=Math.floor((Date.now()-ref)/864e5); return {ref,dias,atrasado:dias>=10,nunca:isNaN(ult)}; }
 const motPedagioAtraso = x => x.ativo!==false&&!!x.veiculoId&&motPedagio(x).atrasado;
 function motPedagioWa(id){ const x=S.mots.find(y=>y.id===id); if(!x) return; const wa=telWa(x.telefone); if(!wa){ toast('Motorista sem telefone'); return; }
-  const msg=`Olá, ${(x.nome||'').split(' ')[0]}! Lembrete: confira se há pedágios free flow a pagar no seu veículo (placa ${x.placa||''}) em ${PEDAGIO_URL}. Depois toque em "Já conferi" no app da Carsz: ${motLink()}`;
+  const msg=`Olá, ${(x.nome||'').split(' ')[0]}! Lembrete: confira se há pedágios free flow a pagar no seu veículo (placa ${x.placa||''}) em ${PEDAGIO_URL}. Depois toque em "Já conferi" na Área do Motorista: ${motLinkAviso()}`;
   window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank'); }
 const motSemUso = x => x.ativo!==false&&!!x.veiculoId&&motPresenca(x).dias>=2;
 function motUsoHtml(x){
@@ -3038,14 +3038,14 @@ function motCobrarVerif(id){
   const partes=[]; if(falta.length) partes.push('a verificação de '+falta.join(' e ')+' de hoje');
   if(st==='pendente'||st==='atrasada'||st==='refazer') partes.push('as fotos da semana (painel de instrumentos e etiqueta de óleo)');
   if(!partes.length){ toast('Nada pendente para cobrar'); return; }
-  const msg=`Olá, ${(x.nome||'').split(' ')[0]}! Falta você confirmar no app da Carsz ${partes.join(' e ')}. Abra o app e confirme agora: ${motLink()}${st==='atrasada'?'\n\nAtenção: as fotos estão atrasadas e o veículo está sujeito a bloqueio.':''}`;
+  const msg=`Olá, ${(x.nome||'').split(' ')[0]}! Falta você confirmar no app da Carsz ${partes.join(' e ')}. Entre na Área do Motorista e confirme agora: ${motLinkAviso()}${st==='atrasada'?'\n\nAtenção: as fotos estão atrasadas e o veículo está sujeito a bloqueio.':''}`;
   window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank');
 }
 // resposta rápida: alerta de bloqueio por falta do checklist por fotos (painel + etiqueta de óleo)
 function motTextoAlertaBloqueio(x){
   const f=motFotoSemana(x.id,motSegunda()); const falta=[]; if(!f.painel||f.painel.recusada) falta.push('foto do painel de instrumentos'); if(!f.etiqueta||f.etiqueta.recusada) falta.push('foto da etiqueta de troca de óleo');
   const lista=falta.length?falta.join(' e '):'checklist por fotos da semana';
-  return `⚠ ALERTA DE BLOQUEIO: ${(x.nome||'').split(' ')[0]}, ainda não recebemos o checklist por fotos da semana (${lista})${x.placa?' do veículo '+x.placa:''}. Abra o app agora e envie as fotos para evitar o bloqueio do veículo.`;
+  return `⚠ ALERTA DE BLOQUEIO: ${(x.nome||'').split(' ')[0]}, ainda não recebemos o checklist por fotos da semana (${lista})${x.placa?' do veículo '+x.placa:''}. Entre na Área do Motorista agora e envie as fotos para evitar o bloqueio do veículo.`;
 }
 function motAlertaBloqueio(id){
   const x=S.mots.find(y=>y.id===id); if(!x) return;
@@ -3076,12 +3076,12 @@ async function motEnviarAlertaBloqueio(id,via){
 // ---- WhatsApp automático: cada alerta individual enviado ao motorista já gera a mensagem de WhatsApp pronta
 // (com o link do app e "entre no app e resolva esta pendência"). O envio em si é um clique seu — o WhatsApp
 // não permite mandar sozinho. Se você escolher "Mais tarde", o aviso fica marcado como "WhatsApp a enviar".
-const motFechoWa = pendencia => pendencia?'👉 Entre no app e resolva esta pendência:':'👉 Veja os detalhes no app:';
+const motFechoWa = pendencia => pendencia?'👉 Entre na Área do Motorista e resolva esta pendência:':'👉 Veja os detalhes na Área do Motorista:';
 function motMsgWa(x,titulo,texto,pendencia=true){
   const nome=((x&&x.nome)||'').split(' ')[0]; const corpo=(texto||'').trim();
-  return `🔔 *Carsz — ${titulo}*\n\nOlá${nome?', '+nome:''}! ${corpo||titulo}\n\n${motFechoWa(pendencia)}\n${motLink()}`;
+  return `🔔 *Carsz — ${titulo}*\n\nOlá${nome?', '+nome:''}! ${corpo||titulo}\n\n${motFechoWa(pendencia)}\n${motLinkAviso()}`;
 }
-const motMsgWaLivre = (txt,pendencia=true) => `${txt}\n\n${motFechoWa(pendencia)}\n${motLink()}`;
+const motMsgWaLivre = (txt,pendencia=true) => `${txt}\n\n${motFechoWa(pendencia)}\n${motLinkAviso()}`;
 const motWaPend = id => S.motAvisos.filter(a=>a.motoristaId===id&&a.waPendente).length;
 function motWaPrompt(motId,avisoId,mensagem,titulo){
   const x=S.mots.find(y=>y.id===motId); if(!x) return; const wa=telWa(x.telefone);
@@ -3394,7 +3394,9 @@ function motVerifHtml(x){
     <b>Fotos semanais</b> <span class="muted">(ficam guardadas por 30 dias)</span>${linhasFoto}
     <div style="margin-top:10px"><b>Últimos dias</b></div>${hist}</details>`;
 }
-const motLink = () => location.origin+location.pathname.replace(/[^/]*$/,'')+'motorista.html';
+// o motorista entra pelo site da Carsz: www.carsz.com.br → botão "Área do Motorista" (que abre o app)
+const motLink = () => 'https://www.carsz.com.br';
+const motLinkAviso = () => motLink()+'\n(toque em *Área do Motorista*)';
 const motMsgsAuto = x => x.tipo==='promessa'||x.tipo==='agendamento'; // já contadas nas pendências próprias
 const motNaoLidas = id => S.motMsgs.filter(x=>x.motoristaId===id&&x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length;
 const motPromPend = id => S.motPromessas.filter(x=>(!id||x.motoristaId===id)&&x.status==='pendente').length;
@@ -3703,10 +3705,10 @@ async function motSalvar(id){
 }
 function motAcessoWhats(nome,tel,cpf,placa){
   const senha=String(placa||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-  const msg=`Olá, ${nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\nAbra: ${motLink()}\nLogin (CPF): ${mascaraCpf(cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
+  const msg=`Olá, ${nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\n1️⃣ Acesse: ${motLink()}\n2️⃣ Toque em *Área do Motorista* (no topo do site)\n3️⃣ Entre com:\nLogin (CPF): ${mascaraCpf(cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
   const wa=telWa(tel);
   abrir(`<h3>Acesso criado</h3><p class="muted">A senha do motorista é a placa do veículo dele. Envie o acesso agora ou mais tarde pelo botão do WhatsApp.</p>
-    <div class="lastinfo"><b>Login:</b> ${esc(mascaraCpf(cpf))}<br><b>Senha:</b> ${esc(senha)}<br><b>Link:</b> ${esc(motLink())}</div>
+    <div class="lastinfo"><b>Login:</b> ${esc(mascaraCpf(cpf))}<br><b>Senha:</b> ${esc(senha)}<br><b>Site:</b> ${esc(motLink().replace('https://',''))} → botão <b>Área do Motorista</b></div>
     <div class="act">${wa?`<button class="pri" onclick="window.open('https://wa.me/${wa}?text=${encodeURIComponent(msg)}','_blank')">💬 Enviar por WhatsApp</button>`:'<span class="hint">Sem WhatsApp cadastrado.</span>'}<button class="sec" onclick="fechar()">Fechar</button></div>`);
 }
 // ============ importar planilha (motoristas + placas) ============
@@ -3872,7 +3874,7 @@ async function impExecutar(){
 }
 function impMsgAcesso(m){
   const senha=normPlaca(m.placa);
-  return `Olá, ${m.nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\nAbra: ${motLink()}\nLogin (CPF): ${mascaraCpf(m.cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
+  return `Olá, ${m.nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\n1️⃣ Acesse: ${motLink()}\n2️⃣ Toque em *Área do Motorista* (no topo do site)\n3️⃣ Entre com:\nLogin (CPF): ${mascaraCpf(m.cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
 }
 function impWa(i){ const m=impRes[i]; const wa=m&&telWa(m.tel); if(wa) window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(impMsgAcesso(m)),'_blank'); }
 function impResultado(r){

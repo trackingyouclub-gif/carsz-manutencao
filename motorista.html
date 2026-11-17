@@ -749,7 +749,7 @@ function treinoPassos(){
     x:ehIos?'No <b>Safari</b>, toque em <b>Compartilhar</b> (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>. Assim o app abre com um toque, como qualquer outro.':'No <b>Chrome</b>, toque nos <b>três pontinhos</b> e depois em <b>Instalar app</b> (ou "Adicionar à tela inicial"). Assim o app abre com um toque, como qualquer outro.'});
   P.push({t:'Seu acesso',
     ill:()=>`<div style="width:100%"><div class="tr_in"><small>Login</small>CPF</div><div class="tr_in"><small>Senha</small>placa do seu carro (ex.: ${placa})</div></div>`,
-    x:'Você entra com o seu <b>CPF</b> e a senha é a <b>placa do seu veículo</b>, sem traço. O app lembra de você neste celular. Pegou o carro reserva ou trocou de carro? A senha continua sendo a placa principal.'});
+    x:'Você entra com o seu <b>CPF</b> e a senha é a <b>placa do seu veículo</b>, sem traço. Pelo site <b>www.carsz.com.br</b> é só tocar em <b>Área do Motorista</b>. O app lembra de você neste celular. Pegou o carro reserva ou trocou de carro? A senha continua sendo a placa principal.'});
   P.push({t:'Início e Avisos',
     ill:()=>`<div style="width:100%"><div class="card" style="margin-bottom:10px"><div class="row"><span class="plate">${placa}</span><div><b>${esc(v.modelo||'Seu veículo')}</b><div class="muted sm">${esc(v.ano||'')}</div></div></div></div><div class="alert ok"><b class="t" style="margin:0">✅ Tudo certo com o seu veículo</b></div></div>`,
     x:'Na tela inicial você vê o seu veículo e se está tudo certo. Em <b>Avisos</b> ficam os recados da Carsz. A bolinha vermelha mostra o que é novo.'});
