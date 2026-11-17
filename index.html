@@ -3454,7 +3454,7 @@ function motoristasView(m){
     <div id="mot_lista"></div>
     <input id="mot_busca" placeholder="Buscar por nome, placa ou CPF" value="${esc(S.motBusca)}" oninput="S.motBusca=this.value;render()" style="margin-bottom:10px">`+
     (lista.length?lista.map(({x,pend})=>{ const b=MOT_BLOQ[(x.bloqueio||{}).status]||MOT_BLOQ.normal; const nl=motNaoLidas(x.id), pp=motPromPend(x.id), pa=motAgPend(x.id);
-      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${motOleoTag(x)}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div></div>`; }).join('')
+      return `<div class="osrow" onclick="S.motAtual='${x.id}';render()"><span class="plate lg">${esc(x.placa||'—')}</span><div><b>${esc(x.nome||'')}</b>${x.ativo===false?' <span class="tag neu">desativado</span>':''}<div class="muted">${esc(x.telefone||'')}</div></div><span class="sp"></span><div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="tag ${b[1]}">${b[0]}</span>${nl?`<span class="tag warn">💬 ${nl}</span>`:''}${pp?`<span class="tag warn">🤝 promessa</span>`:''}${pa?`<span class="tag warn">🛠 pedido</span>`:''}${motCompPend(x.id)?`<span class="tag warn">🧾 comprovante</span>`:''}${x.reserva&&x.reserva.veiculoId?`<span class="tag neu">🚗 reserva ${esc(x.reserva.placa||'')}</span>`:''}${motWaPend(x.id)?`<span class="tag warn">💬 WhatsApp a enviar</span>`:''}${(S.motRank||[])[0]&&S.motRank[0].id===x.id?'<span class="tag ok">🏆 1º</span>':''}${motSemVerifHoje(x)?`<span class="tag warn">💧 sem verificação hoje</span>`:''}${motOleoTag(x)}<span class="tag ${motPresenca(x).cls}" data-presenca="${x.id}">${motPresenca(x).ico} ${esc(motPresenca(x).txt)}</span>${motPedagioAtraso(x)?'<span class="tag warn">🛣 pedágio sem conferir</span>':''}${{atrasada:'<span class="tag bad">📷 fotos atrasadas</span>',pendente:'<span class="tag warn">📷 fotos hoje</span>',refazer:'<span class="tag warn">📷 foto recusada</span>'}[motFotoStatus(x)]||''}</div>${x.ativo===false?'':motBtnAcesso(x)}</div>`; }).join('')
       :'<div class="empty">'+(S.mots.length?(filtroAtivo?'Nenhum motorista nesta situação agora. 🎉':'Nenhum motorista encontrado.'):'Nenhum motorista cadastrado ainda. Use "+ Novo motorista".')+'</div>');
 }
 
@@ -3703,9 +3703,27 @@ async function motSalvar(id){
     if(!id) motAcessoWhats(nome,tel,cpf,v?v.placa:''); else toast('Motorista salvo');
   }catch(e){ erroSalvar('salvar o motorista',e); }
 }
+// ---- enviar o acesso (login CPF + senha = placa) por WhatsApp, direto da lista de motoristas ----
+function motMsgAcesso(nome,cpf,placa){
+  const senha=normPlaca(placa);
+  return `Olá, ${String(nome||'').split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\n1️⃣ Acesse: ${motLink()}\n2️⃣ Toque em *Área do Motorista* (no topo do site)\n3️⃣ Entre com:\nLogin (CPF): ${mascaraCpf(cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
+}
+function motBtnAcesso(x){
+  const env=x.acessoEnviadoEm?`<span class="muted" style="font-size:11px;text-align:right">acesso enviado em ${fmtD(String(x.acessoEnviadoEm).slice(0,10))}</span>`:'';
+  return `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:none"><button class="${x.acessoEnviadoEm?'sec':'pri'}" style="padding:6px 12px;min-height:34px;white-space:nowrap" title="Abre o WhatsApp com o login e a senha prontos" onclick="event.stopPropagation();motEnviarAcesso('${x.id}')">💬 ${x.acessoEnviadoEm?'Reenviar acesso':'Enviar acesso'}</button>${env}</div>`;
+}
+async function motEnviarAcesso(id){
+  const x=S.mots.find(m=>m.id===id); if(!x) return;
+  const wa=telWa(x.telefone);
+  if(!wa){ toast('Cadastre o WhatsApp deste motorista para enviar o acesso.'); motForm(id); return; }
+  if(!x.cpf){ toast('Este motorista está sem CPF cadastrado.'); motForm(id); return; }
+  if(!x.placa){ toast('Escolha o veículo do motorista: a senha do app é a placa.'); motForm(id); return; }
+  window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(motMsgAcesso(x.nome,x.cpf,x.placa)),'_blank');
+  try{ const em=agoraIso(); await S.db.doc('motoristas/'+id).update({acessoEnviadoEm:em}); x.acessoEnviadoEm=em; render(); }catch(e){ console.warn('não marcou o acesso como enviado',e); }
+}
 function motAcessoWhats(nome,tel,cpf,placa){
   const senha=String(placa||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-  const msg=`Olá, ${nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\n1️⃣ Acesse: ${motLink()}\n2️⃣ Toque em *Área do Motorista* (no topo do site)\n3️⃣ Entre com:\nLogin (CPF): ${mascaraCpf(cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
+  const msg=motMsgAcesso(nome,cpf,placa);
   const wa=telWa(tel);
   abrir(`<h3>Acesso criado</h3><p class="muted">A senha do motorista é a placa do veículo dele. Envie o acesso agora ou mais tarde pelo botão do WhatsApp.</p>
     <div class="lastinfo"><b>Login:</b> ${esc(mascaraCpf(cpf))}<br><b>Senha:</b> ${esc(senha)}<br><b>Site:</b> ${esc(motLink().replace('https://',''))} → botão <b>Área do Motorista</b></div>
@@ -3872,10 +3890,7 @@ async function impExecutar(){
   try{ await motRecarregar(); }catch(e){}
   impResultado(res);
 }
-function impMsgAcesso(m){
-  const senha=normPlaca(m.placa);
-  return `Olá, ${m.nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\n1️⃣ Acesse: ${motLink()}\n2️⃣ Toque em *Área do Motorista* (no topo do site)\n3️⃣ Entre com:\nLogin (CPF): ${mascaraCpf(m.cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
-}
+function impMsgAcesso(m){ return motMsgAcesso(m.nome,m.cpf,m.placa); }
 function impWa(i){ const m=impRes[i]; const wa=m&&telWa(m.tel); if(wa) window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(impMsgAcesso(m)),'_blank'); }
 function impResultado(r){
   const linhas=[`${r.novos.length} motorista(s) criado(s)`,`${r.veic} veículo(s) novo(s)`,r.atu?`${r.atu} veículo(s) atualizado(s)`:'',r.vinc?`${r.vinc} placa(s) trocada(s)/vinculada(s)`:'',r.km?`${r.km} veículo(s) com km e etiqueta iniciados`:''].filter(Boolean);
