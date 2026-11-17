@@ -2876,7 +2876,7 @@ function detVeic(id){
   h+=`<div class="act"><button class="ghost danger" onclick="delVeic('${v.id}')">Excluir veículo</button><span class="sp"></span><button class="sec" onclick="fechar()">Fechar</button></div>`;
   abrir(h);
 }
-function abrir(h){ document.getElementById('md').innerHTML=h; document.getElementById('ov').classList.add('on'); }
+function abrir(h){ const md=document.getElementById('md'); md.style.maxWidth=''; md.innerHTML=h; document.getElementById('ov').classList.add('on'); }
 function fechar(){ document.getElementById('ov').classList.remove('on'); }
 document.getElementById('ov').addEventListener('click',e=>{ if(e.target.id==='ov') fechar(); });
 function formVeic(id){
@@ -3442,7 +3442,7 @@ function motoristasView(m){
   const lista=S.mots.filter(x=>!q||slug([x.nome,x.placa,x.cpf].join(' ')).includes(q)).filter(x=>!filtroAtivo||filtroAtivo[3](x)).map(x=>({x,pend:motPrioridade(x)}))
     .sort((a,b)=>b.pend-a.pend||(a.x.nome||'').localeCompare(b.x.nome||''));
   const nBloq=S.mots.filter(x=>(x.bloqueio||{}).status==='bloqueado').length, nProg=S.mots.filter(x=>(x.bloqueio||{}).status==='programado').length;
-  m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="sec" id="mot_reserva_btn" onclick="motReservaToggle()" title="Liga ou desliga o botão de carro reserva no app dos motoristas">${motReservaAtivo()?'🚗 Reserva: ligado':'🚗 Reserva: desligado'}</button>${ehSuperadmin()?'<button class="sec" onclick="motAtendModal()">👥 Atendentes</button>':''}${motPodeCriar()?`<button class="pri" onclick="motForm('')">+ Novo motorista</button>`:''}</div>
+  m.innerHTML=`<div class="bar"><h2>Motoristas</h2><span class="sp"></span><button class="sec" onclick="motRankingModal()">🏆 Ranking</button><button class="sec" onclick="motAvisoForm('')">📢 Aviso geral</button><button class="sec" id="mot_reserva_btn" onclick="motReservaToggle()" title="Liga ou desliga o botão de carro reserva no app dos motoristas">${motReservaAtivo()?'🚗 Reserva: ligado':'🚗 Reserva: desligado'}</button>${ehSuperadmin()?'<button class="sec" onclick="motAtendModal()">👥 Atendentes</button>':''}${motPodeCriar()?`<button class="sec" onclick="impAbrir()" title="Cadastra vários motoristas e placas de uma vez a partir da planilha">📥 Importar planilha</button><button class="pri" onclick="motForm('')">+ Novo motorista</button>`:''}</div>
     ${S.motOk?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>As tabelas do app do motorista ainda não existem no banco.</b> Rode o arquivo <b>motoristas.sql</b> (versão mais recente) no SQL Editor do Supabase e recarregue esta página.</div>`}
     <div class="muted" style="font-weight:700;margin:4px 2px">🔥 Prioridade — chat, pagamento e bloqueio</div>
     <div class="cards motcards">${MOT_FILTROS.filter(f=>f[4]===1).map(([k,rot,cls,fn])=>{ const n=S.mots.filter(fn).length; return `<button type="button" class="card cardbtn ${cls}${S.motFiltro===k?' on':''}${n?'':' zero'}" aria-pressed="${S.motFiltro===k}" onclick="motFiltrar('${k}')"><div class="v">${n}</div><div class="l">${rot}</div></button>`; }).join('')}</div>
@@ -3709,6 +3709,181 @@ function motAcessoWhats(nome,tel,cpf,placa){
     <div class="lastinfo"><b>Login:</b> ${esc(mascaraCpf(cpf))}<br><b>Senha:</b> ${esc(senha)}<br><b>Link:</b> ${esc(motLink())}</div>
     <div class="act">${wa?`<button class="pri" onclick="window.open('https://wa.me/${wa}?text=${encodeURIComponent(msg)}','_blank')">💬 Enviar por WhatsApp</button>`:'<span class="hint">Sem WhatsApp cadastrado.</span>'}<button class="sec" onclick="fechar()">Fechar</button></div>`);
 }
+// ============ importar planilha (motoristas + placas) ============
+// Lê o .xlsx (ou .csv) com as colunas: Nome, CPF, WhatsApp, Placa, Modelo, Ano, Km atual do painel,
+// Km da próxima troca (etiqueta), Situação. Mostra uma prévia e só grava depois da confirmação.
+let impLinhas=[], impRes=[];
+const impNorm = s => String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+function impCsv(txt){
+  txt=String(txt).replace(/^﻿/,''); const l1=txt.split(/\r?\n/)[0]||'';
+  const sep=(l1.match(/;/g)||[]).length>(l1.match(/,/g)||[]).length?';':',';
+  const rows=[]; let row=[], cur='', q=false;
+  for(let i=0;i<txt.length;i++){ const c=txt[i];
+    if(q){ if(c==='"'){ if(txt[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=c; }
+    else if(c==='"') q=true;
+    else if(c===sep){ row.push(cur); cur=''; }
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&txt[i+1]==='\n') i++; row.push(cur); rows.push(row); row=[]; cur=''; }
+    else cur+=c; }
+  if(cur!==''||row.length){ row.push(cur); rows.push(row); }
+  return rows;
+}
+function impCarregarXlsx(){
+  if(window.XLSX) return Promise.resolve();
+  return new Promise((ok,err)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload=ok;
+    s.onerror=()=>err(new Error('Não consegui carregar o leitor de Excel. Baixe a planilha como CSV e tente de novo.')); document.head.appendChild(s); });
+}
+function impMapa(cab){
+  const m={};
+  cab.forEach((c,i)=>{ const t=impNorm(c);
+    if(t==='nome') m.nome=i; else if(t==='cpf') m.cpf=i;
+    else if(t==='whatsapp'||t==='telefone'||t==='celular') m.tel=i;
+    else if(t==='placa') m.placa=i; else if(t==='modelo'||t==='veiculo') m.modelo=i; else if(t==='ano') m.ano=i;
+    else if(t.startsWith('km atual')) m.km=i;
+    else if(t.startsWith('km da proxima')||t.startsWith('km proxima')||t.includes('proxima troca')) m.prox=i;
+    else if(t==='situacao'||t==='status') m.sit=i; });
+  return m;
+}
+const impStatus = (sit,temMot) => { const t=impNorm(sit);
+  if(/alug|locad/.test(t)) return 'Locado'; if(/vag|dispon/.test(t)) return 'Disponível'; if(/manut/.test(t)) return 'Em manutenção';
+  if(/sinistr/.test(t)) return 'Sinistrado'; if(/baix/.test(t)) return 'Baixado'; return temMot?'Locado':''; };
+function impMontar(tab){
+  const h=tab.findIndex(r=>(r||[]).some(c=>impNorm(c)==='placa')); if(h<0) return null;
+  const m=impMapa(tab[h]); const linhas=[]; const cpfVisto={}, placaVista={};
+  for(let i=h+1;i<tab.length;i++){
+    const r=tab[i]||[]; const g=k=>m[k]==null?'':String(r[m[k]]==null?'':r[m[k]]).trim();
+    const placa=normPlaca(g('placa')), nome=g('nome'); if(!placa&&!nome) continue;
+    const num=k=>{ const t=g(k).replace(/\D/g,''); return t?+t:0; };
+    const l={n:i+1,nome,cpf:g('cpf').replace(/\D/g,''),tel:g('tel').replace(/\D/g,''),placa,modelo:g('modelo'),ano:g('ano'),km:num('km'),prox:num('prox'),sit:g('sit'),erros:[],avisos:[],acoes:[],principal:true,padrao:true};
+    if(!placa) l.erros.push('Sem placa');
+    else if(!/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(placa)) l.erros.push('Placa inválida');
+    else if(placaVista[placa]) l.erros.push('Placa repetida na planilha (linha '+placaVista[placa]+')');
+    else placaVista[placa]=l.n;
+    if(nome||l.cpf){
+      if(!nome) l.erros.push('Sem nome'); else if(!cpfValido(l.cpf)) l.erros.push('CPF inválido');
+      else if(cpfVisto[l.cpf]){ l.principal=false; l.avisos.push('2ª placa deste motorista: só o veículo é cadastrado (a placa principal é a da linha '+cpfVisto[l.cpf]+')'); }
+      else cpfVisto[l.cpf]=l.n;
+    }
+    linhas.push(l);
+  }
+  return linhas;
+}
+function impAnalisar(linhas){
+  for(const l of linhas){
+    if(l.erros.length) continue;
+    const v=S.veic.find(x=>x.placa===l.placa); l.v=v||null;
+    const temMot=!!l.nome; l.status=impStatus(l.sit,temMot);
+    if(!v) l.acoes.push('Criar veículo'); else { const mud=[]; if(l.modelo&&l.modelo!==v.modelo) mud.push('modelo'); if(l.ano&&l.ano!==String(v.ano||'')) mud.push('ano'); if(l.status&&l.status!==v.status) mud.push('situação'); if(mud.length) l.acoes.push('Atualizar '+mud.join(', ')); }
+    if(temMot&&l.principal){
+      const ex=S.mots.find(m=>m.cpf===l.cpf); l.ex=ex||null;
+      const ocupa=v?S.mots.find(m=>m.cpf!==l.cpf&&m.ativo!==false&&(m.veiculoId===v.id||(m.reserva&&m.reserva.veiculoId===v.id))):null;
+      if(ocupa) l.erros.push('Esta placa já está com '+ocupa.nome);
+      else if(!ex) l.acoes.push('Criar motorista + acesso');
+      else if(ex.veiculoId&&v&&ex.veiculoId!==v.id){ const antes=S.veic.find(x=>x.id===ex.veiculoId); l.padrao=false; l.acoes.push('Trocar a placa principal de '+ex.nome+(antes?' ('+antes.placa+')':'')); }
+      else if(!ex.veiculoId||!v||ex.veiculoId===v.id){ if(ex.veiculoId!==(v&&v.id)) l.acoes.push('Vincular placa ao motorista existente'); else l.acoes.push('Motorista já cadastrado'); }
+    }
+    if(l.km||l.prox){
+      const base=v&&v.oleo&&v.oleo.base===true;
+      if(base) l.avisos.push('Km e etiqueta deste veículo já foram iniciados: ignorados');
+      else if(l.km&&l.prox){ l.acoes.push('Iniciar km e etiqueta'); l.iniciar=true; }
+      else if(l.km){ l.acoes.push('Atualizar km'); }
+      else l.avisos.push('Falta o km atual para iniciar a etiqueta: ignorado');
+    }
+    if(!l.acoes.length) l.acoes.push('Sem mudança');
+  }
+  return linhas;
+}
+function impAbrir(){
+  if(!motPodeCriar()){ toast('Só o administrador importa motoristas.'); return; }
+  impLinhas=[]; impRes=[];
+  abrir(`<h3>📥 Importar planilha</h3>
+    <p class="muted">Escolha a planilha (.xlsx ou .csv) com as colunas <b>Nome, CPF, WhatsApp, Placa, Modelo, Ano, Km atual do painel, Km da próxima troca (etiqueta), Situação</b>. Antes de gravar, você vê uma prévia de tudo que vai ser criado ou alterado.</p>
+    <input type="file" id="imp_file" accept=".xlsx,.xls,.xlsm,.csv,text/csv" onchange="impLer(this)">
+    <div id="imp_prev"><div class="act"><button class="sec" onclick="fechar()">Cancelar</button></div></div>`);
+  document.getElementById('md').style.maxWidth='980px';
+}
+async function impLer(inp){
+  const f=inp.files&&inp.files[0]; if(!f) return; const box=document.getElementById('imp_prev'); box.innerHTML='<div class="muted" style="margin:10px 0">Lendo a planilha…</div>';
+  try{
+    let tab;
+    if(/\.(xlsx|xlsm|xls)$/i.test(f.name)){ await impCarregarXlsx(); const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); tab=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''}); }
+    else tab=impCsv(await f.text());
+    const linhas=impMontar(tab);
+    if(!linhas){ box.innerHTML='<div class="alert warn" style="margin:10px 0">Não achei a coluna <b>Placa</b>. Confira se a primeira linha da planilha é o cabeçalho.</div>'; return; }
+    if(!linhas.length){ box.innerHTML='<div class="alert warn" style="margin:10px 0">A planilha não tem nenhuma linha com placa ou nome.</div>'; return; }
+    impLinhas=impAnalisar(linhas); impPrevia();
+  }catch(e){ box.innerHTML='<div class="alert warn" style="margin:10px 0">'+esc(e.message||String(e))+'</div>'; }
+}
+function impPrevia(){
+  const L=impLinhas, ok=L.filter(l=>!l.erros.length), err=L.length-ok.length;
+  const novosM=ok.filter(l=>l.acoes.includes('Criar motorista + acesso')).length, novosV=ok.filter(l=>l.acoes.includes('Criar veículo')).length;
+  let h=`<div class="muted" style="margin:10px 0"><b>${L.length}</b> linha(s): ${novosM} motorista(s) novo(s), ${novosV} veículo(s) novo(s)${err?`, <span style="color:var(--bad,#c0392b)"><b>${err}</b> com erro (não serão importadas)</span>`:''}.</div>
+  <div class="tbl" style="max-height:52vh;overflow:auto"><table style="font-size:13px"><tr><th></th><th>Motorista</th><th>Placa e veículo</th><th>O que vai acontecer</th></tr>`;
+  for(const l of L){
+    const chk=l.erros.length?'disabled':(l.padrao?'checked':'');
+    const acoes=l.acoes.map(a=>`<span class="tag ${/Criar|Iniciar|Trocar|Vincular/.test(a)?'ok':'neu'}" style="white-space:normal;margin:1px 2px 1px 0">${esc(a)}</span>`).join(' ');
+    const msgs=[...l.erros.map(e=>`<div style="color:var(--bad,#c0392b);font-size:12px">⛔ ${esc(e)}</div>`),...l.avisos.map(a=>`<div class="muted" style="font-size:12px">⚠ ${esc(a)}</div>`)].join('');
+    h+=`<tr><td style="width:28px"><input type="checkbox" id="imp_${l.n}" ${chk} style="width:auto"></td>
+      <td>${l.nome?`<b>${esc(l.nome)}</b><div class="muted" style="font-size:12px">${esc(l.cpf?mascaraCpf(l.cpf):'')}${l.tel?' · '+esc(l.tel):''}</div>`:'<span class="muted">— sem motorista (vago) —</span>'}</td>
+      <td><b>${esc(l.placa||'—')}</b><div class="muted" style="font-size:12px">${esc([l.modelo,l.ano].filter(Boolean).join(' · ')||'—')}${l.sit?' · '+esc(l.sit):''}</div></td>
+      <td>${l.erros.length?'':acoes}${msgs}<div class="muted" style="font-size:11px">linha ${l.n}</div></td></tr>`;
+  }
+  h+=`</table></div><div class="muted sm" style="margin-top:6px">A senha de cada motorista novo é a placa principal dele. Linhas sem nome criam só o veículo (vago). Linhas desmarcadas são ignoradas.</div>
+  <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" id="imp_go" onclick="impExecutar()">Importar</button></div>`;
+  document.getElementById('imp_prev').innerHTML=h;
+}
+async function impExecutar(){
+  if(!motPodeCriar()){ toast('Só o administrador importa motoristas.'); return; }
+  const sel=impLinhas.filter(l=>!l.erros.length&&(document.getElementById('imp_'+l.n)||{}).checked);
+  if(!sel.length){ toast('Nenhuma linha marcada'); return; }
+  const go=document.getElementById('imp_go'); if(go){ go.disabled=true; go.textContent='Importando…'; }
+  const res={veic:0,atu:0,novos:[],vinc:0,km:0,falhas:[],avisos:[]}; impRes=res.novos;
+  for(const l of sel){
+    try{
+      let v=S.veic.find(x=>x.placa===l.placa);
+      if(!v){
+        const nv={placa:l.placa,modelo:l.modelo||'(a definir)',ano:l.ano,empresa:'',km:l.km||0,status:l.status||'Disponível'};
+        const ref=await S.db.collection('veiculos').add(nv); v={id:ref.id,...nv}; S.veic.push(v); res.veic++;
+      } else {
+        const up={}; if(l.modelo&&l.modelo!==v.modelo) up.modelo=l.modelo; if(l.ano&&l.ano!==String(v.ano||'')) up.ano=l.ano; if(l.status&&l.status!==v.status) up.status=l.status;
+        const base=v.oleo&&v.oleo.base===true; if(l.km&&!l.iniciar&&!base&&l.km!==v.km) up.km=l.km;
+        if(Object.keys(up).length){ await S.db.doc('veiculos/'+v.id).update(up); Object.assign(v,up); res.atu++; }
+      }
+      if(l.nome&&l.principal){
+        const ex=S.mots.find(m=>m.cpf===l.cpf);
+        if(!ex){
+          const d={nome:l.nome,cpf:l.cpf,telefone:l.tel,veiculoId:v.id,placa:v.placa,ativo:true,criadoEm:agoraIso(),criadoPor:S.mecNome};
+          const ref=await S.db.collection('motoristas').add(d);
+          const {data,error}=await sb.rpc('mot_salvar_acesso',{p_id:ref.id,p_cpf:l.cpf,p_senha:null});
+          if(error||(data&&data.erro)){ await S.db.doc('motoristas/'+ref.id).delete(); throw (error||new Error(data.erro)); }
+          res.novos.push({nome:l.nome,cpf:l.cpf,tel:l.tel,placa:v.placa});
+        } else if(ex.veiculoId!==v.id){
+          const d={...ex,telefone:ex.telefone||l.tel,veiculoId:v.id,placa:v.placa}; delete d.id;
+          await S.db.doc('motoristas/'+ex.id).set(d); res.vinc++;
+        }
+      }
+      if(l.iniciar){
+        const {data,error}=await sb.rpc('mot_oleo_staff',{p_veiculo_id:v.id,p_acao:'iniciar',p_km:l.km,p_proxima:l.prox,p_data:null,p_motivo:null});
+        if(error) throw error; if(data&&data.erro) res.avisos.push(l.placa+': '+data.erro); else res.km++;
+      }
+    }catch(e){ res.falhas.push((l.nome||l.placa)+' (linha '+l.n+'): '+((e&&e.message)||e)); }
+  }
+  try{ await motRecarregar(); }catch(e){}
+  impResultado(res);
+}
+function impMsgAcesso(m){
+  const senha=normPlaca(m.placa);
+  return `Olá, ${m.nome.split(' ')[0]}! Seu acesso ao app *Carsz Motorista* foi criado.\n\nAbra: ${motLink()}\nLogin (CPF): ${mascaraCpf(m.cpf)}\nSenha: a placa do seu veículo (${senha})\n\nNo app você acompanha avisos, fala com a cobrança e pede manutenção. Pra ficar como aplicativo no celular: no Android toque em "Instalar app"; no iPhone, em Compartilhar > "Adicionar à Tela de Início".`;
+}
+function impWa(i){ const m=impRes[i]; const wa=m&&telWa(m.tel); if(wa) window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(impMsgAcesso(m)),'_blank'); }
+function impResultado(r){
+  const linhas=[`${r.novos.length} motorista(s) criado(s)`,`${r.veic} veículo(s) novo(s)`,r.atu?`${r.atu} veículo(s) atualizado(s)`:'',r.vinc?`${r.vinc} placa(s) trocada(s)/vinculada(s)`:'',r.km?`${r.km} veículo(s) com km e etiqueta iniciados`:''].filter(Boolean);
+  abrir(`<h3>Importação concluída</h3><p>${linhas.map(esc).join(' · ')}.</p>
+    ${r.falhas.length?`<div class="alert warn" style="margin:8px 0"><b>Não deu certo:</b><br>${r.falhas.map(esc).join('<br>')}</div>`:''}
+    ${r.avisos.length?`<div class="muted" style="margin:8px 0">⚠ ${r.avisos.map(esc).join('<br>⚠ ')}</div>`:''}
+    ${r.novos.length?`<div class="muted" style="margin:10px 0 4px"><b>Enviar o acesso por WhatsApp</b> (login = CPF, senha = placa):</div>${r.novos.map((m,i)=>`<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)"><span>${esc(m.nome)} · <b>${esc(m.placa)}</b></span><span class="sp"></span>${telWa(m.tel)?`<button class="sec" onclick="impWa(${i})">💬 Enviar</button>`:'<span class="muted sm">sem WhatsApp</span>'}</div>`).join('')}`:''}
+    <div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`);
+}
+
 async function motApagar(id){
   if(!motPodeExcluir()){ toast('Só o administrador geral (master) exclui motorista.'); return; }
   const x=S.mots.find(m=>m.id===id); if(!x) return;
