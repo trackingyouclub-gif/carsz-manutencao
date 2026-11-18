@@ -3244,23 +3244,46 @@ function motWaDoAviso(avisoId){ const a=S.motAvisos.find(y=>y.id===avisoId); if(
 // conferir: a foto passa a valer 30 dias a partir da conferência; na etiqueta a equipe pode corrigir o km digitado e atualizar a próxima troca do veículo
 async function motConferirFoto(fid){
   const f=S.motFotos.find(y=>y.id===fid); if(!f) return;
-  let kt=null; if(f.tipo==='etiqueta'){ const e=document.getElementById('kt_'+fid); kt=e?(parseInt(String(e.value).replace(/\D/g,''),10)||null):(f.kmTrocaConferido||f.kmTroca||null); }
-  const ck=document.getElementById('ku_'+fid), atualizar=!!(ck&&ck.checked);
+  const num=id=>{ const e=document.getElementById(id); return e?(parseInt(String(e.value).replace(/\D/g,''),10)||null):undefined; };
+  let kt=null, kp=null;
+  if(f.tipo==='etiqueta'){ const v=num('kt_'+fid); kt=v===undefined?(f.kmTrocaConferido||f.kmTroca||null):v; }
+  if(f.tipo==='painel'){ const v=num('kp_'+fid); kp=v===undefined?(f.kmConferido||f.km||null):v; }
+  const ck=document.getElementById('ku_'+fid), atualizar=ck?!!ck.checked:true;
   try{
-    const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||'',expiraEm:new Date(Date.now()+30*864e5).toISOString(),...(kt?{kmTrocaConferido:kt}:{})};
+    const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||'',expiraEm:new Date(Date.now()+30*864e5).toISOString(),...(kt?{kmTrocaConferido:kt}:{}),...(kp?{kmConferido:kp}:{})};
     await S.db.doc('mot_fotos/'+fid).update(d); Object.assign(f,d);
-    let msg='Foto conferida';
-    if(f.tipo==='etiqueta'&&kt&&atualizar){
-      const x=S.mots.find(y=>y.id===f.motoristaId)||{}, vid=(x.reserva&&x.reserva.veiculoId)||x.veiculoId;
-      const {data,error}=await sb.rpc('mot_oleo_staff',{p_veiculo_id:vid,p_acao:'etiqueta',p_proxima:kt});
-      msg=(error||(data&&data.erro))?'Foto conferida, mas não atualizei a troca de óleo: '+((data&&data.erro)||'erro'):'Foto conferida · próxima troca do veículo: '+fmtKm(kt);
-    }
-    toast(msg); render(); motRecarregar();
+    const extra=await motOleoAuto(f,atualizar);
+    toast('Foto conferida'+(extra?' · '+extra:'')); render(); motRecarregar();
   }catch(e){ erroSalvar('conferir a foto',e); }
+}
+// automatiza o controle de óleo a partir das fotos conferidas (sem ir na área Veículo): com o painel (km) e a etiqueta (próxima troca) conferidos
+// inicia o controle; se já estiver iniciado, atualiza a próxima troca (etiqueta) ou corrige o km (painel) quando a equipe mudou o número digitado
+async function motOleoAuto(f,atualizar){
+  if(!atualizar) return '';
+  const x=S.mots.find(y=>y.id===f.motoristaId)||{}, vid=(x.reserva&&x.reserva.veiculoId)||x.veiculoId; if(!vid) return '';
+  const v=S.veic.find(y=>y.id===vid)||{}; let base=!!(v.oleo&&v.oleo.base);
+  const ult=t=>S.motFotos.filter(y=>y.motoristaId===f.motoristaId&&y.tipo===t&&!y.excluida&&y.conferidaEm&&y.semana===f.semana).sort((a,b)=>String(b.em||'').localeCompare(String(a.em||'')))[0];
+  const p=ult('painel'), e=ult('etiqueta'), kmP=p&&(p.kmConferido||p.km), kmE=e&&(e.kmTrocaConferido||e.kmTroca);
+  const rpc=async(acao,args)=>{ const {data,error}=await sb.rpc('mot_oleo_staff',{p_veiculo_id:vid,p_acao:acao,...args}); return error?{erro:error.message||'erro'}:(data||{}); };
+  try{
+    if(!base){
+      if(!(kmP&&kmE)) return kmP||kmE?'falta conferir a outra foto para iniciar o controle de óleo':'';
+      const r=await rpc('iniciar',{p_km:kmP,p_proxima:kmE});
+      if(!r.erro) return 'controle de óleo iniciado: '+fmtKm(kmP)+' km · próxima troca em '+fmtKm(kmE)+' km';
+      if(!/já foi iniciado/i.test(r.erro)) return 'não iniciei o controle de óleo: '+r.erro;
+      base=true; // a tela estava desatualizada: já estava iniciado
+    }
+    if(f.tipo==='etiqueta'&&kmE){ const r=await rpc('etiqueta',{p_proxima:kmE}); return r.erro?'não atualizei a troca de óleo: '+r.erro:'próxima troca do veículo: '+fmtKm(kmE)+' km'; }
+    if(f.tipo==='painel'&&kmP){
+      if(kmP!==(+f.km||0)){ const r=await rpc('corrigir',{p_km:kmP,p_motivo:'Corrigido pela equipe na conferência da foto do painel'}); return r.erro?'não corrigi o km: '+r.erro:'km do veículo corrigido para '+fmtKm(kmP); }
+      await rpc('conferido',{}); return '';
+    }
+  }catch(err){ console.warn(err); return 'não consegui atualizar o controle de óleo'; }
+  return '';
 }
 async function motConferirTodas(motId){
   const lista=motFotosPend(motId); if(!lista.length) return;
-  try{ for(const f of lista){ const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||'',expiraEm:new Date(Date.now()+30*864e5).toISOString(),...(f.kmTroca?{kmTrocaConferido:f.kmTroca}:{})}; await S.db.doc('mot_fotos/'+f.id).update(d); Object.assign(f,d); } toast(lista.length>1?'Fotos conferidas':'Foto conferida'); render(); motRecarregar(); }
+  try{ for(const f of lista){ const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||'',expiraEm:new Date(Date.now()+30*864e5).toISOString(),...(f.kmTroca?{kmTrocaConferido:f.kmTroca}:{}),...(f.km?{kmConferido:f.km}:{})}; await S.db.doc('mot_fotos/'+f.id).update(d); Object.assign(f,d); } let extra=''; for(const f of lista.slice().reverse()){ const m=await motOleoAuto(f,true); if(m&&!extra) extra=m; } toast((lista.length>1?'Fotos conferidas':'Foto conferida')+(extra?' · '+extra:'')); render(); motRecarregar(); }
   catch(e){ erroSalvar('conferir as fotos',e); }
 }
 // excluir foto: apaga a imagem; o motorista volta a ser cobrado pela foto (fica registrado internamente quem excluiu)
@@ -3286,9 +3309,9 @@ async function motCarregarThumbs(){
 function motFotoPainelHtml(motId){
   const x=S.mots.find(y=>y.id===motId)||{}; const v=S.veic.find(y=>y.id===((x.reserva&&x.reserva.veiculoId)||x.veiculoId))||{}; const base=!!(v.oleo&&v.oleo.base);
   return motFotosPend(motId).sort((a,b)=>(a.tipo==='painel'?0:1)-(b.tipo==='painel'?0:1)).map(f=>{
-    const km=f.tipo==='painel'?(f.km?`km do painel digitado: <b>${fmtKm(f.km)}</b>`:'<span class="muted">sem km digitado</span>')
+    const km=f.tipo==='painel'?`km do painel digitado: <input id="kp_${f.id}" class="kmt" inputmode="numeric" value="${esc(String(f.kmConferido||f.km||''))}" aria-label="km do painel"> km`
       :`próxima troca digitada: <input id="kt_${f.id}" class="kmt" inputmode="numeric" value="${esc(String(f.kmTrocaConferido||f.kmTroca||''))}" aria-label="km da próxima troca"> km`;
-    const chk=f.tipo==='etiqueta'&&base?`<label style="display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" id="ku_${f.id}" checked style="width:auto"> Atualizar a próxima troca do veículo com este km</label>`:'';
+    const chk=`<label style="display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" id="ku_${f.id}" checked style="width:auto"> ${base?(f.tipo==='painel'?'Atualizar o km do veículo no controle de óleo':'Atualizar a próxima troca do veículo com este km'):'Iniciar o controle de óleo do veículo com estes números (quando painel e etiqueta estiverem conferidos)'}</label>`;
     return `<div class="mx-foto" data-fid="${f.id}"><div class="muted">${f.tipo==='painel'?'📷 Painel de instrumentos':'📷 Etiqueta de troca de óleo'} · ${esc(motAgo(f.em))}${f.reenviada?' · reenviada':''}</div>
       <img class="mx-thumb" data-img="${esc(f.fotoId||'')}" alt="" onclick="motVerFoto('${f.fotoId}','${f.tipo==='painel'?'Painel':'Etiqueta de óleo'}')"><div>${km}</div>${chk}
       <div class="mx-bt"><button class="pri" onclick="motConferirFoto('${f.id}')">✔ Conferir</button><button class="sec" onclick="motRecusarFoto('${f.id}')">✖ Recusar</button><button class="sec" onclick="motExcluirFoto('${f.id}')">🗑 Excluir foto</button></div></div>`;
@@ -4493,7 +4516,7 @@ if('serviceWorker' in navigator){
 </script>
 <script>
 /* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
-(function(){ var v='Painel v18.11-J'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+(function(){ var v='Painel v18.11-K'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
  d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
  (document.body||document.documentElement).appendChild(d); })();
 </script>
