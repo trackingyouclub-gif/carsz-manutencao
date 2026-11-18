@@ -134,20 +134,22 @@ body.amarelo{--bg:#1f1808;--card:#2e240a;--line:#6a5516;--brand:#f5b50a;--brand-
 .obrig input[type=file]{display:none}
 .obrig .fechar{width:auto;padding:8px 14px;border-radius:999px;font-size:14px}
 /* carrossel de etiquetas (sobe sozinho, por importância) e botão Resolver agora */
-.car{position:relative;height:122px;overflow:hidden;border-radius:16px;margin:0 0 12px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
-.car-track{transition:transform .55s cubic-bezier(.4,0,.2,1)}
-.car-s{height:122px;padding:12px 30px 12px 14px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.car-wrap{position:relative;margin:0 0 12px;border-radius:16px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.car{height:122px;overflow-y:auto;overflow-x:hidden;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;border-radius:16px;-webkit-overflow-scrolling:touch}
+.car::-webkit-scrollbar{display:none}
+.car-s{height:122px;scroll-snap-align:start;scroll-snap-stop:always;padding:12px 30px 12px 14px;display:flex;flex-direction:column;justify-content:center;gap:2px}
 .car-s.r{background:#c62828;color:#fff}.car-s.y{background:#ffb800;color:#2a1d00}.car-s.b{background:#1d4ed8;color:#fff}
 .car-t{font-weight:800;font-size:16px;line-height:1.2}.car-sub{font-size:12.5px;line-height:1.3;opacity:.95;max-height:2.7em;overflow:hidden}
 .car-btn{display:inline-block;align-self:flex-start;margin-top:6px;border:0;border-radius:14px;padding:8px 16px;font-weight:800;font-size:14px;background:#fff;color:#7f1d1d}
 .car-s.y .car-btn{background:#2a1d00;color:#ffb800}.car-s.b .car-btn{color:#1e3a8a}
 .car-dots{position:absolute;right:8px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:5px}
 .car-dots i{width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.45);transition:height .3s}.car-dots i.on{height:16px;background:#fff}
-.car-s.y~.car-dots i{background:rgba(0,0,0,.3)}
+.car-wrap.cy .car-dots i{background:rgba(0,0,0,.3)}.car-wrap.cy .car-dots i.on{background:#2a1d00}
+.car-dots{pointer-events:none}
 .fab-resolver{position:fixed;left:16px;right:16px;bottom:calc(64px + env(safe-area-inset-bottom));z-index:20;border:0;border-radius:14px;padding:13px;background:#ffb800;color:#2a1d00;font-weight:900;font-size:15px;box-shadow:0 6px 16px rgba(0,0,0,.5)}
 .msg.auto-card{border-radius:14px;padding:10px 12px;max-width:92%}.msg.auto-card.y{background:#ffb800;color:#2a1d00}.msg.auto-card.r{background:#c62828;color:#fff}
 .msg.auto-card .car-btn{display:block;margin-top:8px}.msg.auto-card.r .car-btn{background:#fff;color:#7f1d1d}.msg.auto-card.y .car-btn{background:#2a1d00;color:#ffb800}
-@media (prefers-reduced-motion:reduce){.car-track{transition:none}}
+
 /* sheet */
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet{background:var(--card);width:100%;max-width:640px;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:90dvh;overflow:auto}
@@ -436,10 +438,17 @@ function itensCarrossel(r){
 }
 function carrosselHtml(r){
   const L=itensCarrossel(r); if(!L.length) return ''; S.carIdx=(S.carIdx||0)%L.length;
-  return `<div class="car" id="carrossel" data-n="${L.length}" ontouchstart="S.carPausa=Date.now()+9000"><div class="car-track" style="transition:none;transform:translateY(calc(-122px*${S.carIdx}))">${L.map(a=>`<div class="car-s ${a.n}" data-car="${a.id}"><div class="car-t">${a.ico} ${esc(a.tit)}</div><div class="car-sub">${esc(a.sub)}</div>${a.ir?`<button class="car-btn" onclick="${a.ir}">Resolver agora ›</button>`:''}</div>`).join('')}</div>${L.length>1?`<div class="car-dots">${L.map((_,i)=>`<i class="${i===S.carIdx?'on':''}"></i>`).join('')}</div>`:''}</div>`;
+  // rolagem com o dedo (scroll-snap nativo): arrasta para cima/baixo e ela encaixa na etiqueta; o rolar sozinho para na primeira vez que o motorista encosta
+  return `<div class="car-wrap${L[S.carIdx].n==='y'?' cy':''}" id="car_wrap"><div class="car" id="carrossel" data-n="${L.length}" onscroll="carScroll(this)" ontouchstart="S.carManual=true" onpointerdown="S.carManual=true" onwheel="S.carManual=true">${L.map(a=>`<div class="car-s ${a.n}" data-car="${a.id}"><div class="car-t">${a.ico} ${esc(a.tit)}</div><div class="car-sub">${esc(a.sub)}</div>${a.ir?`<button class="car-btn" onclick="${a.ir}">Resolver agora ›</button>`:''}</div>`).join('')}</div>${L.length>1?`<div class="car-dots">${L.map((_,i)=>`<i class="${i===S.carIdx?'on':''}"></i>`).join('')}</div>`:''}</div>`;
 }
-setInterval(()=>{ const c=document.getElementById('carrossel'); if(!c||document.hidden||(S.carPausa||0)>Date.now()) return; const n=+c.dataset.n; if(n<2) return;
-  S.carIdx=((S.carIdx||0)+1)%n; const t=c.querySelector('.car-track'); t.style.transition=''; t.style.transform=`translateY(calc(-122px*${S.carIdx}))`; c.querySelectorAll('.car-dots i').forEach((d,i)=>d.classList.toggle('on',i===S.carIdx)); },4500);
+function carScroll(c){
+  const i=Math.max(0,Math.min(+c.dataset.n-1,Math.round(c.scrollTop/122))); S.carIdx=i;
+  const w=document.getElementById('car_wrap'); if(!w) return; w.querySelectorAll('.car-dots i').forEach((d,x)=>d.classList.toggle('on',x===i));
+  const sl=c.children[i]; w.classList.toggle('cy',!!sl&&sl.classList.contains('y'));
+}
+// rola sozinho só até o motorista encostar nela (depois fica manual)
+setInterval(()=>{ const c=document.getElementById('carrossel'); if(!c||document.hidden||S.carManual) return; const n=+c.dataset.n; if(n<2) return;
+  c.scrollTo({top:(((S.carIdx||0)+1)%n)*122,behavior:'smooth'}); },6000);
 // cobrança automática (mensagem no chat + etiqueta): o servidor decide pelo horário e manda no máximo 1 por nível por dia
 function cobrancaAuto(r){
   if(S.mestre||!r||!r.motorista) return; const p=pendencias(r), h=horaSP(), d=hojeStr(); S.autoFeito=S.autoFeito||{};
@@ -526,7 +535,7 @@ function render(rolarChat){
     <nav class="tabs">
       ${[['inicio','🏠','Início',0],['avisos','🔔','Avisos',novosAvisos],['cobranca','💳','Cobrança',nRec],['chat','💬','Chat',nl],['manut','🛠','Manutenção',0]].map(([k,i,l,n])=>`<button class="${S.tab===k?'on':''}" onclick="irPara('${k}')"><span class="i">${i}</span>${l}${n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
     </nav>${S.resolver?obrigHtml(r):fabResolver(r)}`;
-  document.body.style.overflow=S.resolver&&pendFoco(r,S.resolverFoco).length?'hidden':'';
+  document.body.style.overflow=S.resolver&&pendFoco(r,S.resolverFoco).length?'hidden':''; { const cc=document.getElementById('carrossel'); if(cc) cc.scrollTop=(S.carIdx||0)*122; }
   restaurarCampos(keep);
   if(!S.mestre&&!S.treinoChecado&&r.motorista&&r.motorista.id){ S.treinoChecado=true; if(!treinoVisto()) treinoAbrir(true); }
   if(S.tab==='chat'&&(rolarChat||keep.novo)){ const c=document.getElementById('chat_fim'); if(c) c.scrollIntoView({block:'end'}); }
@@ -1017,7 +1026,7 @@ if(S.token) atualizar(true);
 </script>
 <script>
 /* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
-(function(){ var v='App v18.11-G'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+(function(){ var v='App v18.11-H'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
  d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
  (document.body||document.documentElement).appendChild(d); })();
 </script>
