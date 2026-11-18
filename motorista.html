@@ -29,6 +29,7 @@
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.4 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 h1,h2,h3,.plate,.pts{font-family:"Space Grotesk",Inter,system-ui,sans-serif}
 body{display:flex;flex-direction:column;min-height:100dvh}
+#app{flex:1;display:flex;flex-direction:column;min-width:0}
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 header{background:var(--head);border-bottom:1px solid var(--line);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
@@ -278,7 +279,7 @@ function fecharSheet(){ const b=document.getElementById('sheet_bg'); if(b) b.rem
 const hhmm = iso => { try{ return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
 function pendencias(r){
   const v=r.veiculo, bl=(r.motorista.bloqueio||{}).status;
-  if(!v||bl==='bloqueado'||r.na_oficina) return []; // carro parado (bloqueado ou na oficina): não cobra verificação
+  if(!v||bl==='bloqueado') return []; // carro bloqueado: não cobra verificação
   const ve=r.verificacoes||{}, f=r.fotos||{}, p=[];
   if(!ve.agua) p.push('agua'); if(!ve.oleo) p.push('oleo'); if(!ve.lanternas) p.push('lanternas'); if(!ve.farois) p.push('farois');
   if(f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'){ if(!f.painel) p.push('painel'); if(!f.etiqueta) p.push('etiqueta'); }
@@ -313,15 +314,15 @@ async function confirmarChecklist(){
   finally{ S.ocupado=false; }
 }
 function obrigHtml(r){
-  const pend=pendencias(r); if(!pend.length) return '';
-  const ve=r.verificacoes||{}, f=r.fotos||{}; const comFotos=f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'; const rec=f.recusadas||{};
+  const foco=S.resolverFoco||null, verCk=!foco||foco==='check', verFt=!foco||foco==='fotos', pend=pendFoco(r,foco), outras=pendencias(r).length-pend.length; if(!pend.length) return '';
+  const ve=r.verificacoes||{}, f=r.fotos||{}; const comFotos=verFt&&(f.status==='pendente'||f.status==='atrasada'||f.status==='refazer'); const rec=f.recusadas||{};
   const item=(k,em,tit,desc,hora,acao)=> hora
     ? `<div class="card done"><div class="it"><span class="em">✅</span><div class="tx"><b>${tit}</b><div class="muted sm">Registrado hoje às ${hhmm(hora)}</div></div></div></div>`
     : `<div class="card"><div class="it"><span class="em">${em}</span><div class="tx"><b>${tit}</b><div class="muted sm">${desc}</div>${acao}</div></div></div>`;
   const btn=(t,tit)=>`<button class="btn" id="vb_${t}" onclick="verificar('${t}')">Já verifiquei ${tit}</button>`;
   const foto=t=>(t==='painel'?kmBox('km_painel',r):t==='etiqueta'?kmTrocaBox(r):'')+`<label class="btn" id="fb_${t}">${rec[t]?'📷 Enviar nova foto':'📷 Tirar foto'}<input type="file" accept="image/*" capture="environment" data-foto="${t}" ${t==='painel'?'onclick="return kmOk()" ':t==='etiqueta'?'onclick="return kmTrocaOk()" ':''}onchange="enviarFoto('${t}',this)"></label>`;
-  let h=`<div class="obrig" id="resolver">${emAtraso(r)?faixaAtraso(r,false,true).replace('class="faixa-atraso','style="position:static;margin:-18px -16px 14px;width:auto" class="faixa-atraso'):''}<div class="wrap"><div class="row" style="margin-bottom:4px"><h2 style="flex:1;margin:0">✋ Resolver agora</h2><button class="btn ghost fechar" id="resolver_fechar" onclick="fecharResolver()">✕ Fechar</button></div>
-    <p class="muted" style="margin:0 0 14px">Confirme os itens abaixo. Fica registrado o dia e o horário de cada um — e cada item rende pontos. Pode fechar e voltar depois pelo botão <b>Resolver agora</b>.</p>`;
+  let h=`<div class="obrig" id="resolver">${emAtraso(r)?faixaAtraso(r,false,true).replace('class="faixa-atraso','style="position:static;margin:-18px -16px 14px;width:auto" class="faixa-atraso'):''}<div class="wrap"><div class="row" style="margin-bottom:4px"><h2 style="flex:1;margin:0">${foco==='check'?'✋ Verificação do dia':foco==='fotos'?'📷 Fotos da semana':'✋ Resolver agora'}</h2><button class="btn ghost fechar" id="resolver_fechar" onclick="fecharResolver()">✕ Fechar</button></div>
+    <p class="muted" style="margin:0 0 14px">${foco==='check'?'Marque o que você conferiu hoje e confirme. Fica registrado o dia e o horário de cada item.':foco==='fotos'?'Envie as fotos que a equipe está cobrando. A equipe confere o número digitado com a foto.':'Confirme os itens abaixo. Fica registrado o dia e o horário de cada um — e cada item rende pontos.'} Pode fechar e voltar depois pelo botão <b>Resolver agora</b>.</p>`;
   if(comFotos){
     h+=f.status==='refazer'
       ? `<div class="alert bad"><b class="t">📷 Foto recusada pela cobrança</b><div class="txt">Alguma foto veio ilegível ou com informação errada. Veja o motivo abaixo e envie de novo.</div></div>`
@@ -329,13 +330,13 @@ function obrigHtml(r){
       ? `<div class="alert bad"><b class="t">🚨 Fotos da semana atrasadas</b><div class="txt">As fotos eram para segunda-feira. O veículo está sujeito a bloqueio — envie agora.</div></div>`
       : `<div class="alert warn"><b class="t">⚠ Hoje é dia das fotos da semana</b><div class="txt">Envie até hoje, 23:59. Sem as fotos, o veículo poderá ser bloqueado.</div></div>`;
   }
-  h+=checklistVerif(ve);
+  if(verCk) h+=checklistVerif(ve);
   if(comFotos){
     const motivo=t=>rec[t]?`<div class="alert bad" style="margin:6px 0"><b>Foto recusada:</b> ${esc(rec[t].motivo||'ilegível ou informação errada')}</div>`:'';
     h+=item('painel','📷','Foto do painel de instrumentos',motivo('painel')+'Com o carro ligado, foto do painel inteiro mostrando o km (hodômetro) e as luzes. Deve ficar nítida e legível.'+ptsFoto(),f.painel,foto('painel'));
     h+=item('etiqueta','📷','Foto da etiqueta de troca de óleo',motivo('etiqueta')+'Foto da etiqueta/adesivo com o km da próxima troca de óleo. Deve ficar nítida e legível.'+ptsFoto(),f.etiqueta,foto('etiqueta'));
   }
-  return h+`<div class="muted sm" style="text-align:center;margin-top:6px">Faltam ${pend.length} item${pend.length>1?'s':''}.</div></div></div>`;
+  return h+`<div class="muted sm" style="text-align:center;margin-top:6px">Faltam ${pend.length} item${pend.length>1?'s':''}.</div>${outras>0?`<button class="btn ghost" id="resolver_tudo" style="margin-top:10px" onclick="abrirResolver()">Ver também o que mais falta (${outras})</button>`:''}</div></div>`;
 }
 async function verificar(tipo){
   const b=document.getElementById('vb_'+tipo); if(b) b.disabled=true; S.ocupado=true;
@@ -401,8 +402,10 @@ async function enviarFoto(tipo,input){
   finally{ S.ocupado=false; input.value=''; }
 }
 // ---- Resolver agora: tela de resolução (checklist + fotos) aberta pelo carrossel/botão, sem travar o app ----
-function abrirResolver(){ S.resolver=true; render(); setTimeout(()=>{ const o=document.getElementById('resolver'); if(o) o.scrollTo(0,0); },30); }
-function fecharResolver(){ S.resolver=false; render(); }
+// cada etiqueta abre a tela de resolução SÓ do que está sendo cobrado ('check' = verificação do dia, 'fotos' = fotos da semana; sem foco = tudo)
+function pendFoco(r,foco){ const p=pendencias(r); if(foco==='check') return p.filter(k=>['agua','oleo','lanternas','farois'].includes(k)); if(foco==='fotos') return p.filter(k=>k==='painel'||k==='etiqueta'); return p; }
+function abrirResolver(foco){ S.resolverFoco=(foco==='check'||foco==='fotos')?foco:null; S.resolver=true; render(); setTimeout(()=>{ const o=document.getElementById('resolver'); if(o) o.scrollTo(0,0); },30); }
+function fecharResolver(){ S.resolver=false; S.resolverFoco=null; render(); }
 function horaSP(){ try{ return parseInt(new Date().toLocaleString('en-US',{timeZone:'America/Sao_Paulo',hour:'numeric',hour12:false}),10)%24; }catch(e){ return new Date().getHours(); } }
 function fabResolver(r){
   if(S.tab==='inicio'||S.tab==='chat') return '';
@@ -420,10 +423,10 @@ function itensCarrossel(r){
   }
   const nomes={agua:'água',oleo:'óleo',lanternas:'lanternas',farois:'faróis'}, faltaV=p.filter(k=>nomes[k]);
   if(faltaV.length){ const auto=h>=10, ult=h>=15;
-    L.push({id:'check',n:ult?'r':'y',ico:auto?'🤖':'✋',tit:auto?'Equipe Carsz · mensagem automática':'Verificação do dia pendente',sub:(ult?'Última chamada: v':'V')+'ocê ainda não fez a verificação de hoje (falta: '+faltaV.map(k=>nomes[k]).join(', ')+').',ir:'abrirResolver()'}); }
+    L.push({id:'check',n:ult?'r':'y',ico:auto?'🤖':'✋',tit:auto?'Equipe Carsz · mensagem automática':'Verificação do dia pendente',sub:(ult?'Última chamada: v':'V')+'ocê ainda não fez a verificação de hoje (falta: '+faltaV.map(k=>nomes[k]).join(', ')+').',ir:"abrirResolver('check')"}); }
   const rec=Object.keys(f.recusadas||{}).length, faltaF=p.some(k=>k==='painel'||k==='etiqueta');
-  if(rec) L.push({id:'fotos',n:'y',ico:'📷',tit:'Refazer '+rec+(rec>1?' fotos':' foto'),sub:'A equipe recusou — envie de novo, com a foto nítida.',ir:'abrirResolver()'});
-  else if(faltaF) L.push({id:'fotos',n:f.status==='atrasada'?'r':'y',ico:'📷',tit:f.status==='atrasada'?'Fotos da semana atrasadas':'Fotos da semana pendentes',sub:'Painel (com o km) e etiqueta de óleo (com o km da próxima troca).',ir:'abrirResolver()'});
+  if(rec) L.push({id:'fotos',n:'y',ico:'📷',tit:'Refazer '+rec+(rec>1?' fotos':' foto'),sub:'A equipe recusou — envie de novo, com a foto nítida.',ir:"abrirResolver('fotos')"});
+  else if(faltaF) L.push({id:'fotos',n:f.status==='atrasada'?'r':'y',ico:'📷',tit:f.status==='atrasada'?'Fotos da semana atrasadas':'Fotos da semana pendentes',sub:'Painel (com o km) e etiqueta de óleo (com o km da próxima troca).',ir:"abrirResolver('fotos')"});
   const o=r.oleo; if(o){ const n=fmtKmN(Math.abs(o.faltam)); L.push({id:'oleo',n:o.nivel==='vencida'?'r':'y',ico:'🛢',tit:o.nivel==='vencida'?'Troca de óleo vencida há '+n+' km':'Troca de óleo em '+n+' km',sub:'Agende a manutenção com a Carsz.',ir:"irPara('manut')"}); }
   const man=avisosAmarelos(r).find(a=>a.id==='manut'); if(man) L.push({id:'manut',n:'y',ico:'🛠',tit:man.tit,sub:man.sub,ir:"irPara('manut')"});
   if(f.aguardando_conferencia) L.push({id:'conf',n:'b',ico:'⏳',tit:'Fotos enviadas · em conferência',sub:'A equipe confere e dá baixa.',ir:''});
@@ -515,7 +518,7 @@ function render(rolarChat){
   const keep=guardarCampos();
   const r=S.resumo; const nl=r.nao_lidas||0;
   const novosAvisos=avisosVisiveis(r).filter(a=>!vistos.has(a.id)).length; const nRec=(r.comprovantes||[]).filter(c=>c.status==='recusado').length;
-  if(S.resolver&&!pendencias(r).length){ S.resolver=false; setTimeout(()=>toast('Tudo em dia ✅'),50); }
+  if(S.resolver&&!pendFoco(r,S.resolverFoco).length){ S.resolver=false; S.resolverFoco=null; setTimeout(()=>toast('Feito ✅'),50); }
   const atr=emAtraso(r); document.body.classList.toggle('atraso',atr); const amar=!atr&&avisosAmarelos(r).length>0; document.body.classList.toggle('amarelo',amar);
   const conteudo={inicio:telaInicio,avisos:telaAvisos,cobranca:telaCobranca,chat:telaChat,manut:telaManut}[S.tab](r);
   app.innerHTML=`<header><h1>Carsz Motorista</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
@@ -523,7 +526,7 @@ function render(rolarChat){
     <nav class="tabs">
       ${[['inicio','🏠','Início',0],['avisos','🔔','Avisos',novosAvisos],['cobranca','💳','Cobrança',nRec],['chat','💬','Chat',nl],['manut','🛠','Manutenção',0]].map(([k,i,l,n])=>`<button class="${S.tab===k?'on':''}" onclick="irPara('${k}')"><span class="i">${i}</span>${l}${n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
     </nav>${S.resolver?obrigHtml(r):fabResolver(r)}`;
-  document.body.style.overflow=S.resolver&&pendencias(r).length?'hidden':'';
+  document.body.style.overflow=S.resolver&&pendFoco(r,S.resolverFoco).length?'hidden':'';
   restaurarCampos(keep);
   if(!S.mestre&&!S.treinoChecado&&r.motorista&&r.motorista.id){ S.treinoChecado=true; if(!treinoVisto()) treinoAbrir(true); }
   if(S.tab==='chat'&&(rolarChat||keep.novo)){ const c=document.getElementById('chat_fim'); if(c) c.scrollIntoView({block:'end'}); }
@@ -578,7 +581,7 @@ function avisosAmarelos(r){
   if(f.aguardando_conferencia) L.push({id:'conf',tit:'FOTOS ENVIADAS · EM CONFERÊNCIA',sub:'A equipe confere e dá baixa',ir:'inicio',calma:true});
   return L;
 }
-function irAv(d){ if(d==='manut'){ irPara('manut'); return; } irPara('inicio'); setTimeout(()=>{ const e=document.getElementById('fotos_semana')||document.getElementById('ver_hoje'); if(e&&e.scrollIntoView) e.scrollIntoView({behavior:'smooth',block:'center'}); },80); }
+function irAv(d){ if(d==='manut'){ irPara('manut'); return; } if(d==='fotos'&&S.resumo&&pendFoco(S.resumo,'fotos').length){ abrirResolver('fotos'); return; } irPara('inicio'); setTimeout(()=>{ const e=document.getElementById('fotos_semana')||document.getElementById('ver_hoje'); if(e&&e.scrollIntoView) e.scrollIntoView({behavior:'smooth',block:'center'}); },80); }
 function faixaAmarela(r,aba){
   const L=avisosAmarelos(r); if(!L.length) return ''; const a=L[0]; const mais=L.length>1?' · +'+(L.length-1)+(L.length>2?' avisos':' aviso'):'';
   const aqui=(a.ir==='manut'&&aba==='manut')||(a.ir==='inicio'&&aba==='inicio'&&a.calma);
@@ -600,7 +603,7 @@ function cartaoVeiculo(r){
   return `<div class="card"><div class="vcard"><div style="flex:1;min-width:0"><div class="t4">Olá,</div><div class="t1">${nome}</div></div><div style="text-align:right"><span class="plate" style="font-size:18px">${esc(v.placa||'')}</span><div class="mod">${esc(v.modelo||'')}${r.reserva?' · 🚗 reserva':''}<br>${esc(v.ano||'')}${v.km?' · '+fmtKm(v.km):''}</div></div></div>
       ${r.reserva?`<div class="alert warn" style="margin:12px 0 0"><b class="t" style="margin:0">🚗 Você está no carro reserva</b><div class="txt" style="margin:4px 0 8px">Sua placa principal <b>${esc((r.principal||{}).placa||'')}</b> continua pontuando e fica guardada para você${r.reserva.desde?' (desde '+fmtD(String(r.reserva.desde).slice(0,10))+')':''}.</div><button class="btn sm" onclick="devolverReserva()">↩ Devolver reserva</button></div>`
         :(r.reservaAtivo===false?`<div class="t4" style="margin-top:8px">🚗 Carro reserva indisponível no momento.</div>`:`<button class="btn sm ghost" style="margin-top:10px" onclick="formTrocarPlaca()">🚗 Peguei um carro reserva</button>`)}
-      ${r.na_oficina?`<div class="alert info" style="margin:12px 0 0"><b>🛠 Seu veículo está na oficina</b> desde ${fmtD(r.na_oficina.desde)}.</div>`:''}</div>`;
+      </div>`;
 }
 // pedágio free flow: lembra a cada 10 dias de conferir se há pedágios a pagar (volta 10 dias depois da última conferência)
 const PEDAGIO_URL='https://pedagiodigital.com/consulta-avulsa';
@@ -770,7 +773,7 @@ function telaChat(r){
   const vis=ms.filter(noFiltro);
   h+=`<div class="chips">${['todos'].concat(ASSUNTOS_ESC).map(k=>`<button type="button" class="chip ${fl===k?'on':''}" onclick="chatFiltrar('${k}')">${k==='todos'?'Todos':ASSUNTOS[k][0]}</button>`).join('')}</div>`;
   let ult=''; const bol=m=>{ const a=assuntoMsg(m); const d=(m.em||'').slice(0,10); const sep=d&&d!==ult?`<div class="muted sm" style="text-align:center;margin:6px 0">— ${fmtD(d)} —</div>`:''; ult=d||ult;
-    if(m.de!=='motorista'&&/^cobranca_(checklist|fotos)$/.test(m.tipo||'')) return sep+`<div class="msg eq auto-card ${(+m.nivel||1)>=2?'r':'y'}"><b class="sm">🤖 Equipe Carsz · mensagem automática</b><br>${esc(m.texto)}${pendencias(r).length?`<button class="car-btn" onclick="abrirResolver()">Resolver agora ›</button>`:'<div class="h">✅ Já resolvido</div>'}<div class="h">${esc(fmtHora(m.em))}</div></div>`;
+    if(m.de!=='motorista'&&/^cobranca_(checklist|fotos)$/.test(m.tipo||'')) return sep+`<div class="msg eq auto-card ${(+m.nivel||1)>=2?'r':'y'}"><b class="sm">🤖 Equipe Carsz · mensagem automática</b><br>${esc(m.texto)}${pendFoco(r,m.tipo==='cobranca_fotos'?'fotos':'check').length?`<button class="car-btn" onclick="abrirResolver('${m.tipo==='cobranca_fotos'?'fotos':'check'}')">Resolver agora ›</button>`:'<div class="h">✅ Já resolvido</div>'}<div class="h">${esc(fmtHora(m.em))}</div></div>`;
     return sep+`<div class="msg ${m.de==='motorista'?'eu':'eq'}">${m.de!=='motorista'?`<b class="sm">${esc(m.setor?(m.autor||'Carsz'):'Carsz')}</b>${m.setor&&SETORES[m.setor]?` <span class="atag" data-setor="${m.setor}">${SETORES[m.setor]}</span>`:''}<br>`:''}${a?`<span class="atag" data-assunto="${a}">${esc(ASSUNTOS[a][0])}</span>`:''}${esc(m.texto)}<div class="h">${esc(fmtHora(m.em))}</div></div>`; };
   const padrao=S.chatAssunto&&ASSUNTOS_ESC.includes(S.chatAssunto)?S.chatAssunto:(fl!=='todos'&&ASSUNTOS_ESC.includes(fl)?fl:(()=>{ for(let i=ms.length-1;i>=0;i--){ const a=assuntoMsg(ms[i]); if(a&&a!=='reserva') return a; } return 'outros'; })());
   if(padrao==='bloqueio') h+=formBloqueioChat(r);
@@ -885,7 +888,7 @@ function telaManut(r){
   const v=r.veiculo; const ag=r.agendamentos||[]; const sec=t=>`<div class="sec-t">${t}</div>`; const hj=hojeStr();
   const proximos=ag.filter(a=>a.status==='confirmado'&&a.dataConfirmada&&a.dataConfirmada>=hj).sort((x,y)=>(x.dataConfirmada+(x.horaConfirmada||'')).localeCompare(y.dataConfirmada+(y.horaConfirmada||'')));
   const aguardando=ag.filter(a=>a.status==='solicitado');
-  const hist=ag.filter(a=>!proximos.includes(a)&&a.status!=='solicitado');
+  const hist=ag.filter(a=>a.status==='recusado'&&(a.dataDesejada||'')>=somaDias(-7));
   const chipDe=a=>{ const [t,c]=STATUS_AGEND[a.status]||['—','neu']; return `<span class="tag ${c}">${t}</span>`; };
   let h=`<div class="t1" style="margin:4px 2px 0">Manutenção</div>`;
   if(proximos.length||(r.agendadas||[]).length){
@@ -1014,7 +1017,7 @@ if(S.token) atualizar(true);
 </script>
 <script>
 /* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
-(function(){ var v='App v18.11-B'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+(function(){ var v='App v18.11-G'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
  d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
  (document.body||document.documentElement).appendChild(d); })();
 </script>

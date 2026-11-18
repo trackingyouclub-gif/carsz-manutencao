@@ -3633,7 +3633,7 @@ const motPrioridade = x => (motBloqPend(x.id).some(t=>t.pedidoTipo==='roubo')?10
 // ===== painel do auxiliar: fila de tarefas =====
 const motAgo = iso => { const t=Date.parse(iso||''); if(isNaN(t)) return ''; const m=Math.max(0,Math.round((Date.now()-t)/60000)); if(m<1) return 'agora'; if(m<60) return 'há '+m+' min'; const h=Math.round(m/60); if(h<24) return 'há '+h+' h'; return 'há '+Math.round(h/24)+' d'; };
 function motMsgsSemResposta(id){
-  const ms=S.motMsgs.filter(t=>t.motoristaId===id); const ultEq=ms.filter(t=>t.de==='equipe').map(t=>t.em||'').sort().pop()||'';
+  const ms=S.motMsgs.filter(t=>t.motoristaId===id); const ultEq=ms.filter(t=>t.de==='equipe'&&!motMsgAuto2(t)).map(t=>t.em||'').sort().pop()||''; // cobrança automática não conta como resposta ao motorista
   return ms.filter(t=>t.de==='motorista'&&t.tipo!=='bloqueio'&&!motMsgAuto2(t)&&(t.em||'')>ultEq).sort((a,b)=>(a.em||'').localeCompare(b.em||''));
 }
 // tarefas do auxiliar, já na ordem de prioridade (0 roubo · 1 pedido de bloqueio · 2 mensagem · 3 promessa/comprovante · 4 manutenção/fotos)
@@ -4480,7 +4480,7 @@ if('serviceWorker' in navigator){
 </script>
 <script>
 /* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
-(function(){ var v='Painel v18.11-B'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+(function(){ var v='Painel v18.11-G'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
  d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
  (document.body||document.documentElement).appendChild(d); })();
 </script>
