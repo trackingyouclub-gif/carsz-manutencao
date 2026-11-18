@@ -352,6 +352,7 @@ details.step>summary::-webkit-details-marker{display:none}
   <span class="sub" id="subttl">Controle de revisões, custos e sinistros</span>
   <span id="status">Conectando…</span>
   <button class="lnk" id="arBtn" onclick="acessoRapido()" style="display:none" title="Entrar rápido no painel de qualquer usuário ou motorista, sem senha">⚡ Acesso rápido</button>
+  <button class="lnk" id="instBtn" onclick="instalarApp()" style="display:none" title="Instalar o app na tela inicial do celular ou do computador">📲 Instalar app</button>
   <button class="lnk" id="qrBtn" onclick="abrirQrAcesso()" title="Abrir esta oficina no celular">📱</button>
   <button class="lnk" id="gBtn" onclick="toggleGestaoOficina()">Modo gestão</button>
   <button class="lnk" id="modeBtn" onclick="toggleMode()">Modo mecânico</button>
@@ -978,12 +979,15 @@ const mascaraTel=v=>{const d=v.replace(/\D/g,'').slice(0,11);return d.length>10?
 function cpfValido(c){c=c.replace(/\D/g,'');if(c.length!==11||/^(\d)\1+$/.test(c))return false;let s=0;for(let i=0;i<9;i++)s+=+c[i]*(10-i);let r=(s*10)%11;if(r===10)r=0;if(r!==+c[9])return false;s=0;for(let i=0;i<10;i++)s+=+c[i]*(11-i);r=(s*10)%11;if(r===10)r=0;return r===+c[10];}
 // ---- instalar o app no celular (mesma ideia do app do motorista) ----
 let instalarEvt=null;
-window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); instalarEvt=e; });
-window.addEventListener('appinstalled',()=>{ instalarEvt=null; toast('App instalado!'); });
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); instalarEvt=e; atualizarBtnInstalar(); });
+window.addEventListener('appinstalled',()=>{ instalarEvt=null; toast('App instalado!'); atualizarBtnInstalar(true); });
+// botão "Instalar app" fixo no topo (aparece em qualquer tela, logado ou não, enquanto o painel não estiver rodando como app instalado)
+function atualizarBtnInstalar(instalado){ const b=document.getElementById('instBtn'); if(b) b.style.display=(instalado||emApp)?'none':''; }
 const ehIos=/iphone|ipad|ipod/i.test(navigator.userAgent);
 const emApp=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+setTimeout(atualizarBtnInstalar,0);
 async function instalarApp(){
-  if(instalarEvt){ instalarEvt.prompt(); try{ await instalarEvt.userChoice; }catch(e){} instalarEvt=null; if(S.view==='login'||!S.user) render(); return; }
+  if(instalarEvt){ instalarEvt.prompt(); let r=null; try{ r=await instalarEvt.userChoice; }catch(e){} instalarEvt=null; if(r&&r.outcome==='accepted') atualizarBtnInstalar(true); if(S.view==='login'||!S.user) render(); return; }
   if(ehIos) abrir(`<h3>Instalar no iPhone</h3><p class="muted">No Safari: toque em <b>Compartilhar</b> (o quadrado com a seta pra cima) e depois em <b>Adicionar à Tela de Início</b>.</p><div class="act"><button class="pri" onclick="fechar()">Entendi</button></div>`);
   else abrir(`<h3>Instalar o app</h3><p class="muted">No Chrome do celular: toque nos <b>três pontinhos</b> (canto superior) e depois em <b>Instalar app</b> (ou "Adicionar à tela inicial").</p><div class="act"><button class="pri" onclick="fechar()">Entendi</button></div>`);
 }
@@ -4489,7 +4493,7 @@ if('serviceWorker' in navigator){
 </script>
 <script>
 /* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
-(function(){ var v='Painel v18.11-I'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+(function(){ var v='Painel v18.11-J'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
  d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
  (document.body||document.documentElement).appendChild(d); })();
 </script>
