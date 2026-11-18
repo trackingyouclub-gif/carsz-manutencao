@@ -603,7 +603,7 @@ function promessaAceitaAdia(r){ return null; }
 // o aviso "Bloqueio programado…" some quando a promessa é aceita OU quando a situação deixa de ser "programado" (liberado)
 function avisosVisiveis(r){ const prog=((r.motorista||{}).bloqueio||{}).status==='programado'; return (r.avisos||[]).filter(a=>!(/^bloqueio programado/i.test(a.titulo||'')&&!prog)); }
 const STATUS_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
-const STATUS_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Não foi possível','bad'],concluido:['Concluído','neu']};
+const STATUS_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Não foi possível','bad'],concluido:['Concluído','neu'],dispensado:['Dispensado','neu']};
 
 function cartaoVeiculo(r){
   const v=r.veiculo;

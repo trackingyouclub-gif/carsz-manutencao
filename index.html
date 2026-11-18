@@ -3107,7 +3107,7 @@ const motSegunda = () => { const d=new Date(motHojeSP()+'T12:00:00'); const dow=
 const motHoraSP = iso => { try{ return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}); }catch(e){ return ''; } };
 const motDiaHoraSP = iso => { try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'America/Sao_Paulo'})+' '+motHoraSP(iso); }catch(e){ return ''; } };
 const motVerifHoje = id => { const h=motHojeSP(), o={}; for(const v of S.motVerif) if(v.motoristaId===id&&v.dia===h) o[v.tipo]=v.em; return o; };
-const motDispensado = x => x.ativo===false||!x.veiculoId||(x.bloqueio||{}).status==='bloqueado'||S.os.some(o=>o.veiculoId===x.veiculoId&&o.status==='Aberta');
+const motDispensado = x => x.ativo===false||!x.veiculoId||(x.bloqueio||{}).status==='bloqueado';
 function motFotoSemana(id,semana){ const o={}; for(const f of S.motFotos) if(f.motoristaId===id&&f.semana===semana&&!f.excluida) o[f.tipo]=f; return o; }
 // foto recebida que a equipe ainda não conferiu (a conferência vale só para aquela foto: se o motorista reenviar, volta a ficar pendente)
 const motFotoExpirada = f => !!(f.expirada||(f.expiraEm&&new Date(f.expiraEm)<new Date()));
@@ -3189,7 +3189,7 @@ function motAlertaBloqueio(id){
   const x=S.mots.find(y=>y.id===id); if(!x) return;
   const st=motFotoStatus(x);
   if(st==='ok'){ toast('As fotos da semana já foram enviadas'); return; }
-  if(st==='dispensado'){ toast('Este motorista está dispensado das verificações (veículo parado, na oficina ou desativado)'); return; }
+  if(st==='dispensado'){ toast('Este motorista está dispensado das verificações (veículo bloqueado, sem veículo ou desativado)'); return; }
   const wa=telWa(x.telefone);
   abrir(`<h3>⚡ Alerta de bloqueio — checklist por fotos</h3>
     <p class="muted">Mensagem para <b>${esc(x.nome||'')}</b>${x.placa?' · '+esc(x.placa):''}. Pode editar o texto antes de enviar.</p>
@@ -3602,7 +3602,7 @@ const motAgSit = g => { const h=motDiaSP(agoraIso()), d=g.dataConfirmada||''; re
 const motPendTotal = () => candPendTotal()+S.motMsgs.filter(x=>x.de==='motorista'&&!x.lidaEquipe&&!motMsgsAuto(x)).length+motPromPend()+motAgPend()+motCompPend();
 const MOT_BLOQ={normal:['Liberado','ok'],programado:['Bloqueio programado','warn'],bloqueado:['Bloqueado','bad']};
 const MOT_PROM={pendente:['Aguardando resposta','warn'],aceita:['Aceita','ok'],recusada:['Recusada','bad'],cumprida:['Cumprida','ok'],quebrada:['Não cumprida','bad']};
-const MOT_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Recusado','bad'],concluido:['Concluída','ok']};
+const MOT_AGEND={solicitado:['Aguardando confirmação','warn'],confirmado:['Confirmado','ok'],recusado:['Recusado','bad'],concluido:['Concluída','ok'],dispensado:['Dispensado','neu']};
 const motHora = iso => { try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
 const telWa = t => { const d=String(t||'').replace(/\D/g,''); return d?(d.length<=11?'55'+d:d):''; };
 
@@ -3698,8 +3698,8 @@ function motTaskHtml(t,ficha){
   else if(t.k==='msg'){ tit='💬 Mensagem sem resposta'+(t.n>1?' · '+t.n+' mensagens':''); q=esc(String(t.m.texto||'').slice(0,160)); bt=`<button class="pri" onclick="motResponder('${x.id}')">Responder</button>${bWa}`; }
   else if(t.k==='prom'){ const p=t.p; tit='🤝 Promessa para responder'; q='Até <b>'+fmtD(p.dataPrometida)+'</b>'+(p.valor?' · '+fmtBRL(p.valor):'')+(p.obs?' · '+esc(p.obs):''); bt=`<button class="pri" onclick="motRespPromessa('${p.id}','aceita')">Aceitar</button><button class="sec" onclick="motRespPromessa('${p.id}','recusada')">Recusar</button>`; }
   else if(t.k==='comp'){ const c=t.c; tit='🧾 Comprovante para conferir'; q=(c.valor?fmtBRL(c.valor)+' · ':'')+(c.tipo==='pdf'?'PDF':'foto')+(c.obs?' · '+esc(c.obs):''); bt=`<button class="pri" onclick="motVerComp('${c.id}')">Ver e dar baixa</button>`; }
-  else if(t.k==='ag'){ const g=t.g; tit='🛠 Pedido de manutenção · '+fmtD(g.dataDesejada); q=esc(g.descricao||'')+(g.km?' <span class="muted">('+fmtKm(g.km)+')</span>':''); bt=`<button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="sec" onclick="motRespAgend('${g.id}','recusado')">Recusar</button>`; }
-  else if(t.k==='real'){ const g=t.g, at=motAgSit(g)==='atrasada'; cls=at?' r':''; tit='🔧 Manutenção '+(at?'passou da data':'é hoje')+' · '+motAgQuando(g); q=esc(g.descricao||'')+(g.localConfirmado?'<div>📍 '+esc(g.localConfirmado)+'</div>':'')+(at?'<div class="muted">Já foi feita? Dê baixa para sair o aviso do app do motorista.</div>':''); bt=`<button class="pri" onclick="motBaixaManut('${g.id}')">✔ Dar baixa</button>${bWa}`; }
+  else if(t.k==='ag'){ const g=t.g; tit='🛠 Pedido de manutenção · '+fmtD(g.dataDesejada); q=esc(g.descricao||'')+(g.km?' <span class="muted">('+fmtKm(g.km)+')</span>':''); bt=`<button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="sec" onclick="motRespAgend('${g.id}','recusado')">Recusar</button><button class="sec" onclick="motDispensarAg('${g.id}')">Dispensar (já foi feita)</button>`; }
+  else if(t.k==='real'){ const g=t.g, at=motAgSit(g)==='atrasada'; cls=at?' r':''; tit='🔧 Manutenção '+(at?'passou da data':'é hoje')+' · '+motAgQuando(g); q=esc(g.descricao||'')+(g.localConfirmado?'<div>📍 '+esc(g.localConfirmado)+'</div>':'')+(at?'<div class="muted">Já foi feita? Dê baixa para sair o aviso do app do motorista.</div>':''); bt=`<button class="pri" onclick="motBaixaManut('${g.id}')">✔ Dar baixa</button><button class="sec" onclick="motDispensarAg('${g.id}')">Dispensar</button>${bWa}`; }
   else if(t.k==='foto'){ tit='📷 '+t.n+' foto'+(t.n>1?'s':'')+' para conferir'; if(ficha) bt=`<button class="pri" onclick="motAbrirFicha('${x.id}','mais','fotos')">Abrir fotos</button>`; else { q=motFotoPainelHtml(x.id); bt=`<button class="sec" onclick="motAbrirFicha('${x.id}','mais','fotos')">Ver ficha completa</button>`; } }
   else if(t.k==='check'){ const v=motVerifHoje(x.id), falta=[['agua','água'],['oleo','óleo'],['lanternas','lanternas'],['farois','faróis']].filter(z=>!v[z[0]]).map(z=>z[1]); tit='✋ Checklist de hoje pendente'; q='Falta: '+falta.join(', '); bt=`<button class="pri" onclick="motCobrarChecklist('${x.id}')">Cobrar agora</button>${bWa}`; }
   return `<div class="mx-task${cls}" data-task="${t.k}"><div class="t">${tit}</div>${meta}${q?`<div class="q">${q}</div>`:''}<div class="mx-bt">${bt}</div></div>`;
@@ -4008,6 +4008,15 @@ function motRespAgend(gid,status){
       <div class="full"><label>Local</label><input id="ag_local" list="ag_locais" value="${esc(ultAg.local||'')}" placeholder="Ex.: Auto Mecânica Valdeci — Rua tal, 123, bairro, cidade"><datalist id="ag_locais">${locais.map(l=>`<option value="${esc(l)}">`).join('')}</datalist></div></div>`:''}
     <label>Mensagem para o motorista (opcional)</label><textarea id="ag_resp" placeholder="${status==='confirmado'?'Ex.: Pode vir às 9h.':'Ex.: Nessa data não temos vaga, sugiro outra.'}"></textarea>
     <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motConfirmarAgend('${gid}','${status}')">Confirmar</button></div>`);
+}
+// dispensar: a manutenção já foi feita (ou não é mais necessária) — sai da fila e do app do motorista, sem mandar mensagem e sem recusa
+async function motDispensarAg(gid){
+  const g=S.motAgend.find(y=>y.id===gid); if(!g) return;
+  if(!confirm('Dispensar este pedido de manutenção de '+(g.motoristaNome||'motorista')+' ('+(g.placa||'')+')?\nO motorista não recebe mensagem; o pedido só sai da fila e do app dele.')) return;
+  try{
+    await S.db.doc('mot_agendamentos/'+gid).update({status:'dispensado',dispensadoEm:agoraIso(),dispensadoPor:(S.perfil&&S.perfil.nome)||''});
+    toast('Dispensado'); motRecarregar();
+  }catch(e){ erroSalvar('dispensar o pedido de manutenção',e); }
 }
 async function motConfirmarAgend(gid,status){
   const g=S.motAgend.find(y=>y.id===gid); if(!g) return; const resp=val('ag_resp'); const dc=status==='confirmado'?val('ag_conf'):''; const hora=status==='confirmado'?val('ag_hora'):''; const local=status==='confirmado'?val('ag_local').trim():'';
@@ -4480,7 +4489,7 @@ if('serviceWorker' in navigator){
 </script>
 <script>
 /* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
-(function(){ var v='Painel v18.11-G'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+(function(){ var v='Painel v18.11-I'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
  d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
  (document.body||document.documentElement).appendChild(d); })();
 </script>
