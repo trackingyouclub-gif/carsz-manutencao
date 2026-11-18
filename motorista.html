@@ -1012,5 +1012,11 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator
 render();
 if(S.token) atualizar(true);
 </script>
+<script>
+/* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
+(function(){ var v='App v18.11-B'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+ d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
+ (document.body||document.documentElement).appendChild(d); })();
+</script>
 </body>
 </html>
