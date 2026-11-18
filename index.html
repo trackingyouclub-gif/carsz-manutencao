@@ -165,6 +165,24 @@ input.xl{font-size:26px;font-weight:600;text-align:center;letter-spacing:2px;pad
 .mx-sec.red{color:var(--bad)}
 .mx-task{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--warn);border-radius:12px;padding:12px;margin-bottom:10px}
 .mx-task.r{border-left-color:var(--bad);background:var(--bad-bg)}
+.mx-prog{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.mx-prog span:not(.sp){border-radius:999px;padding:4px 11px;font:800 12px "IBM Plex Sans";color:#fff}
+.mx-prog .r{background:#b91c1c}.mx-prog .a{background:#b45309}.mx-prog .b{background:#1d4ed8}
+.mx-prog button{border-radius:999px;min-height:38px;padding:4px 12px}
+.mx-big{border-radius:18px;padding:5px;position:relative;z-index:3;box-shadow:0 8px 20px rgba(0,0,0,.35)}
+.mx-big.r{background:#b91c1c}.mx-big.a{background:#b45309}.mx-big.b{background:#1d4ed8}
+.mx-big .mx-task{margin:0;border-radius:14px}
+.mx-big .mx-bt button,.mx-fila-ac button,.mx-foto .mx-bt button{border-radius:14px;min-height:46px}
+.mx-big.sobe{animation:filaSobe .4s ease-out}
+@keyframes filaSobe{from{transform:translateY(30px);opacity:.15}to{transform:none;opacity:1}}
+.mx-peek{margin:-8px 12px 0;padding:14px 12px 7px;border-radius:0 0 14px 14px;font-size:13px;color:#fff;opacity:.8;position:relative}
+.mx-peek.r{background:#7f1d1d}.mx-peek.a{background:#78350f}.mx-peek.b{background:#1e3a8a}
+.mx-peek.p3{margin:-8px 24px 0;opacity:.55;z-index:0}
+.mx-fila-ac{display:flex;gap:8px;margin:12px 0 4px}.mx-fila-ac button{flex:1}
+.mx-foto{border-top:1px dashed var(--line);padding:8px 0;margin-top:6px}
+.mx-thumb{display:block;max-width:100%;max-height:150px;border-radius:10px;margin:6px 0;background:#000;cursor:zoom-in;min-height:40px}
+.mx-foto input.kmt{width:120px;display:inline-block;margin:0 4px}
+@media (prefers-reduced-motion:reduce){.mx-big.sobe{animation:none}}
 .mx-task .t{font:800 16px "IBM Plex Sans"}
 .mx-task .m{font-size:13px;color:var(--muted);margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;cursor:pointer}
 .mx-task .m b{color:var(--ink)}
@@ -3090,10 +3108,10 @@ const motHoraSP = iso => { try{ return new Date(iso).toLocaleTimeString('pt-BR',
 const motDiaHoraSP = iso => { try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'America/Sao_Paulo'})+' '+motHoraSP(iso); }catch(e){ return ''; } };
 const motVerifHoje = id => { const h=motHojeSP(), o={}; for(const v of S.motVerif) if(v.motoristaId===id&&v.dia===h) o[v.tipo]=v.em; return o; };
 const motDispensado = x => x.ativo===false||!x.veiculoId||(x.bloqueio||{}).status==='bloqueado'||S.os.some(o=>o.veiculoId===x.veiculoId&&o.status==='Aberta');
-function motFotoSemana(id,semana){ const o={}; for(const f of S.motFotos) if(f.motoristaId===id&&f.semana===semana) o[f.tipo]=f; return o; }
+function motFotoSemana(id,semana){ const o={}; for(const f of S.motFotos) if(f.motoristaId===id&&f.semana===semana&&!f.excluida) o[f.tipo]=f; return o; }
 // foto recebida que a equipe ainda não conferiu (a conferência vale só para aquela foto: se o motorista reenviar, volta a ficar pendente)
 const motFotoExpirada = f => !!(f.expirada||(f.expiraEm&&new Date(f.expiraEm)<new Date()));
-const motFotoPend = f => !f.recusada&&!motFotoExpirada(f)&&f.conferidaFotoId!==f.fotoId;
+const motFotoPend = f => !f.recusada&&!f.excluida&&!motFotoExpirada(f)&&f.conferidaFotoId!==f.fotoId;
 const motFotosPend = id => S.motFotos.filter(f=>f.motoristaId===id&&motFotoPend(f));
 // ok | pendente (é segunda e falta) | atrasada (passou a segunda e falta) | opcional (cadastrado depois da segunda) | dispensado
 function motFotoStatus(x){
@@ -3148,7 +3166,7 @@ async function motVerFoto(fotoId,titulo){
     const {data,error}=await sb.from('mot_fotos_img').select('foto').eq('id',fotoId).maybeSingle();
     if(error) throw error;
     const src=data&&(data.foto||(data.data&&data.data.foto));
-    if(!src){ abrir(`<h3>${esc(titulo||'Foto')}</h3><p class="muted">Esta foto já expirou (as fotos ficam guardadas por 30 dias).</p><div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`); return; }
+    if(!src){ abrir(`<h3>${esc(titulo||'Foto')}</h3><p class="muted">Esta foto não está mais disponível (foi substituída, excluída ou passou de 30 dias da conferência).</p><div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`); return; }
     abrir(`<h3>${esc(titulo||'Foto')}</h3><img src="${src}" style="width:100%;max-height:70vh;object-fit:contain;border-radius:8px;background:#000"><div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`);
   }catch(e){ abrir(`<h3>${esc(titulo||'Foto')}</h3><p class="muted">Não consegui abrir a foto agora.</p><div class="act"><button class="pri" onclick="fechar()">Fechar</button></div>`); }
 }
@@ -3219,15 +3237,58 @@ async function motWaAbrir(motId,avisoId){
 }
 function motWaDoAviso(avisoId){ const a=S.motAvisos.find(y=>y.id===avisoId); if(!a) return; const x=S.mots.find(y=>y.id===a.motoristaId); motWaPrompt(a.motoristaId,avisoId,/ALERTA DE BLOQUEIO|FOTO RECUSADA/.test(a.texto||'')?motMsgWaLivre(a.texto):motMsgWa(x,a.titulo,a.texto,a.tipo!=='info'),a.titulo); }
 // ---- conferir foto (a equipe viu e está tudo certo) ----
+// conferir: a foto passa a valer 30 dias a partir da conferência; na etiqueta a equipe pode corrigir o km digitado e atualizar a próxima troca do veículo
 async function motConferirFoto(fid){
   const f=S.motFotos.find(y=>y.id===fid); if(!f) return;
-  try{ const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||''}; await S.db.doc('mot_fotos/'+fid).update(d); Object.assign(f,d); toast('Foto conferida'); render(); motRecarregar(); }
-  catch(e){ erroSalvar('conferir a foto',e); }
+  let kt=null; if(f.tipo==='etiqueta'){ const e=document.getElementById('kt_'+fid); kt=e?(parseInt(String(e.value).replace(/\D/g,''),10)||null):(f.kmTrocaConferido||f.kmTroca||null); }
+  const ck=document.getElementById('ku_'+fid), atualizar=!!(ck&&ck.checked);
+  try{
+    const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||'',expiraEm:new Date(Date.now()+30*864e5).toISOString(),...(kt?{kmTrocaConferido:kt}:{})};
+    await S.db.doc('mot_fotos/'+fid).update(d); Object.assign(f,d);
+    let msg='Foto conferida';
+    if(f.tipo==='etiqueta'&&kt&&atualizar){
+      const x=S.mots.find(y=>y.id===f.motoristaId)||{}, vid=(x.reserva&&x.reserva.veiculoId)||x.veiculoId;
+      const {data,error}=await sb.rpc('mot_oleo_staff',{p_veiculo_id:vid,p_acao:'etiqueta',p_proxima:kt});
+      msg=(error||(data&&data.erro))?'Foto conferida, mas não atualizei a troca de óleo: '+((data&&data.erro)||'erro'):'Foto conferida · próxima troca do veículo: '+fmtKm(kt);
+    }
+    toast(msg); render(); motRecarregar();
+  }catch(e){ erroSalvar('conferir a foto',e); }
 }
 async function motConferirTodas(motId){
   const lista=motFotosPend(motId); if(!lista.length) return;
-  try{ for(const f of lista){ const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||''}; await S.db.doc('mot_fotos/'+f.id).update(d); Object.assign(f,d); } toast(lista.length>1?'Fotos conferidas':'Foto conferida'); render(); motRecarregar(); }
+  try{ for(const f of lista){ const d={conferidaFotoId:f.fotoId,conferidaEm:agoraIso(),conferidaPor:(S.perfil&&S.perfil.nome)||'',expiraEm:new Date(Date.now()+30*864e5).toISOString(),...(f.kmTroca?{kmTrocaConferido:f.kmTroca}:{})}; await S.db.doc('mot_fotos/'+f.id).update(d); Object.assign(f,d); } toast(lista.length>1?'Fotos conferidas':'Foto conferida'); render(); motRecarregar(); }
   catch(e){ erroSalvar('conferir as fotos',e); }
+}
+// excluir foto: apaga a imagem; o motorista volta a ser cobrado pela foto (fica registrado internamente quem excluiu)
+async function motExcluirFoto(fid){
+  const f=S.motFotos.find(y=>y.id===fid); if(!f) return;
+  if(!confirm('Excluir esta foto? Não dá para desfazer. O motorista volta a ser cobrado pela foto.')) return;
+  try{
+    if(f.fotoId){ const {error}=await sb.from('mot_fotos_img').delete().eq('id',f.fotoId); if(error) throw error; }
+    const d={excluida:true,excluidaPor:(S.perfil&&S.perfil.nome)||'',excluidaEm:agoraIso()};
+    await S.db.doc('mot_fotos/'+fid).update(d); Object.assign(f,d); S.fotoCache&&delete S.fotoCache[f.fotoId];
+    toast('Foto excluída'); render(); motRecarregar();
+  }catch(e){ erroSalvar('excluir a foto',e); }
+}
+// miniaturas das fotos pendentes dentro da etiqueta da fila
+S.fotoCache=S.fotoCache||{};
+async function motCarregarThumbs(){
+  for(const im of [...document.querySelectorAll('img[data-img]')]){
+    const id=im.dataset.img; if(!id||im.getAttribute('src')) continue;
+    if(S.fotoCache[id]){ im.src=S.fotoCache[id]; continue; }
+    try{ const {data}=await sb.from('mot_fotos_img').select('foto').eq('id',id).maybeSingle(); const src=data&&(data.foto||(data.data&&data.data.foto)); if(src){ S.fotoCache[id]=src; im.src=src; } else { im.alt='foto indisponível'; } }catch(e){ im.alt='foto indisponível'; }
+  }
+}
+function motFotoPainelHtml(motId){
+  const x=S.mots.find(y=>y.id===motId)||{}; const v=S.veic.find(y=>y.id===((x.reserva&&x.reserva.veiculoId)||x.veiculoId))||{}; const base=!!(v.oleo&&v.oleo.base);
+  return motFotosPend(motId).sort((a,b)=>(a.tipo==='painel'?0:1)-(b.tipo==='painel'?0:1)).map(f=>{
+    const km=f.tipo==='painel'?(f.km?`km do painel digitado: <b>${fmtKm(f.km)}</b>`:'<span class="muted">sem km digitado</span>')
+      :`próxima troca digitada: <input id="kt_${f.id}" class="kmt" inputmode="numeric" value="${esc(String(f.kmTrocaConferido||f.kmTroca||''))}" aria-label="km da próxima troca"> km`;
+    const chk=f.tipo==='etiqueta'&&base?`<label style="display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" id="ku_${f.id}" checked style="width:auto"> Atualizar a próxima troca do veículo com este km</label>`:'';
+    return `<div class="mx-foto" data-fid="${f.id}"><div class="muted">${f.tipo==='painel'?'📷 Painel de instrumentos':'📷 Etiqueta de troca de óleo'} · ${esc(motAgo(f.em))}${f.reenviada?' · reenviada':''}</div>
+      <img class="mx-thumb" data-img="${esc(f.fotoId||'')}" alt="" onclick="motVerFoto('${f.fotoId}','${f.tipo==='painel'?'Painel':'Etiqueta de óleo'}')"><div>${km}</div>${chk}
+      <div class="mx-bt"><button class="pri" onclick="motConferirFoto('${f.id}')">✔ Conferir</button><button class="sec" onclick="motRecusarFoto('${f.id}')">✖ Recusar</button><button class="sec" onclick="motExcluirFoto('${f.id}')">🗑 Excluir foto</button></div></div>`;
+  }).join('');
 }
 // ---- recusar foto do checklist semanal (ilegível / informação errada) e avisar o motorista ----
 const MOT_RECUSA_MOTIVOS={
@@ -3512,10 +3573,10 @@ function motVerifHtml(x){
   const semanas=[]; for(let i=0;i<5;i++){ const d=new Date(sem+'T12:00:00'); d.setDate(d.getDate()-7*i); semanas.push(d.toLocaleDateString('sv-SE')); }
   const linhasFoto=semanas.map(w=>{ const fw=motFotoSemana(x.id,w); const cel=(t,rot2)=>{ const r=fw[t]; if(!r) return `<span class="muted">— não enviada</span>`; if(r.expirada||(r.expiraEm&&new Date(r.expiraEm)<new Date())) return `<span class="muted">enviada ${motDiaHoraSP(r.em)} · foto expirada</span>`;
       const dias=Math.max(0,Math.ceil((new Date(r.expiraEm)-new Date())/864e5));
-      const recusar=(w===sem&&!r.recusada)?` <button class="ghost danger" style="padding:2px 10px;font-size:12px" onclick="motRecusarFoto('${r.id}')">✖ Recusar</button>`:'';
+      const kmInfo=r.tipo==='etiqueta'&&(r.kmTrocaConferido||r.kmTroca)?` <span class="muted">· próx. troca ${fmtKm(r.kmTrocaConferido||r.kmTroca)} km</span>`:(r.tipo==='painel'&&r.km?` <span class="muted">· ${fmtKm(r.km)} km</span>`:''); const excluir=!r.recusada?` <button class="ghost danger" style="padding:2px 10px;font-size:12px" onclick="motExcluirFoto('${r.id}')">🗑 Excluir</button>`:''; const recusar=(w===sem&&!r.recusada)?` <button class="ghost danger" style="padding:2px 10px;font-size:12px" onclick="motRecusarFoto('${r.id}')">✖ Recusar</button>`:'';
       const confBtn=motFotoPend(r)?` <button class="pri" style="padding:2px 10px;font-size:12px" onclick="motConferirFoto('${r.id}')">✔ Conferir</button>`:(r.conferidaFotoId===r.fotoId&&!r.recusada?` <span class="tag ok">✔ conferida${r.conferidaPor?' por '+esc(r.conferidaPor):''}</span>`:'');
       const marca=confBtn+(r.recusada?` <span class="tag bad">recusada: ${esc(r.recusadaMotivo||'')}</span> <span class="muted">(aguardando nova foto)</span>`:(r.reenviada?' <span class="tag ok">reenviada</span>':''));
-      return `<button class="sec" style="padding:2px 10px;font-size:12px" onclick="motVerFoto('${r.fotoId}','${rot2} — ${fmtD(w)}')">🔍 ver foto</button> <span class="muted">· ${motDiaHoraSP(r.em)}${r.tardia?' · <b style="color:var(--bad)">fora do prazo</b>':''} · expira em ${dias}d</span>${marca}${recusar}`; };
+      return `<button class="sec" style="padding:2px 10px;font-size:12px" onclick="motVerFoto('${r.fotoId}','${rot2} — ${fmtD(w)}')">🔍 ver foto</button> <span class="muted">· ${motDiaHoraSP(r.em)}${r.tardia?' · <b style="color:var(--bad)">fora do prazo</b>':''} ${r.conferidaFotoId===r.fotoId?' · expira em '+dias+'d':' · aguardando conferência'}</span>${kmInfo}${marca}${recusar}${excluir}`; };
     return `<div class="osrow" style="cursor:default;flex-wrap:wrap"><div><b>Semana de ${fmtD(w)}</b><div>📷 Painel: ${cel('painel','Painel')}</div><div>📷 Etiqueta: ${cel('etiqueta','Etiqueta de óleo')}</div></div></div>`; }).join('');
   // últimos 14 dias de água/óleo
   const porDia={}; for(const v of S.motVerif) if(v.motoristaId===x.id){ (porDia[v.dia]=porDia[v.dia]||{})[v.tipo]=v.em; }
@@ -3576,19 +3637,52 @@ function motMsgsSemResposta(id){
   return ms.filter(t=>t.de==='motorista'&&t.tipo!=='bloqueio'&&!motMsgAuto2(t)&&(t.em||'')>ultEq).sort((a,b)=>(a.em||'').localeCompare(b.em||''));
 }
 // tarefas do auxiliar, já na ordem de prioridade (0 roubo · 1 pedido de bloqueio · 2 mensagem · 3 promessa/comprovante · 4 manutenção/fotos)
+const MOT_ASSUNTOS_SENS=['bloqueio','sinistro','pagamento'];
+// níveis: 0 roubo · 1 pedido de bloqueio · 2 mensagem sensível (bloqueio/sinistro/pagamento) · 3 promessa/comprovante · 4 mensagem comum · 5 fotos · 6 manutenção · 7 checklist · 8 candidatos
+// mensagem sensível parada há +15 min vai para o topo; o resto sobe um nível depois de 1 h sem resposta
+function motMinutos(iso){ const t=Date.parse(iso||''); return isNaN(t)?0:Math.max(0,(Date.now()-t)/60000); }
+function motCheckTarefa(x){
+  if(motDispensado(x)) return false; const h=+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',hour12:false,timeZone:'America/Sao_Paulo'}); if(h<10) return false;
+  const v=motVerifHoje(x.id); if(v.agua&&v.oleo&&v.lanternas&&v.farois) return false;
+  const nv=h>=15?2:1, hj=motHojeSP();
+  return !S.motMsgs.some(m=>m.motoristaId===x.id&&m.tipo==='cobranca_checklist'&&m.dia===hj&&(+m.nivel||1)>=nv);
+}
+function motTarefaKey(t){ return t.k+':'+((t.p&&t.p.id)||(t.c&&t.c.id)||(t.g&&t.g.id)||(t.x&&t.x.id)||''); }
 function motTarefas(id){
   const T=[]; const lista=id?S.mots.filter(y=>y.id===id):S.mots.filter(y=>y.ativo!==false);
   for(const x of lista){ const i=x.id;
     for(const p of motBloqPend(i)) T.push({k:'pedbloq',pr:p.pedidoTipo==='roubo'?0:1,x,em:p.em,p});
-    const sem=motMsgsSemResposta(i); if(sem.length) T.push({k:'msg',pr:2,x,em:sem[0].em,n:sem.length,m:sem[sem.length-1]});
+    const sem=motMsgsSemResposta(i); if(sem.length){ const sens=sem.some(m=>MOT_ASSUNTOS_SENS.includes(motAssuntoMsg(m))); T.push({k:'msg',pr:sens?2:4,sens,x,em:sem[0].em,n:sem.length,m:sem[sem.length-1]}); }
     for(const p of S.motPromessas.filter(t=>t.motoristaId===i&&t.status==='pendente')) T.push({k:'prom',pr:3,x,em:p.criadoEm,p});
     for(const c of S.motComp.filter(t=>t.motoristaId===i&&t.status==='pendente')) T.push({k:'comp',pr:3,x,em:c.em,c});
-    for(const g of S.motAgend.filter(t=>t.motoristaId===i&&t.status==='solicitado')) T.push({k:'ag',pr:4,x,em:g.criadoEm,g});
-    for(const g of motAgReal(i)) if(motAgSit(g)!=='futura') T.push({k:'real',pr:4,x,em:g.dataConfirmada+'T'+(g.horaConfirmada||'00:00')+':00-03:00',g});
-    const nf=motFotosPend(i).length; if(nf) T.push({k:'foto',pr:4,x,em:'',n:nf});
+    for(const g of S.motAgend.filter(t=>t.motoristaId===i&&t.status==='solicitado')) T.push({k:'ag',pr:6,x,em:g.criadoEm,g});
+    for(const g of motAgReal(i)) if(motAgSit(g)!=='futura') T.push({k:'real',pr:6,x,em:g.dataConfirmada+'T'+(g.horaConfirmada||'00:00')+':00-03:00',g});
+    const nf=motFotosPend(i); if(nf.length) T.push({k:'foto',pr:5,x,em:nf.map(f=>f.em||'').sort()[0]||'',n:nf.length});
+    if(motCheckTarefa(x)) T.push({k:'check',pr:7,x,em:''});
   }
-  if(!id) for(const c of (S.cands||[])) if(candPend(c)) T.push({k:'cand',pr:2,x:{id:'',nome:c.nome},em:c.ultMsgCand||c.criadoEm,c});
-  return T.sort((a,b)=>a.pr-b.pr||String(a.em||'￿').localeCompare(String(b.em||'￿')));
+  if(!id) for(const c of (S.cands||[])) if(candPend(c)) T.push({k:'cand',pr:8,x:{id:'',nome:c.nome},em:c.ultMsgCand||c.criadoEm,c});
+  for(const t of T){ const m=motMinutos(t.em); if(t.k==='msg'&&t.sens&&m>15) t.pr=0.9; else if(m>60&&t.pr>=3&&t.k!=='check'&&t.k!=='cand') t.pr=Math.max(1.5,t.pr-1); }
+  S.filaSkip=S.filaSkip||{};
+  return T.sort((a,b)=>a.pr-b.pr||(S.filaSkip[motTarefaKey(a)]||0)-(S.filaSkip[motTarefaKey(b)]||0)||String(a.em||'￿').localeCompare(String(b.em||'￿')));
+}
+const motTarefaCor = t => t.pr<=2?'r':t.pr<=5?'a':'b';
+function motTaskTitulo(t){ return ({pedbloq:t.p&&t.p.pedidoTipo==='roubo'?'🚨 Roubo / furto':'🔒 Pedido de bloqueio',msg:t.sens?'💬 Mensagem sensível':'💬 Mensagem',prom:'🤝 Promessa',comp:'🧾 Comprovante',ag:'🛠 Pedido de manutenção',real:'🔧 Manutenção a realizar',foto:'📷 Fotos para conferir',check:'✋ Checklist pendente',cand:'🆕 Candidato'})[t.k]||t.k; }
+function motFilaPular(){ const t=motTarefas()[0]; if(!t) return; S.filaSkip[motTarefaKey(t)]=Date.now(); render(); }
+// fila única: uma etiqueta grande por vez (todos os motoristas misturados, por importância); resolveu → a próxima sobe
+function motFilaHtml(tarefas){
+  const cnt={r:0,a:0,b:0}; tarefas.forEach(t=>cnt[motTarefaCor(t)]++);
+  const prog=`<div class="mx-prog" id="mx_prog"><span class="r">${cnt.r} urgente${cnt.r===1?'':'s'}</span><span class="a">${cnt.a} hoje</span><span class="b">${cnt.b} rotina</span><span class="sp" style="flex:1"></span><button type="button" class="sec" id="mx_lista_btn" onclick="S.filaLista=!S.filaLista;render()">${S.filaLista?'⬆ Voltar à fila':'📋 Ver todas ('+tarefas.length+')'}</button></div>`;
+  if(!tarefas.length){ S.filaKeyAnt=''; return prog+`<div class="step" id="mot_lista" style="text-align:center"><div style="font-size:30px">✅</div><b>Tudo em dia</b><div class="muted">Nenhuma tarefa pendente agora.</div></div>`; }
+  if(S.filaLista) return prog+`<div id="mot_lista"></div>`+tarefas.map(t=>motTaskHtml(t)).join('');
+  const t=tarefas[0], key=motTarefaKey(t), nova=S.filaKeyAnt!==key; S.filaKeyAnt=key;
+  const peek=tarefas.slice(1,3).map((p,i)=>`<div class="mx-peek ${motTarefaCor(p)} p${i+2}" data-peek="${p.k}"><b>${i+2}º · ${esc(motTaskTitulo(p))}</b>${p.x&&p.x.nome?' · '+esc(p.x.nome):''}</div>`).join('');
+  return prog+`<div id="mot_lista"></div><div class="mx-big ${motTarefaCor(t)}${nova?' sobe':''}" id="mx_fila_atual" data-key="${esc(key)}">${motTaskHtml(t)}</div>${peek}<div class="mx-fila-ac"><button type="button" class="sec" id="mx_pular" onclick="motFilaPular()">Pular ›</button></div><div class="muted" style="text-align:center;font-size:12px" id="mx_pos">1 de ${tarefas.length} · ao resolver, a próxima sobe</div>`;
+}
+async function motCobrarChecklist(id){
+  const x=S.mots.find(y=>y.id===id); if(!x) return; const h=+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',hour12:false,timeZone:'America/Sao_Paulo'}), nv=h>=15?2:1;
+  const texto=nv===2?'🤖 Última chamada: a verificação de hoje (água, óleo, lanternas e faróis) continua pendente. Toque em Resolver agora e confirme.':'🤖 Você ainda não fez a verificação de hoje (água, óleo, lanternas e faróis). Toque em Resolver agora e confirme.';
+  try{ await S.db.collection('mot_mensagens').add({motoristaId:id,de:'equipe',autor:'Equipe Carsz',setor:'monitoramento',assunto:'monitoramento',tipo:'cobranca_checklist',nivel:nv,dia:motHojeSP(),auto:true,em:agoraIso(),lidaMotorista:true,texto}); toast('Cobrança enviada: aparece como etiqueta no app do motorista'); motRecarregar(); }
+  catch(e){ erroSalvar('enviar a cobrança',e); }
 }
 function motTaskHtml(t,ficha){
   if(t.k==='cand'){ const c=t.c, novo=c.status==='novo', ult=candMsgsDe(c.id).filter(m=>m.de==='candidato').pop();
@@ -3606,7 +3700,8 @@ function motTaskHtml(t,ficha){
   else if(t.k==='comp'){ const c=t.c; tit='🧾 Comprovante para conferir'; q=(c.valor?fmtBRL(c.valor)+' · ':'')+(c.tipo==='pdf'?'PDF':'foto')+(c.obs?' · '+esc(c.obs):''); bt=`<button class="pri" onclick="motVerComp('${c.id}')">Ver e dar baixa</button>`; }
   else if(t.k==='ag'){ const g=t.g; tit='🛠 Pedido de manutenção · '+fmtD(g.dataDesejada); q=esc(g.descricao||'')+(g.km?' <span class="muted">('+fmtKm(g.km)+')</span>':''); bt=`<button class="pri" onclick="motRespAgend('${g.id}','confirmado')">Confirmar</button><button class="sec" onclick="motRespAgend('${g.id}','recusado')">Recusar</button>`; }
   else if(t.k==='real'){ const g=t.g, at=motAgSit(g)==='atrasada'; cls=at?' r':''; tit='🔧 Manutenção '+(at?'passou da data':'é hoje')+' · '+motAgQuando(g); q=esc(g.descricao||'')+(g.localConfirmado?'<div>📍 '+esc(g.localConfirmado)+'</div>':'')+(at?'<div class="muted">Já foi feita? Dê baixa para sair o aviso do app do motorista.</div>':''); bt=`<button class="pri" onclick="motBaixaManut('${g.id}')">✔ Dar baixa</button>${bWa}`; }
-  else if(t.k==='foto'){ tit='📷 '+t.n+' foto'+(t.n>1?'s':'')+' para conferir'; bt=`<button class="pri" onclick="motAbrirFicha('${x.id}','mais','fotos')">Abrir fotos</button>`; }
+  else if(t.k==='foto'){ tit='📷 '+t.n+' foto'+(t.n>1?'s':'')+' para conferir'; if(ficha) bt=`<button class="pri" onclick="motAbrirFicha('${x.id}','mais','fotos')">Abrir fotos</button>`; else { q=motFotoPainelHtml(x.id); bt=`<button class="sec" onclick="motAbrirFicha('${x.id}','mais','fotos')">Ver ficha completa</button>`; } }
+  else if(t.k==='check'){ const v=motVerifHoje(x.id), falta=[['agua','água'],['oleo','óleo'],['lanternas','lanternas'],['farois','faróis']].filter(z=>!v[z[0]]).map(z=>z[1]); tit='✋ Checklist de hoje pendente'; q='Falta: '+falta.join(', '); bt=`<button class="pri" onclick="motCobrarChecklist('${x.id}')">Cobrar agora</button>${bWa}`; }
   return `<div class="mx-task${cls}" data-task="${t.k}"><div class="t">${tit}</div>${meta}${q?`<div class="q">${q}</div>`:''}<div class="mx-bt">${bt}</div></div>`;
 }
 function motAbrirFicha(id,tab,sec){ S.motAtual=id; S.motTab=tab||'pend'; render(); if(sec) setTimeout(()=>motIr('sec_'+sec),30); }
@@ -3690,9 +3785,7 @@ function motoristasView(m){
     if(filtroAtivo&&filtroAtivo[4]===1){
       const l=ord(filtroAtivo[3]); corpo=chips(g1)+limpar(filtroAtivo,l.length)+`<div id="mot_lista"></div>`+rows(l);
     } else {
-      const grupo=pr=>pr<=1?0:pr<=3?1:2; const rot=['🚨 Urgente','💬 Responder e conferir','🛠 Manutenção e fotos']; let ult=-1; let h='';
-      for(const t of tarefas){ const g=grupo(t.pr); if(g!==ult){ h+=`<div class="mx-sec${g===0?' red':''}">${rot[g]}</div>`; ult=g; } h+=motTaskHtml(t); }
-      corpo=chips(g1)+(tarefas.length?`<div id="mot_lista"></div>${h}`:`<div class="step" id="mot_lista" style="text-align:center"><div style="font-size:30px">✅</div><b>Tudo respondido</b><div class="muted">Nenhuma tarefa pendente agora.</div></div>`);
+      corpo=motFilaHtml(tarefas);
     }
   } else if(aba==='acomp'){
     const ativo=filtroAtivo&&filtroAtivo[4]===2; const f=ativo?filtroAtivo[3]:(x=>x.ativo!==false&&g2.some(z=>z[3](x))); const l=ord(f);
@@ -3707,6 +3800,7 @@ function motoristasView(m){
     ${S.motOk?'':`<div class="lastinfo" style="background:var(--warn-bg);color:var(--warn)"><b>As tabelas do app do motorista ainda não existem no banco.</b> Rode o arquivo <b>motoristas.sql</b> (versão mais recente) no SQL Editor do Supabase e recarregue esta página.</div>`}
     <div class="muted" id="wa_saida" style="margin:0 0 8px;font-size:13px">📲 WhatsApp: as mensagens devem sair do número <b>${WA_SAIDA_TXT}</b> (conferimos antes de abrir) · <a href="#" onclick="waDialogo('');return false">escolher o app</a></div><div class="mx-seg" id="mx_seg"><button type="button" data-aba="fazer" class="${aba==='fazer'?'on':''}" onclick="motAba('fazer')">Fazer agora${tarefas.length?`<b>${tarefas.length}</b>`:''}</button><button type="button" data-aba="acomp" class="${aba==='acomp'?'on':''}" onclick="motAba('acomp')">Acompanhar${nAcomp?`<b style="background:var(--warn)">${nAcomp}</b>`:''}</button><button type="button" data-aba="todos" class="${aba==='todos'?'on':''}" onclick="motAba('todos')">Todos</button><button type="button" data-aba="cand" class="${aba==='cand'?'on':''}" onclick="motAba('cand')">Candidatos${candPendTotal()?`<b>${candPendTotal()}</b>`:''}</button></div>
     ${corpo}</div><button type="button" class="mx-fab" id="mx_fab" onclick="motIniciarCobranca()">＋ Bloqueio / Cobrança</button>`;
+  setTimeout(motCarregarThumbs,0);
 }
 
 // relê as tabelas na hora (além do tempo real do banco, que pode demorar ou estar desligado) — chamado
@@ -3755,7 +3849,7 @@ function motDetalhe(m){
     ${tabsNav}<div class="mtab${tb==='pend'?' on':''}" data-t="pend">${precisa}</div><div class="mtab${tb==='conv'?' on':''}" data-t="conv">
     <div class="step${pend.msg?' hot':''}" id="sec_chat"><h3>💬 Conversa${pend.msg?` <span class="tag warn">${pend.msg} sem resposta</span>`:''}</h3>
       ${msgs.length?`<div id="mot_chat_filtro" style="margin:2px 0 4px">${[['todos','Todos',msgs.length]].concat(Object.keys(MOT_ASSUNTOS).filter(k=>k!=='reserva').map(k=>[k,MOT_ASSUNTOS[k][0],msgs.filter(t=>{const a=motAssuntoMsg(t);return a===k||(k==='outros'&&(!a||a==='reserva'));}).length])).filter(([k,l,n])=>k==='todos'||n>0||S.motChatFiltro===k).map(([k,l,n])=>`<button type="button" class="${(S.motChatFiltro||'todos')===k?'pri':'sec'}" style="padding:2px 10px;font-size:12px;margin:0 4px 4px 0" onclick="motChatFiltrar('${k}')">${l} (${n})</button>`).join('')}</div>`:''}
-      <div id="mot_chat" style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0">${msgsVis.length?msgsVis.map(t=>{ const as=motAssuntoMsg(t); return `<div style="align-self:${t.de==='equipe'?'flex-end':'flex-start'};max-width:85%;padding:7px 11px;border-radius:12px;background:${t.de==='equipe'?'var(--brand)':'var(--soft)'};color:${t.de==='equipe'?'#fff':'var(--ink)'};white-space:pre-wrap;word-wrap:break-word"><div style="font-size:11px;opacity:.85">${as?`<b data-assunto="${as}" style="background:rgba(0,0,0,.18);border-radius:5px;padding:0 5px;margin-right:4px">${esc(MOT_ASSUNTOS[as][0])}</b>`:''}${esc(t.autor||'')}${t.de==='equipe'&&t.setor?' <span style="opacity:.8">('+esc(MOT_SETORES[t.setor]||t.setor)+')</span>':''} · ${esc(motHora(t.em))}${t.de==='equipe'&&t.lidaMotorista?' · ✓ lida':''}${t.de==='equipe'&&t.enviadoPor?' · <i>enviado por '+esc(t.enviadoPor)+'</i>':''}</div>${esc(t.texto)}</div>`; }).join(''):'<div class="muted">Nenhuma mensagem'+(msgs.length?' neste assunto':' ainda')+'.</div>'}</div>
+      <div id="mot_chat" style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0">${msgsVis.length?msgsVis.map(t=>{ const as=motAssuntoMsg(t); return `<div style="align-self:${t.de==='equipe'?'flex-end':'flex-start'};max-width:85%;padding:7px 11px;border-radius:12px;background:${t.de==='equipe'?'var(--brand)':'var(--soft)'};color:${t.de==='equipe'?'#fff':'var(--ink)'};white-space:pre-wrap;word-wrap:break-word"><div style="font-size:11px;opacity:.85">${as?`<b data-assunto="${as}" style="background:rgba(0,0,0,.18);border-radius:5px;padding:0 5px;margin-right:4px">${esc(MOT_ASSUNTOS[as][0])}</b>`:''}${esc(t.autor||'')}${t.de==='equipe'&&t.setor?' <span style="opacity:.8">('+esc(MOT_SETORES[t.setor]||t.setor)+')</span>':''} · ${esc(motHora(t.em))}${t.de==='equipe'&&t.lidaMotorista?' · ✓ lida':''}</div>${esc(t.texto)}</div>`; }).join(''):'<div class="muted">Nenhuma mensagem'+(msgs.length?' neste assunto':' ainda')+'.</div>'}</div>
       <div style="margin-top:6px"><button class="sec" style="padding:2px 10px;font-size:12px" onclick="motRespostaRapida('${x.id}')">✔ Recebido, já estamos analisando</button></div>
       <div class="row" style="margin-top:8px;align-items:center"><span class="muted">Assunto</span><select id="mot_ass" style="width:auto" onchange="motAliasPrev('${x.id}')">${Object.keys(MOT_ASSUNTOS).filter(k=>k!=='reserva').map(k=>`<option value="${k}"${k===motAssuntoPadrao(x.id)?' selected':''}>${MOT_ASSUNTOS[k][0]}</option>`).join('')}</select><span class="muted" id="mot_alias_prev" style="font-size:13px">Será enviado como: <b>${esc(motAlias(x.id,motAssuntoPadrao(x.id)))}</b> · ${esc(MOT_SETORES[MOT_SETOR_DE[motAssuntoPadrao(x.id)]||'operacoes'])}</span></div>
       <div class="row mx-chat-comp" style="margin-top:6px;align-items:flex-end"><textarea id="mot_txt" placeholder="Escreva para o motorista…" style="flex:1;min-height:46px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();motEnviarMsg('${x.id}')}"></textarea><button class="pri" onclick="motEnviarMsg('${x.id}')">Enviar</button></div></div>
@@ -3990,7 +4084,7 @@ function candDetalhe(m){
   const c=(S.cands||[]).find(y=>y.id===S.candAtual); if(!c){ S.candAtual=null; return render(); }
   const st=CAND_ST[c.status]||CAND_ST.novo, ms=candMsgsDe(c.id), ds=candDocsDe(c.id);
   const old=document.getElementById('cand_txt'); const keep=old?{v:old.value,f:document.activeElement===old}:null;
-  const bol=t=>{ const eq=t.de==='equipe'; return `<div style="align-self:${eq?'flex-end':'flex-start'};max-width:85%;padding:7px 11px;border-radius:12px;background:${eq?'var(--brand)':'var(--soft)'};color:${eq?'#fff':'var(--ink)'};white-space:pre-wrap;word-wrap:break-word"><div style="font-size:11px;opacity:.85">${eq?esc(t.por||'Equipe Carsz'):esc((c.nome||'').split(' ')[0])} · ${esc(motDiaHoraSP(t.em))}${t.auto?' · automática':''}</div>${esc(t.texto||'')}</div>`; };
+  const bol=t=>{ const eq=t.de==='equipe'; return `<div style="align-self:${eq?'flex-end':'flex-start'};max-width:85%;padding:7px 11px;border-radius:12px;background:${eq?'var(--brand)':'var(--soft)'};color:${eq?'#fff':'var(--ink)'};white-space:pre-wrap;word-wrap:break-word"><div style="font-size:11px;opacity:.85">${eq?'Equipe Carsz':esc((c.nome||'').split(' ')[0])} · ${esc(motDiaHoraSP(t.em))}${t.auto?' · automática':''}</div>${esc(t.texto||'')}</div>`; };
   const docs=ds.length?ds.map(d=>{ const k=CAND_DOC[d.tipo]||['📄',d.tipo]; return `<div class="osrow" style="cursor:default" data-doc="${d.id}"><span style="font-size:20px">${k[0]}</span><div style="flex:1;min-width:0"><b>${esc(k[1])}</b>${d.nome?` <span class="muted">${esc(d.nome)}</span>`:''}<div class="muted">${esc(motDiaHoraSP(d.em))}${d.visto?'':' · <b style="color:var(--warn)">novo</b>'}</div></div><button class="sec" onclick="candVerDoc('${d.id}')">Ver</button></div>`; }).join(''):'<div class="muted">Nenhum documento enviado ainda.</div>';
   const rapidas=['Recebemos seus documentos e já estamos analisando.','Pode reenviar a CNH (frente e verso) com mais nitidez?','Falta o print do seu perfil no aplicativo (nota, tempo de cadastro e ganhos).'];
   const pode=c.status!=='virou';

@@ -131,6 +131,22 @@ body.amarelo{--bg:#1f1808;--card:#2e240a;--line:#6a5516;--brand:#f5b50a;--brand-
 .obrig .done{opacity:.85;border-color:var(--ok)}
 .obrig label.btn{cursor:pointer;margin:10px 0 0}
 .obrig input[type=file]{display:none}
+.obrig .fechar{width:auto;padding:8px 14px;border-radius:999px;font-size:14px}
+/* carrossel de etiquetas (sobe sozinho, por importância) e botão Resolver agora */
+.car{position:relative;height:122px;overflow:hidden;border-radius:16px;margin:0 0 12px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.car-track{transition:transform .55s cubic-bezier(.4,0,.2,1)}
+.car-s{height:122px;padding:12px 30px 12px 14px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.car-s.r{background:#c62828;color:#fff}.car-s.y{background:#ffb800;color:#2a1d00}.car-s.b{background:#1d4ed8;color:#fff}
+.car-t{font-weight:800;font-size:16px;line-height:1.2}.car-sub{font-size:12.5px;line-height:1.3;opacity:.95;max-height:2.7em;overflow:hidden}
+.car-btn{display:inline-block;align-self:flex-start;margin-top:6px;border:0;border-radius:14px;padding:8px 16px;font-weight:800;font-size:14px;background:#fff;color:#7f1d1d}
+.car-s.y .car-btn{background:#2a1d00;color:#ffb800}.car-s.b .car-btn{color:#1e3a8a}
+.car-dots{position:absolute;right:8px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:5px}
+.car-dots i{width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.45);transition:height .3s}.car-dots i.on{height:16px;background:#fff}
+.car-s.y~.car-dots i{background:rgba(0,0,0,.3)}
+.fab-resolver{position:fixed;left:16px;right:16px;bottom:calc(64px + env(safe-area-inset-bottom));z-index:20;border:0;border-radius:14px;padding:13px;background:#ffb800;color:#2a1d00;font-weight:900;font-size:15px;box-shadow:0 6px 16px rgba(0,0,0,.5)}
+.msg.auto-card{border-radius:14px;padding:10px 12px;max-width:92%}.msg.auto-card.y{background:#ffb800;color:#2a1d00}.msg.auto-card.r{background:#c62828;color:#fff}
+.msg.auto-card .car-btn{display:block;margin-top:8px}.msg.auto-card.r .car-btn{background:#fff;color:#7f1d1d}.msg.auto-card.y .car-btn{background:#2a1d00;color:#ffb800}
+@media (prefers-reduced-motion:reduce){.car-track{transition:none}}
 /* sheet */
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet{background:var(--card);width:100%;max-width:640px;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:90dvh;overflow:auto}
@@ -223,6 +239,7 @@ async function atualizar(forcar){
     const r=await rpc('mot_resumo',{p_token:S.token});
     const js=JSON.stringify(r);
     const mudouR = js!==ultimoResumo; S.resumo=r; ultimoResumo=js;
+    cobrancaAuto(r);
     let mudouM=false;
     if(S.tab==='chat'){
       const m=await rpc('mot_msgs',{p_token:S.token}); const jm=JSON.stringify(m);
@@ -302,9 +319,9 @@ function obrigHtml(r){
     ? `<div class="card done"><div class="it"><span class="em">✅</span><div class="tx"><b>${tit}</b><div class="muted sm">Registrado hoje às ${hhmm(hora)}</div></div></div></div>`
     : `<div class="card"><div class="it"><span class="em">${em}</span><div class="tx"><b>${tit}</b><div class="muted sm">${desc}</div>${acao}</div></div></div>`;
   const btn=(t,tit)=>`<button class="btn" id="vb_${t}" onclick="verificar('${t}')">Já verifiquei ${tit}</button>`;
-  const foto=t=>(t==='painel'?kmBox('km_painel',r):'')+`<label class="btn" id="fb_${t}">${rec[t]?'📷 Enviar nova foto':'📷 Tirar foto'}<input type="file" accept="image/*" capture="environment" data-foto="${t}" ${t==='painel'?'onclick="return kmOk()" ':''}onchange="enviarFoto('${t}',this)"></label>`;
-  let h=`<div class="obrig">${emAtraso(r)?faixaAtraso(r,false,true).replace('class="faixa-atraso','style="position:static;margin:-18px -16px 14px;width:auto" class="faixa-atraso'):''}<div class="wrap"><h2>✋ Verificações obrigatórias</h2>
-    <p class="muted" style="margin:0 0 14px">Para continuar usando o app, confirme os itens abaixo. Fica registrado o dia e o horário de cada um — e cada item rende pontos.</p>`;
+  const foto=t=>(t==='painel'?kmBox('km_painel',r):t==='etiqueta'?kmTrocaBox(r):'')+`<label class="btn" id="fb_${t}">${rec[t]?'📷 Enviar nova foto':'📷 Tirar foto'}<input type="file" accept="image/*" capture="environment" data-foto="${t}" ${t==='painel'?'onclick="return kmOk()" ':t==='etiqueta'?'onclick="return kmTrocaOk()" ':''}onchange="enviarFoto('${t}',this)"></label>`;
+  let h=`<div class="obrig" id="resolver">${emAtraso(r)?faixaAtraso(r,false,true).replace('class="faixa-atraso','style="position:static;margin:-18px -16px 14px;width:auto" class="faixa-atraso'):''}<div class="wrap"><div class="row" style="margin-bottom:4px"><h2 style="flex:1;margin:0">✋ Resolver agora</h2><button class="btn ghost fechar" id="resolver_fechar" onclick="fecharResolver()">✕ Fechar</button></div>
+    <p class="muted" style="margin:0 0 14px">Confirme os itens abaixo. Fica registrado o dia e o horário de cada um — e cada item rende pontos. Pode fechar e voltar depois pelo botão <b>Resolver agora</b>.</p>`;
   if(comFotos){
     h+=f.status==='refazer'
       ? `<div class="alert bad"><b class="t">📷 Foto recusada pela cobrança</b><div class="txt">Alguma foto veio ilegível ou com informação errada. Veja o motivo abaixo e envie de novo.</div></div>`
@@ -340,6 +357,14 @@ function lerFoto(file){
 const fmtKmN=n=>Math.round(+n||0).toLocaleString('pt-BR');
 function kmInput(el){ S.kmTxt=String(el.value||'').replace(/\D/g,'').slice(0,6); S.kmErro=''; document.querySelectorAll('.kmin').forEach(i=>{ if(i.value!==S.kmTxt) i.value=S.kmTxt; }); document.querySelectorAll('.kmerr').forEach(e=>e.remove()); }
 function kmOk(){ if(S.mestre) return false; if(!(parseInt(S.kmTxt,10)>0)){ toast('Digite o km que está no painel antes de tirar a foto'); const i=document.querySelector('.kmin'); if(i) i.focus(); return false; } return true; }
+function kmTrocaInput(el){ S.kmTrocaTxt=String(el.value||'').replace(/\D/g,'').slice(0,6); S.kmTrocaErro=''; if(el.value!==S.kmTrocaTxt) el.value=S.kmTrocaTxt; document.querySelectorAll('.kmterr').forEach(e=>e.remove()); }
+function kmTrocaOk(){ if(S.mestre) return false; if(!(parseInt(S.kmTrocaTxt,10)>0)){ toast('Digite o km da próxima troca de óleo (da etiqueta) antes de tirar a foto'); const i=document.querySelector('.kmtin'); if(i) i.focus(); return false; } return true; }
+function kmTrocaBox(r){
+  return `<div class="kmbox" style="margin:8px 0"><label for="km_troca" class="muted sm">🛢 Km da próxima troca de óleo (o que está escrito na etiqueta)</label>
+    <input id="km_troca" class="kmtin" data-keep inputmode="numeric" autocomplete="off" placeholder="Ex.: 58000" value="${esc(S.kmTrocaTxt||'')}" oninput="kmTrocaInput(this)" style="${S.kmTrocaErro?'border-color:var(--bad);':''}">
+    ${S.kmTrocaErro?`<div class="alert bad kmerr kmterr" style="margin:8px 0 0"><b class="t" style="font-size:15px">Km recusado</b><div class="txt" style="margin:2px 0 0">${esc(S.kmTrocaErro)}</div></div>`:''}
+    <div class="muted sm" style="margin-top:4px">O botão da foto só libera depois de digitar o km. A equipe confere o número com a foto.</div></div>`;
+}
 function kmBox(id,r){
   const ki=r.kmInformado||{};
   return `<div class="kmbox" style="margin:8px 0"><label for="${id}" class="muted sm">Km que está no painel agora</label>
@@ -360,16 +385,64 @@ async function enviarFoto(tipo,input){
   const lb=document.getElementById('fb_'+tipo); S.ocupado=true; if(lb) lb.firstChild.textContent='Enviando…';
   try{
     const foto=await lerFoto(file);
-    const km=tipo==='painel'?parseInt(S.kmTxt,10):null;
-    let r=await rpc('mot_enviar_foto',{p_token:S.token,p_tipo:tipo,p_foto:foto,p_km:km,p_confirma:false});
+    const km=tipo==='painel'?parseInt(S.kmTxt,10):null, kt=tipo==='etiqueta'?parseInt(S.kmTrocaTxt,10):null;
+    let r=await rpc('mot_enviar_foto',{p_token:S.token,p_tipo:tipo,p_foto:foto,p_km:km,p_confirma:false,p_km_troca:kt});
+    if(r&&r.pedeConfirmarTroca){
+      if(confirm(`Confirma ${fmtKmN(r.kmTroca)} km como próxima troca de óleo?\nO km atual do carro é cerca de ${fmtKmN(r.kmAtual)} km.`)) r=await rpc('mot_enviar_foto',{p_token:S.token,p_tipo:tipo,p_foto:foto,p_km:km,p_confirma:true,p_km_troca:kt});
+      else { if(lb) lb.firstChild.textContent='📷 Tirar foto'; return; }
+    }
     if(r&&r.pedeConfirmar){
       if(confirm(`Confirma ${fmtKmN(r.km)} km?\nSubiu ${fmtKmN(r.salto)} km desde o último registro (${fmtKmN(r.anterior)} km).`)) r=await rpc('mot_enviar_foto',{p_token:S.token,p_tipo:tipo,p_foto:foto,p_km:km,p_confirma:true});
       else { if(lb) lb.firstChild.textContent='📷 Tirar foto'; return; }
     }
-    if(r&&r.erro){ toast(r.erro); if(tipo==='painel'){ S.kmErro=r.erro; render(); } if(lb) lb.firstChild.textContent='📷 Tirar foto'; }
-    else { toast('Foto enviada às '+hhmm(r.em)); if(tipo==='painel'){ S.kmTxt=''; S.kmErro=''; } await atualizar(true); }
+    if(r&&r.erro){ toast(r.erro); if(tipo==='painel'){ S.kmErro=r.erro; render(); } if(tipo==='etiqueta'){ S.kmTrocaErro=r.erro; render(); } if(lb) lb.firstChild.textContent='📷 Tirar foto'; }
+    else { toast('Foto enviada às '+hhmm(r.em)); if(tipo==='painel'){ S.kmTxt=''; S.kmErro=''; } if(tipo==='etiqueta'){ S.kmTrocaTxt=''; S.kmTrocaErro=''; } await atualizar(true); }
   }catch(e){ if(e&&e.message==='imagem'){ toast('Não consegui ler a foto. Tire de novo.'); if(lb) lb.firstChild.textContent='📷 Tirar foto'; } else erroGenerico(e); if(lb) lb.firstChild.textContent='📷 Tirar foto'; }
   finally{ S.ocupado=false; input.value=''; }
+}
+// ---- Resolver agora: tela de resolução (checklist + fotos) aberta pelo carrossel/botão, sem travar o app ----
+function abrirResolver(){ S.resolver=true; render(); setTimeout(()=>{ const o=document.getElementById('resolver'); if(o) o.scrollTo(0,0); },30); }
+function fecharResolver(){ S.resolver=false; render(); }
+function horaSP(){ try{ return parseInt(new Date().toLocaleString('en-US',{timeZone:'America/Sao_Paulo',hour:'numeric',hour12:false}),10)%24; }catch(e){ return new Date().getHours(); } }
+function fabResolver(r){
+  if(S.tab==='inicio'||S.tab==='chat') return '';
+  const p=pendencias(r).filter(k=>['agua','oleo','lanternas','farois','painel','etiqueta'].includes(k)); if(!p.length) return '';
+  return `<button class="fab-resolver" id="fab_resolver" onclick="abrirResolver()">✋ Resolver agora · ${p.length} pendente${p.length>1?'s':''}</button>`;
+}
+// etiquetas do carrossel, da mais importante para a menos (só o que está pendente)
+function itensCarrossel(r){
+  const L=[]; if(!r||!r.motorista) return L; const m=r.motorista, f=r.fotos||{}, p=pendencias(r), h=horaSP(), bl=m.bloqueio||{};
+  if(emAtraso(r)){
+    const pa=promessaAceita(r), dataB=bl.data||(pa&&pa.dataPrometida)||'';
+    L.push({id:'atraso',n:'r',ico:'🔒',tit:bl.status==='bloqueado'?'Veículo bloqueado':'Bloqueio programado',sub:bl.status==='bloqueado'?'Pague, prometa o pagamento ou envie o comprovante para liberar.':(dataB?'Envie o comprovante até '+fmtD(dataB)+' ou o veículo será bloqueado.':'Prometa o pagamento ou envie o comprovante.'),ir:pa?'formComprovante()':"irPara('cobranca')"});
+  } else if(!pagamentoOk(r)){
+    L.push({id:'comp',n:'r',ico:'🧾',tit:'Comprovante recusado',sub:'Envie um novo comprovante de pagamento.',ir:"irPara('cobranca')"});
+  }
+  const nomes={agua:'água',oleo:'óleo',lanternas:'lanternas',farois:'faróis'}, faltaV=p.filter(k=>nomes[k]);
+  if(faltaV.length){ const auto=h>=10, ult=h>=15;
+    L.push({id:'check',n:ult?'r':'y',ico:auto?'🤖':'✋',tit:auto?'Equipe Carsz · mensagem automática':'Verificação do dia pendente',sub:(ult?'Última chamada: v':'V')+'ocê ainda não fez a verificação de hoje (falta: '+faltaV.map(k=>nomes[k]).join(', ')+').',ir:'abrirResolver()'}); }
+  const rec=Object.keys(f.recusadas||{}).length, faltaF=p.some(k=>k==='painel'||k==='etiqueta');
+  if(rec) L.push({id:'fotos',n:'y',ico:'📷',tit:'Refazer '+rec+(rec>1?' fotos':' foto'),sub:'A equipe recusou — envie de novo, com a foto nítida.',ir:'abrirResolver()'});
+  else if(faltaF) L.push({id:'fotos',n:f.status==='atrasada'?'r':'y',ico:'📷',tit:f.status==='atrasada'?'Fotos da semana atrasadas':'Fotos da semana pendentes',sub:'Painel (com o km) e etiqueta de óleo (com o km da próxima troca).',ir:'abrirResolver()'});
+  const o=r.oleo; if(o){ const n=fmtKmN(Math.abs(o.faltam)); L.push({id:'oleo',n:o.nivel==='vencida'?'r':'y',ico:'🛢',tit:o.nivel==='vencida'?'Troca de óleo vencida há '+n+' km':'Troca de óleo em '+n+' km',sub:'Agende a manutenção com a Carsz.',ir:"irPara('manut')"}); }
+  const man=avisosAmarelos(r).find(a=>a.id==='manut'); if(man) L.push({id:'manut',n:'y',ico:'🛠',tit:man.tit,sub:man.sub,ir:"irPara('manut')"});
+  if(f.aguardando_conferencia) L.push({id:'conf',n:'b',ico:'⏳',tit:'Fotos enviadas · em conferência',sub:'A equipe confere e dá baixa.',ir:''});
+  if(r.nao_lidas) L.push({id:'chat',n:'b',ico:'💬',tit:r.nao_lidas+' resposta'+(r.nao_lidas>1?'s':'')+' nova'+(r.nao_lidas>1?'s':'')+' da Carsz',sub:'Toque para ler no chat.',ir:'irChat()'});
+  const nov=avisosVisiveis(r).filter(a=>!vistos.has(a.id)).length; if(nov) L.push({id:'avisos',n:'b',ico:'🔔',tit:nov+' aviso'+(nov>1?'s':'')+' novo'+(nov>1?'s':''),sub:'Toque para ver.',ir:"irPara('avisos')"});
+  return L;
+}
+function carrosselHtml(r){
+  const L=itensCarrossel(r); if(!L.length) return ''; S.carIdx=(S.carIdx||0)%L.length;
+  return `<div class="car" id="carrossel" data-n="${L.length}" ontouchstart="S.carPausa=Date.now()+9000"><div class="car-track" style="transition:none;transform:translateY(calc(-122px*${S.carIdx}))">${L.map(a=>`<div class="car-s ${a.n}" data-car="${a.id}"><div class="car-t">${a.ico} ${esc(a.tit)}</div><div class="car-sub">${esc(a.sub)}</div>${a.ir?`<button class="car-btn" onclick="${a.ir}">Resolver agora ›</button>`:''}</div>`).join('')}</div>${L.length>1?`<div class="car-dots">${L.map((_,i)=>`<i class="${i===S.carIdx?'on':''}"></i>`).join('')}</div>`:''}</div>`;
+}
+setInterval(()=>{ const c=document.getElementById('carrossel'); if(!c||document.hidden||(S.carPausa||0)>Date.now()) return; const n=+c.dataset.n; if(n<2) return;
+  S.carIdx=((S.carIdx||0)+1)%n; const t=c.querySelector('.car-track'); t.style.transition=''; t.style.transform=`translateY(calc(-122px*${S.carIdx}))`; c.querySelectorAll('.car-dots i').forEach((d,i)=>d.classList.toggle('on',i===S.carIdx)); },4500);
+// cobrança automática (mensagem no chat + etiqueta): o servidor decide pelo horário e manda no máximo 1 por nível por dia
+function cobrancaAuto(r){
+  if(S.mestre||!r||!r.motorista) return; const p=pendencias(r), h=horaSP(), d=hojeStr(); S.autoFeito=S.autoFeito||{};
+  const tenta=(tipo,nv)=>{ const k=tipo+d+nv; if(S.autoFeito[k]) return; S.autoFeito[k]=1; rpc('mot_cobranca_auto',{p_token:S.token,p_tipo:tipo}).catch(()=>{}); };
+  if(p.some(k=>['agua','oleo','lanternas','farois'].includes(k))&&h>=10) tenta('checklist',h>=15?2:1);
+  if(p.some(k=>k==='painel'||k==='etiqueta')&&h>=12) tenta('fotos',h>=18?2:1);
 }
 function cartaoVerificacoes(r){
   const v=r.veiculo, ve=r.verificacoes||{}, f=r.fotos||{}; if(!v) return '';
@@ -442,14 +515,15 @@ function render(rolarChat){
   const keep=guardarCampos();
   const r=S.resumo; const nl=r.nao_lidas||0;
   const novosAvisos=avisosVisiveis(r).filter(a=>!vistos.has(a.id)).length; const nRec=(r.comprovantes||[]).filter(c=>c.status==='recusado').length;
+  if(S.resolver&&!pendencias(r).length){ S.resolver=false; setTimeout(()=>toast('Tudo em dia ✅'),50); }
   const atr=emAtraso(r); document.body.classList.toggle('atraso',atr); const amar=!atr&&avisosAmarelos(r).length>0; document.body.classList.toggle('amarelo',amar);
   const conteudo={inicio:telaInicio,avisos:telaAvisos,cobranca:telaCobranca,chat:telaChat,manut:telaManut}[S.tab](r);
   app.innerHTML=`<header><h1>Carsz Motorista</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
     ${atr&&S.tab!=='cobranca'?faixaAtraso(r,true):atr?faixaAtraso(r,false):''}${amar?faixaAmarela(r,S.tab):''}<main>${conteudo}</main>
     <nav class="tabs">
       ${[['inicio','🏠','Início',0],['avisos','🔔','Avisos',novosAvisos],['cobranca','💳','Cobrança',nRec],['chat','💬','Chat',nl],['manut','🛠','Manutenção',0]].map(([k,i,l,n])=>`<button class="${S.tab===k?'on':''}" onclick="irPara('${k}')"><span class="i">${i}</span>${l}${n?`<span class="badge">${n}</span>`:''}</button>`).join('')}
-    </nav>${obrigHtml(r)}`;
-  document.body.style.overflow=pendencias(r).length?'hidden':'';
+    </nav>${S.resolver?obrigHtml(r):fabResolver(r)}`;
+  document.body.style.overflow=S.resolver&&pendencias(r).length?'hidden':'';
   restaurarCampos(keep);
   if(!S.mestre&&!S.treinoChecado&&r.motorista&&r.motorista.id){ S.treinoChecado=true; if(!treinoVisto()) treinoAbrir(true); }
   if(S.tab==='chat'&&(rolarChat||keep.novo)){ const c=document.getElementById('chat_fim'); if(c) c.scrollIntoView({block:'end'}); }
@@ -596,7 +670,7 @@ function chipPagamento(r){
 }
 function telaInicio(r){
   const m=r.motorista; const sec=(t,red)=>`<div class="sec-t${red?' red':''}">${t}</div>`;
-  let h=cartaoVeiculo(r);
+  let h=carrosselHtml(r)+cartaoVeiculo(r);
   // 1) RESOLVER AGORA: cobrança/bloqueio, comprovante recusado, óleo, respostas novas
   let urg='';
   if(!pagamentoOk(r)) urg+=quadroPagamento(r,true);
@@ -696,6 +770,7 @@ function telaChat(r){
   const vis=ms.filter(noFiltro);
   h+=`<div class="chips">${['todos'].concat(ASSUNTOS_ESC).map(k=>`<button type="button" class="chip ${fl===k?'on':''}" onclick="chatFiltrar('${k}')">${k==='todos'?'Todos':ASSUNTOS[k][0]}</button>`).join('')}</div>`;
   let ult=''; const bol=m=>{ const a=assuntoMsg(m); const d=(m.em||'').slice(0,10); const sep=d&&d!==ult?`<div class="muted sm" style="text-align:center;margin:6px 0">— ${fmtD(d)} —</div>`:''; ult=d||ult;
+    if(m.de!=='motorista'&&/^cobranca_(checklist|fotos)$/.test(m.tipo||'')) return sep+`<div class="msg eq auto-card ${(+m.nivel||1)>=2?'r':'y'}"><b class="sm">🤖 Equipe Carsz · mensagem automática</b><br>${esc(m.texto)}${pendencias(r).length?`<button class="car-btn" onclick="abrirResolver()">Resolver agora ›</button>`:'<div class="h">✅ Já resolvido</div>'}<div class="h">${esc(fmtHora(m.em))}</div></div>`;
     return sep+`<div class="msg ${m.de==='motorista'?'eu':'eq'}">${m.de!=='motorista'?`<b class="sm">${esc(m.setor?(m.autor||'Carsz'):'Carsz')}</b>${m.setor&&SETORES[m.setor]?` <span class="atag" data-setor="${m.setor}">${SETORES[m.setor]}</span>`:''}<br>`:''}${a?`<span class="atag" data-assunto="${a}">${esc(ASSUNTOS[a][0])}</span>`:''}${esc(m.texto)}<div class="h">${esc(fmtHora(m.em))}</div></div>`; };
   const padrao=S.chatAssunto&&ASSUNTOS_ESC.includes(S.chatAssunto)?S.chatAssunto:(fl!=='todos'&&ASSUNTOS_ESC.includes(fl)?fl:(()=>{ for(let i=ms.length-1;i>=0;i--){ const a=assuntoMsg(ms[i]); if(a&&a!=='reserva') return a; } return 'outros'; })());
   if(padrao==='bloqueio') h+=formBloqueioChat(r);
