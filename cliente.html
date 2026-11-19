@@ -452,6 +452,7 @@ function telaDocs(t){
   return `${cab("irTela('"+(t.precisaAval?'e':'d2')+"')")}<main>
     ${faixa('Etapa 7 de 7'+(completo?' · completo ✔':' · falta '+falta+' documento'+(falta>1?'s':'')),7,completo)}
     <h2 style="margin:6px 0 8px">${completo?'✅ Documentos completos':'📎 Seus documentos'}</h2>
+    ${completo?'':`<p class="muted sm" style="margin:0 0 8px">Pelas suas respostas, estes são <b style="color:var(--ink)">todos os documentos</b> que você precisa anexar${t.precisaAval?' (os seus e os do avalista)':''}.</p>`}
     ${completo?`<div class="alert ok"><b class="t">Enviado para a equipe analisar.</b><div class="txt" style="margin:0">Você recebe a resposta aqui no chat.</div></div>`
       :aviso('A equipe <b>só começa a avaliar</b> quando todas as etapas estiverem completas e <b>todos</b> os documentos anexados.','info')}
     <div class="card"><b>Candidato</b>${cand.map(k=>docRow(k,c)).join('')}
@@ -479,7 +480,7 @@ function telaChat(){
   const aprovado=d.candidato.status==='aprovado'||d.candidato.status==='virou';
   const msgs=(d.msgs||[]).map(m=>`<div class="msg ${m.de==='candidato'?'eu':'eq'}">${m.de==='candidato'?'':'<div style="font-size:12px;font-weight:800;color:var(--brand);margin-bottom:2px">Equipe Carsz</div>'}${esc(m.texto)}<div class="h">${esc(hhmm(m.em))}</div></div>`).join('');
   const aprov=aprovado?`<div class="alert ok"><b class="t">✅ Cadastro aprovado</b><div class="txt" style="margin:0">A equipe vai combinar os próximos passos com você por aqui.</div></div>`:'';
-  const podeDocs=t.triagem==='aguardando_docs'||t.triagem==='docs_completos'||aprovado;
+  const podeDocs=t.triagem==='aguardando_docs'||t.triagem==='docs_completos';   // documentos só no fim da triagem
   return `<header>${aprovado?'':`<button class="ic" aria-label="Voltar" onclick="S.chat=false;render()">←</button>`}<h1>Equipe Carsz</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
   <main><div class="chatbox">
     ${aprov}
