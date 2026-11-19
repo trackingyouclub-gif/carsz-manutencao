@@ -3713,7 +3713,7 @@ async function motCobrarChecklist(id){
 }
 function motTaskHtml(t,ficha){
   if(t.k==='cand'){ const c=t.c, novo=c.status==='novo', ult=candMsgsDe(c.id).filter(m=>m.de==='candidato').pop();
-    return `<div class="mx-task" data-task="cand"><div class="t">${novo?'🆕 Novo candidato':'💬 Candidato aguardando resposta'} · Área do Cliente</div><div class="m" onclick="candAbrir('${c.id}')"><b>${esc(c.nome||'')}</b><span>· ${esc(candInfoLinha(c))}</span><span>· ${esc(motAgo(t.em))}</span></div>${ult?`<div class="q">${esc(String(ult.texto||'').slice(0,160))}</div>`:''}<div class="mx-bt"><button class="pri" onclick="candAbrir('${c.id}')">Atender</button></div></div>`; }
+    return `<div class="mx-task" data-task="cand"><div class="t">${novo?'🆕 Candidato — pronto para análise':'💬 Candidato aguardando resposta'} · Área do Cliente</div><div class="m" onclick="candAbrir('${c.id}')"><b>${esc(c.nome||'')}</b><span>· ${esc(candInfoLinha(c))}</span><span>· ${esc(motAgo(t.em))}</span></div>${candResumoLinha(c)?`<div class="q">${esc(candResumoLinha(c))}</div>`:''}${ult?`<div class="q">${esc(String(ult.texto||'').slice(0,160))}</div>`:''}<div class="mx-bt"><button class="pri" onclick="candAbrir('${c.id}')">Atender</button></div></div>`; }
   const x=t.x, wa=telWa(x.telefone), st=(x.bloqueio||{}).status||'normal';
   const meta=ficha?`<div class="m" style="cursor:default">${t.k==='real'?'':esc(motAgo(t.em))}</div>`:`<div class="m" onclick="motAbrirFicha('${x.id}','pend')"><span class="plate">${esc(x.placa||'—')}</span><b>${esc(x.nome||'')}</b>${t.em&&t.k!=='real'?'<span>· '+esc(motAgo(t.em))+'</span>':''}</div>`;
   const bWa=wa?`<button class="sec" onclick="waAbrir('https://wa.me/${wa}','_blank')">💬 WhatsApp</button>`:'';
@@ -4095,8 +4095,43 @@ async function motApagarAviso(id){ if(!confirm('Apagar este aviso?')) return; tr
 const CAND_REG={zona_leste:'Zona Leste',zona_norte:'Zona Norte',zona_sul:'Zona Sul',zona_oeste:'Zona Oeste',abc:'ABC'};
 const CAND_APP={uber:'Uber','99':'99',indrive:'inDrive',mais_de_um:'Mais de um app',outro:'Outro'};
 const CAND_ST={novo:['Novo','warn'],analise:['Em análise','neu'],aprovado:['Aprovado','ok'],recusado:['Recusado','bad'],virou:['Virou motorista','ok']};
-const CAND_DOC={cnh:['🪪','CNH (frente e verso)'],residencia:['🏠','Comprovante de residência'],perfil_app:['📱','Print do perfil no app'],complementar:['📄','Documentação complementar']};
-const candPend = c => c.status!=='recusado'&&c.status!=='virou'&&(c.ultMsgCand||'')>(c.ultRespEquipe||'');
+const CAND_DOC={cnh:['🪪','CNH ou RG'],residencia:['🏠','Conta no nome do candidato'],perfil_app:['📱','Print do perfil no app'],aval_doc:['🪪','RG ou CNH do avalista'],aval_conta:['🏠','Conta no nome do avalista'],complementar:['📄','Documentação complementar']};
+const CAND_TRI={incompleta:['⏸ Triagem incompleta','neu'],aguardando_docs:['📎 Aguardando documentos','warn'],docs_completos:['✅ Documentos completos','ok'],nao_apto:['⛔ Não apto','bad'],reprovado:['⛔ Reprovado por processos','bad']};
+const CAND_CONTA={luz:'conta de luz',agua:'conta de água',internet_tv:'internet fixa/TV a cabo'};
+const candTri = c => c.triagem||'incompleta';
+// triagem: filtros combináveis (aba Candidatos)
+const CAND_FLT=[
+  ['apto','✅ Aptos',c=>['aguardando_docs','docs_completos'].includes(candTri(c))],
+  ['naoapto','⛔ Não aptos',c=>['nao_apto','reprovado'].includes(candTri(c))],
+  ['restr','🔴 Com restrição',c=>c.restricao==='sim'],
+  ['proc','🚫 Reprovado por processos',c=>c.processos==='sim'],
+  ['semcomp','🏠 Sem comprovante no nome',c=>c.compNome==='nao'],
+  ['aval','👥 Com avalista',c=>!!c.precisaAval&&c.avTem==='sim'],
+  ['avpend','⏳ Avalista pendente',c=>!!c.precisaAval&&(c.avTem!=='sim'||(c.faltam||[]).some(k=>String(k).startsWith('aval_')))],
+  ['lgpd','🔒 LGPD aceito',c=>!!c.lgpdEm],
+  ['mais1','📅 Mora +1 ano',c=>c.moraTempo==='mais_1'],
+  ['menos1','📅 Mora −1 ano',c=>c.moraTempo==='menos_1'],
+  ['cs','💰 Caução: Sim',c=>c.caucao==='sim'],
+  ['cn','💰 Caução: Não',c=>c.caucao==='nao'],
+  ['inc','⏸ Triagem incompleta',c=>candTri(c)==='incompleta'],
+  ['ag','📎 Aguardando documentos',c=>candTri(c)==='aguardando_docs'],
+  ['ok','✅ Documentos completos',c=>candTri(c)==='docs_completos']];
+function candFiltrarTri(k){ const a=S.candFlt||[]; S.candFlt=a.includes(k)?a.filter(x=>x!==k):a.concat([k]); render(); }
+function candTriTags(c){
+  const t=[]; const T=(x,cls)=>t.push(`<span class="tag ${cls}">${x}</span>`); const tri=candTri(c);
+  T(CAND_TRI[tri][0],CAND_TRI[tri][1]);
+  if(c.restricao) T('Restrição: '+(c.restricao==='sim'?'Sim':'Não'),c.restricao==='sim'?'warn':'ok');
+  if(c.processos) T('Processos: '+(c.processos==='sim'?'Sim':'Não'),c.processos==='sim'?'bad':'ok');
+  if(c.compNome) T(c.compNome==='sim'?'Endereço no nome'+(c.compTipo?' ('+(CAND_CONTA[c.compTipo]||c.compTipo)+')':''):'Endereço não está no nome',c.compNome==='sim'?'ok':'warn');
+  if(c.moraTempo) T('Mora: '+(c.moraTempo==='mais_1'?'+1 ano':'−1 ano'),c.moraTempo==='mais_1'?'ok':'warn');
+  if(c.precisaAval){ const falta=(c.faltam||[]).some(k=>String(k).startsWith('aval_')); T(c.avTem==='sim'?'Avalista: '+esc((c.avNome||'').split(' ')[0])+(c.avParentesco?' ('+esc(c.avParentesco)+')':'')+(c.etapa>=7&&!falta?' ✔ docs':' · pendente'):'Avalista pendente',c.avTem==='sim'&&c.etapa>=7&&!falta?'ok':'warn'); }
+  if(c.caucao) T('Caução R$ 1.500: '+(c.caucao==='sim'?'Sim':'Não'),c.caucao==='sim'?'ok':'bad');
+  if(c.lgpdEm) T('LGPD ✓ '+esc(motDiaHoraSP(c.lgpdEm)),'ok');
+  return t.join(' ');
+}
+const candResumoLinha = c => [c.restricao==='sim'?'Restrição: Sim':'', c.compNome==='nao'?'sem comprovante no nome':'', c.moraTempo?('mora '+(c.moraTempo==='mais_1'?'+1 ano':'−1 ano')):'', c.precisaAval&&c.avTem==='sim'?'Avalista: '+(c.avNome||'').split(' ')[0]+(c.avParentesco?' ('+c.avParentesco+')':''):'', c.caucao?('caução '+(c.caucao==='sim'?'Sim':'Não')):''].filter(Boolean).join(' · ');
+// só entra na fila "Fazer agora" quem completou TODAS as etapas e documentos (antes disso a equipe não avalia nem responde)
+const candPend = c => c.status!=='recusado'&&c.status!=='virou'&&candTri(c)==='docs_completos'&&(c.ultMsgCand||'')>(c.ultRespEquipe||'');
 const candPendTotal = () => (S.cands||[]).filter(candPend).length;
 const candMsgsDe = id => (S.candMsgs||[]).filter(m=>m.candidatoId===id).sort((a,b)=>(a.em||'').localeCompare(b.em||''));
 const candDocsDe = id => (S.candDocs||[]).filter(d=>d.candidatoId===id).sort((a,b)=>(a.em||'').localeCompare(b.em||''));
@@ -4105,16 +4140,18 @@ const candInfoLinha = c => [CAND_REG[c.regiao]||c.regiao, CAND_APP[c.app]||c.app
 function candAbrir(id){ S.motAba='cand'; S.candAtual=id; S.motAtual=null; if(S.view!=='mot'&&S.view!=='mmot'){ const v=document.querySelector('nav [data-v=mot],nav [data-v=mmot]'); S.view=(v&&v.dataset.v)||'mot'; } render(); window.scrollTo&&window.scrollTo(0,0); }
 function candFiltrar(f){ S.candFiltro=f; render(); }
 function candListaHtml(){
-  const f=S.candFiltro||'ativos';
-  const grupos=[['ativos','Em andamento',c=>['novo','analise','aprovado'].includes(c.status)],['novo','Novos',c=>c.status==='novo'],['recusado','Recusados',c=>c.status==='recusado'],['virou','Viraram motorista',c=>c.status==='virou']];
+  const f=S.candFiltro||'ativos', fl=S.candFlt||[];
+  const grupos=[['ativos','Em andamento',c=>['novo','analise','aprovado'].includes(c.status)],['novo','Novos',c=>c.status==='novo'],['recusado','Recusados',c=>c.status==='recusado'],['virou','Viraram motorista',c=>c.status==='virou'],['todos','Todos',()=>true]];
   const chips=`<div class="mx-fil" id="cand_filtros">${grupos.map(([k,r,fn])=>{ const n=(S.cands||[]).filter(fn).length; return `<button type="button" class="mx-chip${f===k?' on':''}" aria-pressed="${f===k}" onclick="candFiltrar('${k}')">${r} <b>${n}</b></button>`; }).join('')}</div>`;
   const g=grupos.find(x=>x[0]===f)||grupos[0];
-  const lista=(S.cands||[]).filter(g[2]).sort((a,b)=>(candPend(b)-candPend(a))||String(b.ultMsgCand||b.criadoEm||'').localeCompare(String(a.ultMsgCand||a.criadoEm||'')));
+  const base=(S.cands||[]).filter(g[2]);
+  const chipsTri=`<div class="mx-fil" id="cand_filtros_tri" style="flex-wrap:wrap;overflow:visible">${CAND_FLT.map(([k,r,fn])=>`<button type="button" class="mx-chip${fl.includes(k)?' on':''}" data-flt="${k}" aria-pressed="${fl.includes(k)}" onclick="candFiltrarTri('${k}')">${r} <b>${base.filter(fn).length}</b></button>`).join('')}${fl.length?`<button type="button" class="mx-chip" id="cand_flt_limpar" onclick="S.candFlt=[];render()">✖ Limpar filtros</button>`:''}</div>`;
+  const lista=base.filter(c=>fl.every(k=>(CAND_FLT.find(x=>x[0]===k)||[0,0,()=>true])[2](c))).sort((a,b)=>(candPend(b)-candPend(a))||String(b.ultMsgCand||b.criadoEm||'').localeCompare(String(a.ultMsgCand||a.criadoEm||'')));
   const rows=lista.map(c=>{
     const st=CAND_ST[c.status]||CAND_ST.novo, ms=candMsgsDe(c.id), ult=ms.filter(m=>m.de==='candidato').pop(), nd=candDocsDe(c.id).filter(d=>!d.visto).length;
-    return `<div class="osrow mx-row" data-cand="${c.id}" onclick="candAbrir('${c.id}')"><div style="flex:1;min-width:0"><b>${esc(c.nome||'')}</b>${c.repetido?' <span class="tag neu">já falou antes</span>':''}<div class="muted">${esc(mascaraTel(c.celular||''))} · ${esc(candInfoLinha(c))}</div>${ult?`<div class="muted" style="margin-top:2px">“${esc(String(ult.texto||'').slice(0,90))}”</div>`:''}</div><span class="tag ${st[1]}">${st[0]}</span><div class="mx-tags">${candPend(c)?'<span class="tag warn">💬 responder</span>':''}${nd?`<span class="tag warn">📎 ${nd} novo${nd>1?'s':''}</span>`:(c.docs?`<span class="tag neu">📎 ${c.docs}</span>`:'')}<span class="tag neu">${esc(motAgo(c.ultMsgCand||c.criadoEm))}</span></div></div>`;
+    return `<div class="osrow mx-row" data-cand="${c.id}" onclick="candAbrir('${c.id}')"><div style="flex:1;min-width:0"><b>${esc(c.nome||'')}</b>${c.repetido?' <span class="tag neu">já falou antes</span>':''}<div class="muted">${esc(mascaraTel(c.celular||''))}${c.email?' · '+esc(c.email):''} · ${esc(candInfoLinha(c))}</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${candTriTags(c)}</div>${ult?`<div class="muted" style="margin-top:2px">“${esc(String(ult.texto||'').slice(0,90))}”</div>`:''}</div><span class="tag ${st[1]}">${st[0]}</span><div class="mx-tags">${candPend(c)?'<span class="tag warn">💬 responder</span>':''}${nd?`<span class="tag warn">📎 ${nd} novo${nd>1?'s':''}</span>`:(c.docs?`<span class="tag neu">📎 ${c.docs}</span>`:'')}<span class="tag neu">${esc(motAgo(c.ultMsgCand||c.criadoEm))}</span></div></div>`;
   }).join('');
-  return chips+`<div id="mot_lista"></div>`+(rows||`<div class="empty">Nenhum candidato nesta lista.${f==='ativos'?'<br><span class="muted">Quem pedir atendimento na Área do Cliente (site) aparece aqui.</span>':''}</div>`);
+  return chips+chipsTri+`<div id="mot_lista"></div>`+(rows||`<div class="empty">Nenhum candidato nesta lista.${f==='ativos'&&!fl.length?'<br><span class="muted">Quem pedir atendimento na Área do Cliente (site) aparece aqui.</span>':''}</div>`);
 }
 function candDetalhe(m){
   const c=(S.cands||[]).find(y=>y.id===S.candAtual); if(!c){ S.candAtual=null; return render(); }
@@ -4129,6 +4166,7 @@ function candDetalhe(m){
     <div class="step"><div class="row" style="flex-wrap:wrap;gap:6px"><b>📞 ${esc(mascaraTel(c.celular||''))}</b><span class="muted">${esc(candInfoLinha(c))}</span>${c.repetido?'<span class="tag neu">já falou antes</span>':''}<span class="sp"></span><span class="muted">desde ${esc(motDiaHoraSP(c.criadoEm))}</span></div>
       ${c.status==='recusado'&&c.motivoRecusa?`<div class="muted" style="margin-top:6px">Motivo da recusa: ${esc(c.motivoRecusa)}</div>`:''}${c.status==='virou'?`<div class="muted" style="margin-top:6px">Já virou motorista — acompanhe na aba Todos.</div>`:''}
       <div class="hint" style="margin-top:6px">A conversa é só pelo chat: o candidato não recebe seu número e vê você como “Equipe Carsz”.</div></div>
+    ${candTriagemHtml(c)}
     <div class="step" id="cand_docs"><h3>📎 Documentos para análise <span class="muted" style="font-weight:400">· ${ds.length}</span></h3>${docs}</div>
     <div class="step" id="cand_chat_box"><h3>💬 Conversa</h3>
       <div id="cand_chat" style="max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0">${ms.map(bol).join('')}</div>
@@ -4138,6 +4176,31 @@ function candDetalhe(m){
   const n=document.getElementById('cand_txt'); if(n&&keep){ n.value=keep.v; if(keep.f) n.focus(); }
   const ch=document.getElementById('cand_chat'); if(ch) ch.scrollTop=ch.scrollHeight;
 }
+function candTriagemHtml(c){
+  const tri=candTri(c), wa=telWa(c.celular), awa=telWa(c.avCelular);
+  const falta=(c.faltam||[]).map(k=>(CAND_DOC[k]||['','?'])[1]);
+  const MOTA={restricao:'restrição no nome',sem_comprovante:'sem comprovante no nome',menos_1_ano:'menos de 1 ano no endereço'};
+  const btns=[];
+  if(tri==='incompleta'&&wa) btns.push(`<button class="sec" onclick="candChamarContinuar('${c.id}')">💬 Chamar no WhatsApp para continuar</button>`);
+  if(c.encerradoEm||tri==='nao_apto'||tri==='reprovado') btns.push(`<button class="sec" onclick="candReabrirTriagem('${c.id}')">↩ Reabrir triagem</button>`);
+  return `<div class="step" id="cand_triagem"><h3>🧾 Triagem</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">${candTriTags(c)}</div>
+    ${c.encerradoEm?`<div class="muted">Candidato encerrou por agora (${esc(motDiaHoraSP(c.encerradoEm))}). Pode voltar e mudar a resposta.</div>`:''}
+    ${tri==='incompleta'?`<div class="muted">Parou na etapa ${c.etapa||1} de 7. Ainda não entra na fila "Fazer agora".${c.lembreteEm?' Mensagem para continuar enviada no chat.':''}</div>`:''}
+    ${c.motivosAval&&c.motivosAval.length?`<div class="muted">Pede avalista por: ${esc(c.motivosAval.map(m=>MOTA[m]||m).join(', '))}.</div>`:''}
+    <div class="muted" style="margin-top:6px">📱 ${esc(mascaraTel(c.celular||''))}${c.email?' · ✉ '+esc(c.email):' · <i>sem e-mail</i>'}${wa?` · <a href="#" style="color:var(--brand);font-weight:700" onclick="waAbrir('https://wa.me/${wa}','_blank');return false">abrir WhatsApp</a>`:''}</div>
+    ${c.avTem==='sim'&&c.avNome?`<div class="muted">👥 Avalista ${esc(c.avNome)}${c.avParentesco?' ('+esc(c.avParentesco)+')':''}: 📱 ${esc(mascaraTel(c.avCelular||''))}${c.avEmail?' · ✉ '+esc(c.avEmail):''}${awa?` · <a href="#" style="color:var(--brand);font-weight:700" onclick="waAbrir('https://wa.me/${awa}','_blank');return false">abrir WhatsApp</a>`:''}${c.avLgpd==='sim'?' · LGPD do avalista ✓':''}</div>`:''}
+    ${tri==='aguardando_docs'?`<div class="muted" style="margin-top:4px">Falta: <b>${esc(falta.join(', '))}</b> · só avaliamos com tudo anexado.</div>`:''}
+    ${c.lgpdVersao?`<div class="muted sm" style="margin-top:4px">LGPD aceita em ${esc(motDiaHoraSP(c.lgpdEm))} · texto v${esc(c.lgpdVersao)}</div>`:''}
+    ${btns.length?`<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${btns.join('')}</div>`:''}</div>`;
+}
+const CAND_URL='https://manutencao.carsz.com.br/cliente.html';
+function candChamarContinuar(id){
+  const c=(S.cands||[]).find(y=>y.id===id); if(!c) return; const wa=telWa(c.celular); if(!wa){ toast('Candidato sem celular'); return; }
+  const msg='Olá, '+String(c.nome||'').split(' ')[0]+'! Aqui é a equipe Carsz. Para continuar a análise da sua locação, abra a Área do Cliente e responda algumas perguntas rápidas (leva uns 2 minutos): '+CAND_URL+'\nA análise só começa quando todas as etapas e documentos estiverem completos.';
+  waAbrir('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank');
+}
+async function candReabrirTriagem(id){ try{ await candAtualizar(id,{encerradoEm:''}); toast('Triagem reaberta: o candidato pode mudar a resposta'); render(); }catch(e){ erroSalvar('reabrir a triagem',e); } }
 async function candAtualizar(id,d){ await S.db.doc('mot_candidatos/'+id).update(d); const c=(S.cands||[]).find(y=>y.id===id); if(c) Object.assign(c,d); }
 async function candEnviar(id){
   const t=document.getElementById('cand_txt'); const txt=(t&&t.value||'').trim(); if(!txt) return;
@@ -4153,6 +4216,7 @@ async function candStatus(id,st){
 }
 function candVirar(id){
   const c=(S.cands||[]).find(y=>y.id===id); if(!c) return;
+  if(candTri(c)!=='docs_completos'&&!confirm('Este candidato ainda não completou a triagem ('+CAND_TRI[candTri(c)][0].replace(/^[^ ]+ /,'')+'). Aprovar mesmo assim?')) return;
   if(!motPodeCriar()){ candStatus(id,'aprovado').then(()=>toast('Aprovado. O administrador completa o cadastro (CPF e placa).')); return; }
   motForm('',{nome:c.nome,telefone:c.celular,candId:id});
 }
@@ -4516,7 +4580,7 @@ if('serviceWorker' in navigator){
 </script>
 <script>
 /* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
-(function(){ var v='Painel v18.11-K'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+(function(){ var v='Painel v18.12-A'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
  d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
  (document.body||document.documentElement).appendChild(d); })();
 </script>

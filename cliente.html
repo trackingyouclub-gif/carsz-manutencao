@@ -171,6 +171,12 @@ body.amarelo{--bg:#1f1808;--card:#2e240a;--line:#6a5516;--brand:#f5b50a;--brand-
 .chatbox .chat{flex:1;justify-content:flex-end}
 .composer{bottom:0;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
 .composer .clip{width:46px;padding:0;font-size:20px;background:var(--soft);color:var(--brand)}
+/* triagem */
+.prog{display:flex;gap:4px;margin:2px 0 8px}.prog i{flex:1;height:5px;border-radius:4px;background:var(--line)}.prog i.on{background:var(--brand)}
+.etapa{background:var(--warn-bg);border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:8px 11px;font-size:13px;margin-bottom:6px}.etapa b{color:var(--warn)}
+label.ck{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:500;color:var(--ink);margin:12px 0 4px;cursor:pointer}
+label.ck input{width:22px;height:22px;flex:none;margin:1px 0 0;accent-color:var(--brand)}
+.card b{font-size:15.5px}
 </style>
 </head>
 <body>
@@ -185,12 +191,18 @@ const LS = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const REG = {zona_leste:'Zona Leste',zona_norte:'Zona Norte',zona_sul:'Zona Sul',zona_oeste:'Zona Oeste',abc:'ABC'};
 const APPS = {uber:'Uber','99':'99',indrive:'inDrive',mais_de_um:'Mais de um aplicativo',outro:'Outro'};
-const DOCS = [
-  ['cnh','🪪','CNH (frente e verso)','Frente e verso, bem legível (pode ser 2 fotos ou 1 PDF)'],
-  ['residencia','🏠','Comprovante de residência','Conta recente (luz, água, internet…)'],
-  ['perfil_app','📱','Print do perfil Uber/99/inDrive','Tela com sua nota, tempo de cadastro e ganhos'],
-  ['complementar','📄','Documentação complementar','Qualquer outro documento que ajude na análise']];
-const S = { token: LS.get('cand_token')||'', dados:null, f:{nome:'',cel:'',reg:'',app:'',tempo:''}, erro:'', ocupado:false, sig:'', sheet:false };
+const LGPD_VERSAO = '2026-11-19-v1';
+const DOCS = {
+  cnh:['🪪','CNH ou RG (frente e verso)','Bem legível — foto ou PDF'],
+  residencia:['🏠','Conta no seu nome','Luz, água, internet fixa ou TV a cabo'],
+  perfil_app:['📱','Print do perfil Uber/99/inDrive','Tela com sua nota, tempo de cadastro e ganhos'],
+  aval_doc:['🪪','RG ou CNH do avalista','Frente e verso, bem legível'],
+  aval_conta:['🏠','Conta no nome do avalista','Luz, água, internet fixa ou TV a cabo'],
+  complementar:['📄','Documentação complementar','Qualquer outro documento que ajude na análise (opcional)']};
+const CONTA_TIPO = {luz:'Conta de luz',agua:'Conta de água',internet_tv:'Internet fixa ou TV a cabo'};
+const MOT_AVAL = {restricao:'Motivo: restrição no nome',sem_comprovante:'Sem comprovante no seu nome',menos_1_ano:'Menos de 1 ano no endereço'};
+const S = { token: LS.get('cand_token')||'', dados:null, f:{nome:'',cel:'',email:'',reg:'',app:'',tempo:''}, erro:'', ocupado:false, sig:'', sheet:false,
+  lgpd:null, lgpdCk:false, r:{}, rIni:false, tela:null, chat:false };
 function toast(t){ const el=document.createElement('div'); el.className='toast'; el.style.bottom='90px'; el.textContent=t; document.body.appendChild(el); setTimeout(()=>el.remove(),3200); }
 const hhmm = iso => { try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
 const mascaraTel = v => { const d=String(v||'').replace(/\D/g,'').slice(0,11); return d.length>10?d.replace(/(\d{2})(\d{5})(\d{4})/,'($1) $2-$3'):d.length>6?d.replace(/(\d{2})(\d{4})(\d{0,4})/,'($1) $2-$3'):d.length>2?d.replace(/(\d{2})(\d{0,5})/,'($1) $2'):d; };
@@ -216,45 +228,238 @@ async function instalar(){
 function sheet(html){ fecharSheet(); const bg=document.createElement('div'); bg.className='sheet-bg'; bg.id='sheet_bg'; bg.innerHTML=`<div class="sheet">${html}</div>`; bg.addEventListener('click',e=>{ if(e.target===bg) fecharSheet(); }); document.body.appendChild(bg); }
 function fecharSheet(){ const b=document.getElementById('sheet_bg'); if(b) b.remove(); S.sheet=false; }
 
-// ---- tela inicial: dados do candidato ----
+// ---- faixa de etapas (aparece em todas as telas da triagem) ----
+const ETAPAS = 7;
+function faixa(txt,n,fim){
+  return `<div class="prog">${[...Array(ETAPAS)].map((_,i)=>`<i class="${i<n?'on':''}"></i>`).join('')}</div>
+  <div class="etapa"><b>${txt}</b>${fim?'':' · só avaliamos quando você completar todas as etapas'}</div>`;
+}
+const cab = (voltar) => `<header>${voltar?`<button class="ic" aria-label="Voltar" onclick="${voltar}">←</button>`:''}<h1>Área do Cliente</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>`;
+const yn = (key,val) => `<div class="opts"><button type="button" class="opt${val==='sim'?' on':''}" onclick="resp('${key}','sim')">Sim</button><button type="button" class="opt${val==='nao'?' on':''}" onclick="resp('${key}','nao')">Não</button></div>`;
+function resp(k,v){ S.r[k]=v; S.erro=''; render(false); }
+function aviso(txt,cls){ return `<div class="alert ${cls||'info'}"><div class="txt" style="margin:0">${txt}</div></div>`; }
+
+// ---- 1 · janela da LGPD (antes de qualquer coisa) ----
+function telaLgpd(legado){
+  return `<div class="login">
+    <img class="logo" src="${LOGO}" alt="Carsz">
+    <h1>Área do Cliente</h1><p class="sub">${legado?'Para continuar a sua análise, responda algumas perguntas rápidas.':'Alugue seu carro para trabalhar com aplicativo.'}</p>
+    <div class="card"><h3>🔒 Seus dados e a LGPD</h3>
+      ${aviso('<b>Só vamos avaliar o seu cadastro se você completar todas as etapas</b> (perguntas, documentos e, se precisar, avalista).','warn')}
+      <p class="muted sm">Para analisar a locação vamos pedir documentos e informações pessoais. Usamos só para essa análise, conforme a Lei Geral de Proteção de Dados (LGPD).</p>
+      <label class="ck" id="lgpd_lbl"><input type="checkbox" id="lgpd_ck"${S.lgpdCk?' checked':''} onchange="S.lgpdCk=this.checked;S.erro=''"> <span>Concordo em fornecer meus documentos e informações pessoais, conforme a LGPD.</span></label>
+      <div class="err" id="c_err">${esc(S.erro)}</div>
+      <button class="btn" id="lgpd_sim" onclick="lgpdSim()">Sim, concordo e continuar</button>
+      <button class="btn sec" style="margin-top:8px" id="lgpd_nao" onclick="lgpdNao()">Não concordo</button>
+      <p class="muted sm" style="margin:10px 0 0">Fica registrado o dia, a hora e a versão do texto aceito.</p>
+    </div>
+    ${emApp?'':`<button class="btn sec" style="margin-top:4px" id="c_instalar" onclick="instalar()">📲 Instalar o app no celular</button>`}
+  </div>`;
+}
+function lgpdSim(){ if(!S.lgpdCk){ S.erro='Marque a caixa para concordar e continuar'; return render(false); } S.lgpd='sim'; S.erro=''; render(); }
+function lgpdNao(){ S.lgpd='nao'; S.erro=''; render(); }
+function telaLgpdNao(){
+  return `<div class="login"><img class="logo" src="${LOGO}" alt="Carsz"><h1>Área do Cliente</h1>
+    <div class="alert bad" style="margin-top:14px"><b class="t">Sem o seu aceite não conseguimos analisar o cadastro.</b><div class="txt" style="margin:0">Sem documentos e informações não dá para seguir com a locação.</div></div>
+    <h3 style="margin:14px 0 8px">Quer mudar a opção e continuar?</h3>
+    <button class="btn" id="lgpd_mudar" onclick="S.lgpd='sim';S.lgpdCk=true;render()">Mudar e aceitar</button>
+    <button class="btn sec" style="margin-top:8px" id="lgpd_fim" onclick="S.lgpd='fim';render()">Encerrar por agora</button>
+    <p class="muted sm" style="margin-top:10px">Pode voltar quando quiser: o link continua o mesmo.</p></div>`;
+}
+function telaFim(){
+  return `<div class="login"><img class="logo" src="${LOGO}" alt="Carsz"><h1>Tudo bem!</h1><p class="sub">Nada foi guardado. Quando quiser alugar um carro com a Carsz, é só voltar aqui.</p>
+    <button class="btn" onclick="S.lgpd=null;S.lgpdCk=false;render()">Voltar ao início</button></div>`;
+}
+
+// ---- 1 · contatos (candidato novo) ----
 function telaForm(){
   const f=S.f;
   const opts=(obj,key,cls)=>Object.entries(obj).map(([k,v])=>`<button type="button" class="opt ${cls||''}${f[key]===k?' on':''}" data-k="${k}" onclick="escolher('${key}','${k}')">${esc(v)}</button>`).join('');
-  return `<div class="login">
-    <img class="logo" src="${LOGO}" alt="Carsz">
-    <h1>Área do Cliente</h1><p class="sub">Alugue seu carro para trabalhar com aplicativo. Conte um pouco sobre você e a equipe Carsz atende aqui mesmo.</p>
-    <label for="c_nome">Seu nome</label>
+  return `${cab()}<main>${faixa('Etapa 1 de 7',1)}
+    <h2 style="margin:6px 0 0">Como falamos com você?</h2>
+    <label for="c_nome">Nome completo</label>
     <input id="c_nome" autocomplete="name" placeholder="Nome completo" value="${esc(f.nome)}" oninput="S.f.nome=this.value">
-    <label for="c_cel">Celular (com DDD)</label>
+    <label for="c_cel">Celular (WhatsApp)</label>
     <input id="c_cel" inputmode="tel" autocomplete="tel-national" placeholder="(11) 98888-7777" value="${esc(f.cel)}" oninput="this.value=mascaraTel(this.value);S.f.cel=this.value">
+    <label for="c_email">E-mail</label>
+    <input id="c_email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" value="${esc(f.email)}" oninput="S.f.email=this.value">
+    <div class="muted sm" style="margin-top:4px">Usamos só para falar sobre a sua locação.</div>
     <label>Região onde você atua <span class="muted sm">(somente São Paulo)</span></label>
     <div class="opts" id="o_reg">${opts(REG,'reg','w3')}</div>
     <label for="c_app">Aplicativo em que você trabalha</label>
     <select id="c_app" onchange="S.f.app=this.value"><option value="">Escolha…</option>${Object.entries(APPS).map(([k,v])=>`<option value="${k}"${f.app===k?' selected':''}>${esc(v)}</option>`).join('')}</select>
     <label>Tempo de cadastro no aplicativo</label>
     <div class="opts" id="o_tempo">${opts({menos_1:'Menos de 1 ano',mais_1:'Mais de 1 ano'},'tempo')}</div>
+    ${aviso('ℹ Se você precisar de avalista, vamos pedir também o <b>celular e o e-mail dele</b>.')}
     <div class="err" id="c_err">${esc(S.erro)}</div>
-    <button class="btn" id="c_btn" style="margin-top:10px" onclick="iniciar()"${S.ocupado?' disabled':''}>${S.ocupado?'Abrindo…':'Iniciar atendimento'}</button>
-    ${emApp?'':`<button class="btn sec" style="margin-top:12px" id="c_instalar" onclick="instalar()">📲 Instalar o app no celular</button>`}
-    <p class="muted sm" style="text-align:center;margin-top:14px">Atendimento da equipe Carsz. Seus dados e documentos ficam guardados com segurança e só a equipe vê.</p>
-  </div>`;
+    <button class="btn" id="c_btn" style="margin-top:6px" onclick="iniciar()"${S.ocupado?' disabled':''}>${S.ocupado?'Abrindo…':'Continuar'}</button>
+  </main>`;
 }
-function escolher(key,k){ S.f[key]=k; render(); }
+function escolher(key,k){ S.f[key]=k; render(false); }
+const emailOk = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v||'').trim()) && String(v).length<=120;
 async function iniciar(){
   const f=S.f; const cel=f.cel.replace(/\D/g,'');
-  const falha=m=>{ S.erro=m; render(); };
+  const falha=m=>{ S.erro=m; render(false); };
   if(f.nome.trim().length<3) return falha('Informe seu nome completo');
   if(cel.length<10||cel.length>11) return falha('Informe o celular com DDD');
+  if(!emailOk(f.email)) return falha('Informe um e-mail válido');
   if(!f.reg) return falha('Escolha a região onde você atua');
   if(!f.app) return falha('Escolha o aplicativo em que você trabalha');
   if(!f.tempo) return falha('Informe o tempo de cadastro no aplicativo');
-  S.erro=''; S.ocupado=true; render();
+  S.erro=''; S.ocupado=true; render(false);
   try{
-    const r=await sb.rpc('cand_iniciar',{p_nome:f.nome.trim(),p_celular:cel,p_regiao:f.reg,p_app:f.app,p_tempo:f.tempo});
+    const r=await sb.rpc('cand_iniciar',{p_nome:f.nome.trim(),p_celular:cel,p_email:f.email.trim(),p_regiao:f.reg,p_app:f.app,p_tempo:f.tempo,p_lgpd:LGPD_VERSAO});
     if(r.error) throw r.error; const d=r.data;
     if(d&&d.erro){ S.ocupado=false; return falha(d.erro); }
-    LS.set('cand_token',d.token); S.token=d.token; S.ocupado=false; S.sig=''; await carregar(true);
-  }catch(e){ S.ocupado=false; S.erro='Sem conexão ou erro. Tente de novo.'; render(); }
+    LS.set('cand_token',d.token); S.token=d.token; S.ocupado=false; S.sig=''; S.rIni=false; S.tela=null; await carregar(true);
+  }catch(e){ S.ocupado=false; S.erro='Sem conexão ou erro. Tente de novo.'; render(false); }
+}
+// já cadastrado antes da triagem: aceita a LGPD e informa o e-mail
+function telaContatoLegado(){
+  const t=S.dados.tri;
+  return `${cab()}<main>${faixa('Etapa 1 de 7',1)}
+    <h2 style="margin:6px 0 0">Confirme seus contatos</h2>
+    <div class="card" style="margin-top:10px"><div class="muted sm">Nome</div><b>${esc(t.nome||'')}</b><div class="muted sm" style="margin-top:8px">Celular (WhatsApp)</div><b>${esc(mascaraTel(t.celular||''))}</b></div>
+    <label for="c_email">E-mail</label>
+    <input id="c_email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" value="${esc(S.f.email)}" oninput="S.f.email=this.value">
+    <div class="muted sm" style="margin-top:4px">Usamos só para falar sobre a sua locação.</div>
+    ${aviso('ℹ Se você precisar de avalista, vamos pedir também o <b>celular e o e-mail dele</b>.')}
+    <div class="err" id="c_err">${esc(S.erro)}</div>
+    <button class="btn" id="c_btn" style="margin-top:6px" onclick="aceitarLegado()"${S.ocupado?' disabled':''}>Continuar</button></main>`;
+}
+async function aceitarLegado(){
+  if(!emailOk(S.f.email)){ S.erro='Informe um e-mail válido'; return render(false); }
+  S.erro=''; S.ocupado=true; render(false);
+  try{ const r=await rpc('cand_aceitar_lgpd',{p_token:S.token,p_versao:LGPD_VERSAO,p_email:S.f.email.trim()}); S.ocupado=false;
+    if(r&&r.erro){ S.erro=r.erro; return render(false); } S.rIni=false; S.tela=null; await carregar(true); }
+  catch(e){ S.ocupado=false; render(false); erroGenerico(e); }
+}
+
+// ---- 2 a 6 · perguntas ----
+const telaDaEtapa = t => t.etapa<=3?'c':t.etapa===4?'d':t.etapa===5?'d2':t.etapa===6?'e':'docs';
+const telaDoBloqueio = b => b==='processos'?'c':b==='caucao'?'d2':'e';
+const VOLTAR = {d:'c',d2:'d',e:'d2'};
+const BTN = (tela,rot) => `<div class="err" id="c_err">${esc(S.erro)}</div><button class="btn" id="tri_ok" style="margin-top:8px" onclick="salvarTela('${tela}')"${S.ocupado?' disabled':''}>${rot||'Continuar'}</button>`;
+function telaC(){
+  const r=S.r;
+  return `${cab()}<main>${faixa('Etapa 2 e 3 de 7',3)}
+    <h2 style="margin:6px 0 10px">Só algumas perguntas rápidas</h2><p class="muted sm" style="margin:0 0 8px">Responda com sinceridade. A equipe confere depois.</p>
+    <div class="card"><b>Tem restrição no seu nome (SPC/Serasa)?</b>${yn('restricao',r.restricao)}</div>
+    <div class="card"><b>Tem processos na justiça?</b>${yn('processos',r.processos)}</div>
+    ${r.restricao==='sim'?aviso('ℹ Com restrição no nome a locação é possível <b>com avalista</b>. Vamos pedir no próximo passo.'):''}
+    ${r.processos==='sim'?aviso('Se marcar “Sim” em processos: o cadastro não segue (reprovação direta). Você terá a opção de mudar a resposta.','bad'):''}
+    ${BTN('c')}</main>`;
+}
+function telaD(){
+  const r=S.r;
+  return `${cab("irTela('c')")}<main>${faixa('Etapa 4 de 7',4)}
+    <h2 style="margin:6px 0 10px">Endereço</h2>
+    <div class="card"><b>Tem comprovante de endereço no seu nome?</b>${yn('compNome',r.compNome)}
+      ${r.compNome==='sim'?`<label>Qual conta você tem? <span class="muted sm">(escolha uma para seguir)</span></label>
+        <div class="opts">${Object.entries(CONTA_TIPO).map(([k,v])=>`<button type="button" class="opt${r.compTipo===k?' on':''}" style="min-width:100%;text-align:left" onclick="resp('compTipo','${k}')">${r.compTipo===k?'◉':'○'} ${esc(v)}</button>`).join('')}</div>
+        <div class="muted sm" style="margin-top:6px;color:var(--bad)">❌ Não vale: celular, fatura de cartão ou outros. Só contas fixas do endereço.</div>`:''}
+    </div>
+    <div class="card"><b>Há quanto tempo você mora neste endereço?</b><div class="opts"><button type="button" class="opt${r.moraTempo==='mais_1'?' on':''}" onclick="resp('moraTempo','mais_1')">Mais de 1 ano</button><button type="button" class="opt${r.moraTempo==='menos_1'?' on':''}" onclick="resp('moraTempo','menos_1')">Menos de 1 ano</button></div></div>
+    ${(r.compNome==='nao'||r.moraTempo==='menos_1')?aviso('ℹ Sem conta válida no seu nome, ou morando há menos de 1 ano, pedimos um <b>avalista</b> com conta no nome dele.'):''}
+    ${BTN('d')}</main>`;
+}
+function telaD2(){
+  const r=S.r;
+  return `${cab("irTela('d')")}<main>${faixa('Etapa 5 de 7',5)}
+    <h2 style="margin:6px 0 10px">Caução</h2>
+    <div class="card"><b>Você tem os <u>R$ 1.500</u> da caução para pagar na retirada do veículo?</b><div class="muted sm" style="margin:6px 0 0">A caução é paga no dia da retirada, antes de sair com o carro.</div>${yn('caucao',r.caucao)}</div>
+    ${r.caucao==='nao'?aviso('<b>Por enquanto você não está apto.</b> Sem a caução de R$ 1.500 na retirada não conseguimos entregar o veículo. Você terá a opção de mudar a resposta.','bad'):''}
+    ${BTN('d2')}</main>`;
+}
+function telaE(){
+  const r=S.r, t=S.dados.tri;
+  const mot=(t.motivosAval||[]).map(m=>`<span class="chip2 p">${esc(MOT_AVAL[m]||m)}</span>`).join('');
+  return `${cab("irTela('d2')")}<main>${faixa('Etapa 6 de 7',6)}
+    <h2 style="margin:6px 0 6px">Avalista</h2><div class="chips2" style="margin:0 0 10px">${mot}</div>
+    <div class="card"><b>Tem um familiar que pode ser seu avalista e se responsabilizar financeiramente pelo veículo?</b>${yn('avTem',r.avTem)}</div>
+    ${r.avTem==='sim'?`<div class="card">
+      <label for="a_nome" style="margin-top:0">Nome completo do avalista</label><input id="a_nome" autocomplete="off" value="${esc(r.avNome||'')}" oninput="S.r.avNome=this.value">
+      <label for="a_par">Parentesco</label><input id="a_par" autocomplete="off" placeholder="Ex.: mãe, irmão, esposa" value="${esc(r.avParentesco||'')}" oninput="S.r.avParentesco=this.value">
+      <label for="a_cel">Celular (WhatsApp) do avalista</label><input id="a_cel" inputmode="tel" placeholder="(11) 98888-7777" value="${esc(mascaraTel(r.avCelular||''))}" oninput="this.value=mascaraTel(this.value);S.r.avCelular=this.value">
+      <label for="a_mail">E-mail do avalista</label><input id="a_mail" type="email" inputmode="email" value="${esc(r.avEmail||'')}" oninput="S.r.avEmail=this.value">
+      <label style="margin-top:14px"><b>O avalista tem conta de luz, água, internet fixa ou TV a cabo no nome dele?</b></label>${yn('avCompNome',r.avCompNome)}
+      <label class="ck" style="margin-top:12px"><input type="checkbox" id="a_lgpd"${r.avLgpd==='sim'?' checked':''} onchange="S.r.avLgpd=this.checked?'sim':'nao'"> <span>O avalista concorda em fornecer os dados e documentos dele, conforme a LGPD.</span></label>
+    </div>`:''}
+    ${aviso('⚖ <b>Importante:</b> o motorista e o avalista assinam contrato e nota promissória.','warn')}
+    ${BTN('e')}</main>`;
+}
+function irTela(t){ S.tela=t; S.erro=''; render(); window.scrollTo&&window.scrollTo(0,0); }
+async function salvarTela(tela){
+  const r=S.r; const falha=m=>{ S.erro=m; render(false); };
+  let p={};
+  if(tela==='c'){ if(!r.restricao) return falha('Responda sobre a restrição no nome'); if(!r.processos) return falha('Responda sobre processos na justiça'); p={restricao:r.restricao,processos:r.processos}; }
+  else if(tela==='d'){
+    if(!r.compNome) return falha('Responda se tem comprovante de endereço no seu nome');
+    if(r.compNome==='sim'&&!r.compTipo) return falha('Escolha qual conta você tem (luz, água, internet fixa ou TV a cabo)');
+    if(!r.moraTempo) return falha('Informe há quanto tempo mora no endereço');
+    p={compNome:r.compNome,compTipo:r.compNome==='sim'?r.compTipo:'',moraTempo:r.moraTempo};
+  } else if(tela==='d2'){ if(!r.caucao) return falha('Responda sobre a caução'); p={caucao:r.caucao}; }
+  else if(tela==='e'){
+    if(!r.avTem) return falha('Responda se tem um familiar para ser avalista');
+    p={avTem:r.avTem};
+    if(r.avTem==='sim'){
+      if((r.avNome||'').trim().length<3) return falha('Informe o nome completo do avalista');
+      if((r.avParentesco||'').trim().length<2) return falha('Informe o parentesco do avalista');
+      const c=String(r.avCelular||'').replace(/\D/g,''); if(c.length<10||c.length>11) return falha('Informe o celular do avalista com DDD');
+      if(!emailOk(r.avEmail)) return falha('Informe um e-mail válido do avalista');
+      if(!r.avCompNome) return falha('Responda se o avalista tem conta no nome dele');
+      if(r.avLgpd!=='sim') return falha('Marque que o avalista concorda com o uso dos dados (LGPD)');
+      p={...p,avNome:r.avNome.trim(),avParentesco:r.avParentesco.trim(),avCelular:c,avEmail:r.avEmail.trim(),avCompNome:r.avCompNome,avLgpd:'sim'};
+    }
+  }
+  S.erro=''; S.ocupado=true; render(false);
+  try{ const x=await rpc('cand_triagem',{p_token:S.token,p_resp:p}); S.ocupado=false;
+    if(x&&x.erro){ S.erro=x.erro; return render(false); }
+    S.tela=null; S.rIni=false; await carregar(true); window.scrollTo&&window.scrollTo(0,0); }
+  catch(e){ S.ocupado=false; render(false); erroGenerico(e); }
+}
+
+// ---- aviso "não está apto" (sempre com a chance de mudar a resposta) ----
+const MOTIVO = {
+  processos:['Você informou que tem processos na justiça.','Com processos não conseguimos seguir com a locação.'],
+  caucao:['Sem a caução de R$ 1.500 na retirada.','Não conseguimos entregar o veículo sem a caução, e o avalista não resolve isso.'],
+  aval_familiar:['Não há um familiar avalista que se responsabilize financeiramente pelo veículo.','Com restrição no nome, sem comprovante no seu nome ou com menos de 1 ano no endereço, precisamos de avalista.'],
+  aval_conta:['O avalista não tem conta de luz, água, internet fixa ou TV a cabo no nome dele.','Precisamos de um avalista com comprovante de endereço no nome dele.']};
+function telaAviso(t){
+  const m=MOTIVO[t.bloqueio]||['Não seguiu o fluxo.',''];
+  return `${cab()}<main>${faixa('Etapa '+(t.etapa)+' de 7',t.etapa)}
+    <h2 style="margin:6px 0 10px">Por enquanto você não está apto</h2>
+    <div class="alert bad"><b class="t">Motivo: ${esc(m[0])}</b><div class="txt" style="margin:0">${esc(m[1])}</div></div>
+    <h3 style="margin:14px 0 8px">Quer mudar a opção e continuar?</h3>
+    <button class="btn" id="av_mudar" onclick="irTela('${telaDoBloqueio(t.bloqueio)}')">Mudar minha resposta</button>
+    <button class="btn sec" style="margin-top:8px" id="av_fim" onclick="encerrarTriagem()">Encerrar por agora</button>
+    <p class="muted sm" style="margin-top:10px">O mesmo aviso aparece em cada item que não segue o fluxo.</p></main>`;
+}
+async function encerrarTriagem(){ try{ await rpc('cand_triagem',{p_token:S.token,p_resp:{},p_acao:'encerrar'}); S.tela=null; await carregar(true); }catch(e){ erroGenerico(e); } }
+async function reabrirTriagem(){ try{ await rpc('cand_triagem',{p_token:S.token,p_resp:{},p_acao:'reabrir'}); S.tela=telaDoBloqueio(S.dados.tri.bloqueio); S.rIni=false; await carregar(true); }catch(e){ erroGenerico(e); } }
+function telaEncerrado(t){
+  return `${cab()}<main><div class="alert warn" style="margin-top:6px"><b class="t">Atendimento encerrado por enquanto</b><div class="txt" style="margin:0">Você pode voltar quando quiser e mudar a resposta.</div></div>
+    <button class="btn" id="enc_mudar" onclick="reabrirTriagem()">Quero mudar uma resposta</button></main>`;
+}
+
+// ---- 7 · documentos ----
+function docsInfo(){ const ds=(S.dados&&S.dados.docs)||[]; const c={}; ds.forEach(d=>c[d.tipo]=(c[d.tipo]||0)+1); return c; }
+function docsObrig(t){ const r=t.resp||{}; return ['cnh', r.compNome==='sim'?'residencia':null, 'perfil_app'].concat(t.precisaAval?['aval_doc','aval_conta']:[]).filter(Boolean); }
+function docRow(k,c){ const d=DOCS[k]; const n=c[k]||0; return `<div class="docrow${n?' ok':''}" data-doc="${k}"><span style="font-size:22px">${d[0]}</span><b>${esc(d[1])}<small>${n?'✔ '+n+' enviado'+(n>1?'s':''):esc(d[2])}</small></b><label>${n?'+ mais':'+ enviar'}<input type="file" accept="image/*,application/pdf" multiple onchange="enviarDoc('${k}',this)"></label></div>`; }
+function telaDocs(t){
+  const c=docsInfo(), r=t.resp||{}, falta=(t.faltam||[]).length, completo=falta===0;
+  const cand=['cnh'].concat(r.compNome==='sim'?['residencia']:[],['perfil_app']);
+  return `${cab("irTela('"+(t.precisaAval?'e':'d2')+"')")}<main>
+    ${faixa('Etapa 7 de 7'+(completo?' · completo ✔':' · falta '+falta+' documento'+(falta>1?'s':'')),7,completo)}
+    <h2 style="margin:6px 0 8px">${completo?'✅ Documentos completos':'📎 Seus documentos'}</h2>
+    ${completo?`<div class="alert ok"><b class="t">Enviado para a equipe analisar.</b><div class="txt" style="margin:0">Você recebe a resposta aqui no chat.</div></div>`
+      :aviso('A equipe <b>só começa a avaliar</b> quando todas as etapas estiverem completas e <b>todos</b> os documentos anexados.','info')}
+    <div class="card"><b>Candidato</b>${cand.map(k=>docRow(k,c)).join('')}
+      ${r.compNome!=='sim'?`<div class="muted sm" style="margin-top:6px">Você não tem conta no seu nome: o avalista envia a dele.</div>`:''}</div>
+    ${t.precisaAval?`<div class="card"><b>Avalista${r.avNome?' · '+esc(r.avNome):''}</b>${['aval_doc','aval_conta'].map(k=>docRow(k,c)).join('')}</div>
+      ${aviso('⚖ O motorista e o avalista assinam contrato e nota promissória.','warn')}`:''}
+    <div class="muted sm" style="margin:4px 2px 10px">Aceita foto ou PDF (até 2 MB). Cada item é marcado ✅ assim que o arquivo chega.</div>
+    <button class="btn" id="docs_chat" onclick="S.chat=true;render()">💬 Falar com a equipe</button></main>`;
 }
 
 // ---- chat ----
@@ -262,22 +467,25 @@ async function carregar(forcar){
   if(!S.token) return;
   try{
     const d=await rpc('cand_resumo',{p_token:S.token}); S.dados=d;
-    const sig=(d.msgs||[]).length+':'+((d.msgs||[]).slice(-1)[0]||{}).id+':'+(d.docs||[]).length+':'+d.candidato.status;
-    if(forcar||sig!==S.sig){ const novo=sig!==S.sig; S.sig=sig; render(novo); }
+    if(!S.rIni){ S.r={...(d.tri.resp||{})}; S.rIni=true; }
+    const t=d.tri;
+    const sig=(d.msgs||[]).length+':'+((d.msgs||[]).slice(-1)[0]||{}).id+':'+(d.docs||[]).length+':'+d.candidato.status+':'+t.etapa+':'+t.triagem+':'+t.bloqueio+':'+t.encerrado+':'+t.lgpd;
+    if(forcar||sig!==S.sig){ const novo=sig!==S.sig; S.sig=sig; render(novo&&S.chat); }
   }catch(e){ if(!(e&&e.message==='sessao')) console.warn(e); }
 }
-function docsInfo(){ const ds=(S.dados&&S.dados.docs)||[]; const c={}; ds.forEach(d=>c[d.tipo]=(c[d.tipo]||0)+1); return c; }
 function telaChat(){
   const d=S.dados; if(!d) return `<header><h1>Equipe Carsz</h1></header><main><div class="empty">Carregando…</div></main>`;
-  const c=docsInfo(); const principais=['cnh','residencia','perfil_app']; const feitos=principais.filter(k=>c[k]).length;
+  const t=d.tri, c=docsInfo(); const obrig=docsObrig(t); const feitos=obrig.filter(k=>c[k]).length;
+  const aprovado=d.candidato.status==='aprovado'||d.candidato.status==='virou';
   const msgs=(d.msgs||[]).map(m=>`<div class="msg ${m.de==='candidato'?'eu':'eq'}">${m.de==='candidato'?'':'<div style="font-size:12px;font-weight:800;color:var(--brand);margin-bottom:2px">Equipe Carsz</div>'}${esc(m.texto)}<div class="h">${esc(hhmm(m.em))}</div></div>`).join('');
-  const aprov=d.candidato.status==='aprovado'||d.candidato.status==='virou'?`<div class="alert ok"><b class="t">✅ Cadastro aprovado</b><div class="txt" style="margin:0">A equipe vai combinar os próximos passos com você por aqui.</div></div>`:'';
-  return `<header><h1>Equipe Carsz</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
+  const aprov=aprovado?`<div class="alert ok"><b class="t">✅ Cadastro aprovado</b><div class="txt" style="margin:0">A equipe vai combinar os próximos passos com você por aqui.</div></div>`:'';
+  const podeDocs=t.triagem==='aguardando_docs'||t.triagem==='docs_completos'||aprovado;
+  return `<header>${aprovado?'':`<button class="ic" aria-label="Voltar" onclick="S.chat=false;render()">←</button>`}<h1>Equipe Carsz</h1><button class="ic" aria-label="Menu" onclick="menu()">⋯</button></header>
   <main><div class="chatbox">
     ${aprov}
-    <div class="card" style="padding:11px 13px"><div class="row"><div style="flex:1"><b>📎 Documentos para análise</b><div class="muted sm">${feitos} de 3 principais enviados</div></div><button class="btn sm" onclick="abrirDocs()">${feitos?'Ver / enviar':'Enviar'}</button></div></div>
+    ${podeDocs?`<div class="card" style="padding:11px 13px"><div class="row"><div style="flex:1"><b>📎 Documentos para análise</b><div class="muted sm">${feitos} de ${obrig.length} obrigatórios enviados</div></div><button class="btn sm" onclick="abrirDocs()">${feitos?'Ver / enviar':'Enviar'}</button></div></div>`:''}
     <div class="chat" id="chat">${msgs}</div>
-    <div class="composer"><button class="btn clip" onclick="abrirDocs()" aria-label="Anexar documentos">📎</button><textarea id="c_txt" placeholder="Escreva sua mensagem…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviarMsg()}"></textarea><button class="btn" id="c_env" onclick="enviarMsg()">Enviar</button></div>
+    <div class="composer">${podeDocs?`<button class="btn clip" onclick="abrirDocs()" aria-label="Anexar documentos">📎</button>`:''}<textarea id="c_txt" placeholder="Escreva sua mensagem…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviarMsg()}"></textarea><button class="btn" id="c_env" onclick="enviarMsg()">Enviar</button></div>
   </div></main>`;
 }
 async function enviarMsg(){
@@ -287,9 +495,9 @@ async function enviarMsg(){
   catch(e){ erroGenerico(e); } finally{ const b2=document.getElementById('c_env'); if(b2) b2.disabled=false; }
 }
 function abrirDocs(){
-  const c=docsInfo();
+  const c=docsInfo(), t=S.dados.tri; const lista=docsObrig(t).concat(['complementar']);
   sheet(`<h3>📎 Documentos para análise</h3><p class="muted sm" style="margin:0 0 6px">Foto ou PDF (PDF até 2 MB). Pode enviar mais de um arquivo por item.</p>
-    ${DOCS.map(([k,i,t,s])=>`<div class="docrow${c[k]?' ok':''}"><span style="font-size:22px">${i}</span><b>${esc(t)}<small>${c[k]?'✔ '+c[k]+' enviado'+(c[k]>1?'s':''):esc(s)}</small></b><label>${c[k]?'+ mais':'+ enviar'}<input type="file" accept="image/*,application/pdf" multiple onchange="enviarDoc('${k}',this)"></label></div>`).join('')}
+    ${lista.map(k=>docRow(k,c)).join('')}
     <button class="btn ghost" style="margin-top:6px" onclick="fecharSheet()">Fechar</button>`);
   S.sheet=true;
 }
@@ -320,24 +528,40 @@ async function enviarDoc(tipo,input){
   if(ok){ toast(ok>1?ok+' arquivos enviados ✔':'Enviado ✔'); await carregar(true); if(S.sheet) abrirDocs(); }
 }
 function menu(){
+  const t=S.dados&&S.dados.tri; const podeChat=S.token&&t&&t.triagem!=='reprovado'&&!S.chat;
   sheet(`<h3>Menu</h3>${emApp?'':`<button class="btn sec" style="margin-top:8px" onclick="fecharSheet();instalar()">📲 Instalar o app no celular</button>`}
-    <button class="btn ghost" style="margin-top:8px" onclick="encerrar()">Encerrar e apagar este atendimento do aparelho</button>
+    ${podeChat?`<button class="btn sec" style="margin-top:8px" onclick="fecharSheet();S.chat=true;render()">💬 Ver conversa com a equipe</button>`:''}
+    ${S.token?`<button class="btn ghost" style="margin-top:8px" onclick="encerrar()">Encerrar e apagar este atendimento do aparelho</button>`:''}
     <button class="btn ghost" onclick="fecharSheet()">Fechar</button>`);
 }
 function encerrar(){ if(confirm('Encerrar o atendimento neste aparelho? A conversa continua com a equipe, mas você não poderá reabri-la daqui.')) sairLocal(); }
 
+function telaAtual(){
+  if(!S.token){ if(S.lgpd==='fim') return telaFim(); if(S.lgpd==='nao') return telaLgpdNao(); if(S.lgpd!=='sim') return telaLgpd(false); return telaForm(); }
+  const d=S.dados; if(!d) return `<header><h1>Área do Cliente</h1></header><main><div class="empty">Carregando…</div></main>`;
+  const t=d.tri, aprovado=d.candidato.status==='aprovado'||d.candidato.status==='virou';
+  if(aprovado||(S.chat&&t.triagem!=='reprovado')) return telaChat();
+  if(!t.lgpd){ if(S.lgpd==='fim') return telaFim(); if(S.lgpd==='nao') return telaLgpdNao(); if(S.lgpd!=='sim') return telaLgpd(true); return telaContatoLegado(); }
+  if(t.encerrado) return telaEncerrado(t);
+  if(!S.tela&&t.bloqueio) return telaAviso(t);
+  const tela=S.tela||telaDaEtapa(t);
+  return tela==='c'?telaC():tela==='d'?telaD():tela==='d2'?telaD2():tela==='e'&&t.precisaAval?telaE():telaDocs(t);
+}
 function render(rolar){
   const app=document.getElementById('app'); const t=document.getElementById('c_txt'); const keep=t?{v:t.value,foco:document.activeElement===t}:null;
-  const nome=document.getElementById('c_nome'), foco=document.activeElement&&document.activeElement.id;
-  app.innerHTML=S.token?telaChat():telaForm();
+  const ae=document.activeElement; const foco=ae&&ae.id&&app.contains(ae)&&/^(c_nome|c_cel|c_email|a_nome|a_par|a_cel|a_mail)$/.test(ae.id)?{id:ae.id,s:ae.selectionStart,e:ae.selectionEnd}:null;
+  app.innerHTML=telaAtual();
   if(keep){ const n=document.getElementById('c_txt'); if(n){ n.value=keep.v; if(keep.foco) n.focus(); } }
-  if(!S.token&&foco&&document.getElementById(foco)&&/^c_(nome|cel)$/.test(foco)){ const e=document.getElementById(foco); e.focus(); try{ e.setSelectionRange(e.value.length,e.value.length); }catch(_){} }
-  if(S.token&&rolar!==false){ const c=document.getElementById('chat'); if(c&&c.lastElementChild) c.lastElementChild.scrollIntoView({block:'end'}); }
+  if(foco){ const e=document.getElementById(foco.id); if(e){ e.focus(); try{ e.setSelectionRange(foco.s,foco.e); }catch(_){} } }
+  if(S.token&&S.chat&&rolar!==false){ const c=document.getElementById('chat'); if(c&&c.lastElementChild) c.lastElementChild.scrollIntoView({block:'end'}); }
 }
 setInterval(()=>{ if(S.token&&document.visibilityState==='visible') carregar(false); },7000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') carregar(false); });
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(e=>console.warn('service worker não registrado:',e)); }); }
 render(); if(S.token) carregar(true);
+(function(){ var v='Cliente v1.1-A'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+ d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
+ (document.body||document.documentElement).appendChild(d); })();
 
 </script>
 </body>
