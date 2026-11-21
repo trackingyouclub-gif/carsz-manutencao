@@ -3426,12 +3426,12 @@ function motBaixaComp(cid){
     ${p?`<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="bc_prom" checked style="width:auto"> Marcar a promessa de ${fmtD(p.dataPrometida)} como cumprida</label>`:''}
     ${st!=='normal'?`<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="bc_lib" checked style="width:auto"> Liberar o veículo (situação → Liberado)</label>`:''}
     <label>Mensagem para o motorista (opcional)</label><textarea id="bc_resp"></textarea>
-    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motConfirmarBaixa('${cid}')">Confirmar baixa</button></div>`);
+    <div class="act"><button class="sec" onclick="fechar()">Cancelar</button><button class="pri" onclick="motConfirmarBaixaComp('${cid}')">Confirmar baixa</button></div>`);
 }
 async function motApagarCompArquivo(c){
   if(!c.fileId) return; const {error}=await sb.from('mot_comprovantes_img').delete().eq('id',c.fileId); if(error) throw error;
 }
-async function motConfirmarBaixa(cid){
+async function motConfirmarBaixaComp(cid){
   const c=S.motComp.find(y=>y.id===cid); if(!c) return; const resp=val('bc_resp'); const bp=document.getElementById('bc_prom'), bl=document.getElementById('bc_lib'); const me=(S.perfil&&S.perfil.nome)||'';
   try{
     await S.db.doc('mot_comprovantes/'+cid).update({status:'pago',baixaEm:agoraIso(),baixaPor:me});
@@ -4580,7 +4580,7 @@ if('serviceWorker' in navigator){
 </script>
 <script>
 /* selo de versão (canto da tela) — serve só para conferir qual versão está no ar */
-(function(){ var v='Painel v18.12-A'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
+(function(){ var v='Painel v18.12-B'; var d=document.createElement('div'); d.id='selo_versao'; d.textContent=v;
  d.style.cssText='position:fixed;left:6px;bottom:3px;z-index:99999;font:600 10px/1 system-ui,sans-serif;color:#fff;opacity:.35;pointer-events:none;text-shadow:0 0 3px #000';
  (document.body||document.documentElement).appendChild(d); })();
 </script>
